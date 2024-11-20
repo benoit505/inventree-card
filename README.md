@@ -40,64 +40,7 @@ show_minimum: true
 columns: 3
 ```
 
-## Options
 
-|
- Name 
-|
- Type 
-|
- Default 
-|
- Description 
-|
-|
-------
-|
-------
-|
----------
-|
--------------
-|
-|
- entity 
-|
- string 
-|
-**
-Required
-**
-|
- The InvenTree sensor entity 
-|
-|
- show_low_stock 
-|
- boolean 
-|
- true 
-|
- Show warning for low stock items 
-|
-|
- show_minimum 
-|
- boolean 
-|
- true 
-|
- Show minimum stock levels 
-|
-|
- columns 
-|
- number 
-|
- 3 
-|
- Number of columns in the grid 
-|
 
 ## Development
 
