@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>InvenTree Card Development</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            padding: 24px;
+        }
+        .demo-area {
+            display: flex;
+            gap: 24px;
+        }
+        .card-area, .editor-area {
+            flex: 1;
+        }
+    </style>
+  </head>
+  <body>
+    <div class="demo-area">
+        <div class="card-area">
+            <h2>Card Preview</h2>
+            <div id="demo"></div>
+        </div>
+        <div class="editor-area">
+            <h2>Card Editor</h2>
+            <div id="editor"></div>
+        </div>
+    </div>
+    <script type="module">
+        import './inventree-card.js';
+        import './editor.js';
+
+        // Mock loadCardHelpers
+        window.loadCardHelpers = () => {
+            return Promise.resolve({
+                createCardElement: () => {},
+                createHuiElement: () => {},
+                provideHass: () => {}
+            });
+        };
+
+        // Create mock HASS
+        const mockHass = {
+            states: {
+                'sensor.inventree_test': {
+                    state: '42',
+                    attributes: {
+                        items: [
+                            { name: 'Test Item 1', in_stock: 10, minimum_stock: 5 },
+                            { name: 'Test Item 2', in_stock: 3, minimum_stock: 5 },
+                            { name: 'Test Item 3', in_stock: 8, minimum_stock: 4 }
+                        ],
+                        category_name: 'Test Category'
+                    }
+                }
+            },
+            callService: (domain, service, data) => {
+                console.log('Service called:', domain, service, data);
+            }
+        };
+
+        // Create initial config
+        const initialConfig = {
+            type: 'custom:inventree-card',
+            entity: 'sensor.inventree_test',
+            show_low_stock: true,
+            show_minimum: true,
+            columns: 3
+        };
+
+        let cardElement;
+
+        // Wait for both components to be defined
+        Promise.all([
+            customElements.whenDefined('inventree-card'),
+            customElements.whenDefined('inventree-card-editor')
+        ]).then(() => {
+            console.log('Components ready');
+
+            // Initialize card
+            cardElement = document.createElement('inventree-card');
+            cardElement.setConfig(initialConfig);
+            cardElement.hass = mockHass;
+            document.getElementById('demo').appendChild(cardElement);
+
+            // Initialize editor
+            const editor = document.createElement('inventree-card-editor');
+            editor.hass = mockHass;
+            editor.setConfig(initialConfig);
+            
+            editor.addEventListener('config-changed', (ev) => {
+                console.log('Config updated:', ev.detail.config);
+                cardElement.setConfig(ev.detail.config);
+            });
+            
+            document.getElementById('editor').appendChild(editor);
+        });
+    </script>
+  </body>
+</html> 

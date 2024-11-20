@@ -1,0 +1,43 @@
+{
+  "name": "inventree-card",
+  "version": "0.1.0",
+  "description": "Home Assistant custom card for InvenTree inventory management",
+  "keywords": [
+    "home-assistant",
+    "homeassistant",
+    "hass",
+    "automation",
+    "lovelace",
+    "custom-cards",
+    "inventree"
+  ],
+  "module": "dist/inventree-card.js",
+  "repository": "git@github.com:benoit505/inventree-card.git",
+  "author": "benoit505",
+  "license": "MIT",
+  "dependencies": {
+    "custom-card-helpers": "^1.9.0",
+    "home-assistant-js-websocket": "^8.0.1",
+    "lit": "^2.7.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.21.4",
+    "@rollup/plugin-json": "^6.0.0",
+    "rollup": "^2.79.1",
+    "rollup-plugin-babel": "^4.4.0",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "rollup-plugin-serve": "^1.1.0",
+    "rollup-plugin-terser": "^7.0.2",
+    "rollup-plugin-typescript2": "^0.31.0",
+    "typescript": "^4.9.5"
+  },
+  "source": "src/inventree-card.ts",
+  "scripts": {
+    "build": "rollup -c rollup.config.mjs",
+    "watch": "rollup -c rollup.config.mjs --watch",
+    "lint": "eslint src/*",
+    "lint:fix": "eslint src/* --fix",
+    "prepare": "npm run build"
+  }
+}
