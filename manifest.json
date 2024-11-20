@@ -1,0 +1,9 @@
+{
+    "name": "InvenTree Card",
+    "version": "1.0.0",
+    "description": "A custom card to display InvenTree data in Home Assistant",
+    "author": "benoit505",
+    "dependencies": [],
+    "type": "module",
+    "homeassistant": "2023.8.0"
+  }
