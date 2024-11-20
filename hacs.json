@@ -1,0 +1,8 @@
+{
+    "name": "InvenTree Card",
+    "render_readme": true,
+    "filename": "inventree-card.js",
+    "country": "NL",
+    "content_in_root": true,
+    "homeassistant": "2024.1.0"
+}
