@@ -22,11 +22,28 @@ declare global {
 }
 
 export interface InventreeItem {
+    pk: number;
     name: string;
     in_stock: number;
     minimum_stock: number;
     image?: string;
     thumbnail?: string;
+    active: boolean;
+    assembly: boolean;
+    category: number;
+    category_name: string;
+    component: boolean;
+    description: string;
+    full_name: string;
+    IPN: string;
+    purchaseable: boolean;
+    salable: boolean;
+    total_in_stock: number;
+    unallocated_stock: number;
+    allocated_to_build_orders: number;
+    allocated_to_sales_orders: number;
+    building: number;
+    ordering: number;
 }
 
 export interface InventreeCardConfig extends LovelaceCardConfig {
