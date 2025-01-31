@@ -12,16 +12,32 @@ const plugins = [
   nodeResolve({
     browser: true,
     preferBuiltins: false,
-    dedupe: ['lit']
+    dedupe: ['lit'],
+    extensions: ['.ts', '.js', '.json']
   }),
   commonjs({
     include: 'node_modules/**'
   }),
-  typescript(),
+  typescript({
+    tsconfig: './tsconfig.json',
+    include: ['src/**/*.ts'],
+    exclude: ['dev/**/*.ts'],
+    sourceMap: true,
+    inlineSources: true,
+    module: 'esnext'
+  }),
   json(),
   babel({
     exclude: 'node_modules/**',
-    babelHelpers: 'bundled'
+    babelHelpers: 'bundled',
+    extensions: ['.ts'],
+    presets: [
+      ['@babel/preset-typescript']
+    ],
+    plugins: [
+      ['@babel/plugin-proposal-decorators', { legacy: true }],
+      ['@babel/plugin-proposal-class-properties', { loose: true }]
+    ]
   }),
   dev && serve({
     contentBase: ['./dist'],
@@ -36,11 +52,15 @@ const plugins = [
 ].filter(Boolean);
 
 export default {
-  input: 'src/inventree-card.ts',
+  input: 'src/index.ts',
   output: {
     dir: 'dist',
     format: 'es',
-    sourcemap: true
+    entryFileNames: 'inventree-card.js',
+    sourcemap: true,
+    preserveModules: false
   },
+  preserveEntrySignatures: false,
+  context: 'this',
   plugins,
 };
