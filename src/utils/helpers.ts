@@ -42,9 +42,29 @@ export const parseState = (hass: HomeAssistant, entityId: string): InventreeItem
     if (state.attributes?.name) {
         console.debug('📦 Constructing single item from attributes');
         return [{
+            pk: state.attributes.pk || state.attributes.id || 0,
             name: state.attributes.name,
             in_stock: Number(state.state) || 0,
-            minimum_stock: state.attributes.minimum_stock || 0
+            minimum_stock: state.attributes.minimum_stock || 0,
+            image: state.attributes.image || null,
+            thumbnail: state.attributes.thumbnail || null,
+            // Add all the new required fields with default values
+            active: state.attributes.active || true,
+            assembly: state.attributes.assembly || false,
+            category: state.attributes.category || 0,
+            category_name: state.attributes.category_name || '',
+            component: state.attributes.component || false,
+            description: state.attributes.description || '',
+            full_name: state.attributes.full_name || state.attributes.name || '',
+            IPN: state.attributes.IPN || '',
+            purchaseable: state.attributes.purchaseable || false,
+            salable: state.attributes.salable || false,
+            total_in_stock: Number(state.state) || 0,
+            unallocated_stock: Number(state.state) || 0,
+            allocated_to_build_orders: state.attributes.allocated_to_build_orders || 0,
+            allocated_to_sales_orders: state.attributes.allocated_to_sales_orders || 0,
+            building: state.attributes.building || 0,
+            ordering: state.attributes.ordering || 0
         }];
     }
 

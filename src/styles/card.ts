@@ -186,4 +186,56 @@ export const cardStyles = css`
     .image-container img:hover {
         transform: scale(1.05);
     }
+
+    .description {
+        font-size: 0.9em;
+        opacity: 0.8;
+        margin-bottom: 8px;
+    }
+
+    .stock-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 8px 0;
+    }
+
+    .allocated {
+        color: var(--warning-color);
+        font-weight: 500;
+    }
+
+    .ordering {
+        color: var(--info-color);
+        font-weight: 500;
+    }
+
+    .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 8px;
+    }
+
+    .badge {
+        font-size: 0.8em;
+        padding: 2px 6px;
+        border-radius: 12px;
+        background: var(--secondary-background-color);
+    }
+
+    .badge.purchaseable {
+        background: var(--success-color);
+        color: var(--text-primary-color);
+    }
+
+    .badge.salable {
+        background: var(--info-color);
+        color: var(--text-primary-color);
+    }
+
+    .badge.inactive {
+        background: var(--error-color);
+        color: var(--text-primary-color);
+    }
 `;
