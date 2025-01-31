@@ -4,7 +4,7 @@
     "module": "esnext",
     "moduleResolution": "node",
     "lib": ["es2017", "dom", "dom.iterable"],
-    "noEmit": true,
+    "noEmit": false,
     "strict": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
