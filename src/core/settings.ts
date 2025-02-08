@@ -1,4 +1,4 @@
-import { InventreeCardConfig } from "../types";
+import { InventreeCardConfig } from "./types";
 
 // Core settings schema
 export const SETTINGS_SCHEMA = {
@@ -13,10 +13,20 @@ export const SETTINGS_SCHEMA = {
         sort_by: true,
         sort_direction: true,
         grid_spacing: true,
-        item_height: true
+        item_height: true,
+        show_image: true,
+        show_name: true,
+        show_stock: true,
+        show_description: true,
+        show_parameters: true,
+        show_buttons: true,
+        image_only: true
     },
     layout: {
-        columns: true
+        columns: true,
+        min_height: true,
+        max_height: true,
+        transparent: true
     },
     stock: {
         show_low_stock: true,
@@ -24,6 +34,17 @@ export const SETTINGS_SCHEMA = {
         show_history: true,
         enable_quick_add: true,
         show_stock_warning: true
+    },
+    style: {
+        background: true,
+        image_size: true,
+        spacing: true
+    },
+    thumbnails: {
+        mode: true,
+        custom_path: true,
+        local_path: true,
+        enable_bulk_import: true
     }
 } as const;
 
@@ -39,7 +60,32 @@ export const DEFAULT_CONFIG: Partial<InventreeCardConfig> = {
     enable_quick_add: false,
     show_history: false,
     grid_spacing: 16,
-    item_height: 64
+    item_height: 64,
+    layout: {
+        min_height: 50,
+        max_height: 500,
+        transparent: false
+    },
+    display: {
+        show_image: true,
+        show_name: true,
+        show_stock: true,
+        show_description: false,
+        show_parameters: false,
+        show_buttons: true,
+        image_only: false
+    },
+    style: {
+        background: undefined,
+        image_size: 50,
+        spacing: 10
+    },
+    thumbnails: {
+        mode: 'auto',
+        custom_path: '',
+        local_path: '/local/inventree_thumbs',
+        enable_bulk_import: false
+    }
 };
 
 // Validation helper

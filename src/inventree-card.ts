@@ -7,8 +7,9 @@ import { HomeAssistant, LovelaceCard, LovelaceCardEditor } from "custom-card-hel
 import { cardStyles } from "./styles/card";
 import { renderInventreeCard } from "./renders/card";
 import { shouldUpdate } from "./utils/helpers";
-import { CARD_NAME, EDITOR_NAME, DEFAULT_CONFIG } from "./utils/constants";
-import { InventreeCardConfig } from "./types";
+import { CARD_NAME, EDITOR_NAME, CARD_TYPE } from "./core/constants";
+import { DEFAULT_CONFIG } from "./core/settings";
+import { InventreeCardConfig } from "./core/types";
 import { InventreeCardEditor } from './editors/editor';
 
 @customElement(CARD_NAME)
@@ -48,6 +49,23 @@ export class InventreeCard extends LitElement implements LovelaceCard {
             ...defaultConfig,
             ...JSON.parse(JSON.stringify(config)),
             type: `custom:${CARD_NAME}`,
+            // Properly merge nested objects
+            layout: {
+                ...defaultConfig.layout,
+                ...(config.layout || {})
+            },
+            display: {
+                ...defaultConfig.display,
+                ...(config.display || {})
+            },
+            style: {
+                ...defaultConfig.style,
+                ...(config.style || {})
+            },
+            thumbnails: {
+                ...defaultConfig.thumbnails,
+                ...(config.thumbnails || {})
+            }
         };
         
         console.debug('🎴 Card: Merged config:', newConfig);

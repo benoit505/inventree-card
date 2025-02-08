@@ -44,6 +44,36 @@ export interface InventreeItem {
     allocated_to_sales_orders: number;
     building: number;
     ordering: number;
+    parameters?: InventreeParameter[];
+}
+
+export interface InventreeCardLayout {
+    min_height?: number;
+    max_height?: number;
+    transparent?: boolean;
+}
+
+export interface InventreeCardDisplay {
+    show_image?: boolean;
+    show_name?: boolean;
+    show_stock?: boolean;
+    show_description?: boolean;
+    show_parameters?: boolean;
+    show_buttons?: boolean;
+    image_only?: boolean;
+}
+
+export interface InventreeCardStyle {
+    background?: string;
+    image_size?: number;
+    spacing?: number;
+}
+
+export interface ThumbnailConfig {
+    mode: 'auto' | 'manual';  // Remove optional flag
+    custom_path: string;      // Required for consistency
+    local_path: string;       // Required for consistency
+    enable_bulk_import: boolean; // Required for consistency
 }
 
 export interface InventreeCardConfig extends LovelaceCardConfig {
@@ -62,12 +92,16 @@ export interface InventreeCardConfig extends LovelaceCardConfig {
     enable_quick_add?: boolean;
     show_history?: boolean;
     show_stock_warning?: boolean;
+    layout?: InventreeCardLayout;
+    display?: InventreeCardDisplay;
+    style?: InventreeCardStyle;
 }
 
-export interface FormSchema {
+export interface FormSchemaItem {
     name: string;
     label: string;
-    selector: {
+    description?: string;
+    selector?: {
         entity?: { domain: string };
         text?: Record<string, never>;
         boolean?: Record<string, never>;
@@ -75,5 +109,16 @@ export interface FormSchema {
         select?: {
             options: Array<{ value: string; label: string }>;
         };
+    };
+    type?: string;
+    schema?: FormSchemaItem[];
+}
+
+export interface FormSchema extends FormSchemaItem {}
+
+export interface InventreeParameter {
+    template_detail: {
+        name: string;
+        data?: string | number;
     };
 }

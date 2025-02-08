@@ -1,14 +1,21 @@
 import { html, TemplateResult } from "lit";
 import { HomeAssistant } from "custom-card-helpers";
-import { InventreeCardConfig, InventreeItem } from "../types";
+import { InventreeCardConfig, InventreeItem } from "../core/types";
 import { renderInventreeItem } from "./item";
 import { parseState } from "../utils/helpers";
+import { styleMap } from "lit/directives/style-map.js";  // Note the .js extension
 
 export const renderInventreeCard = (
     hass: HomeAssistant,
     config: InventreeCardConfig
 ): TemplateResult => {
-    console.debug('🎴 Card: Starting render with config:', config);
+    const layout = config.layout || {};
+    
+    console.debug('Card render - Layout settings:', {
+        layout,
+        transparent: layout.transparent,
+        fullConfig: config
+    });
 
     const state = hass.states[config.entity];
     if (!state) {
@@ -45,18 +52,20 @@ export const renderInventreeCard = (
     }
 
     return html`
-        <ha-card>
+        <ha-card style=${styleMap({
+            background: layout.transparent ? 'transparent !important' : null
+        })}>
             ${config.show_header ? html`
                 <div class="card-header">
                     ${config.title || 'Inventory'}
                 </div>
             ` : ''}
             <div class="grid" 
-                style="
-                    --columns: ${config.columns || 2};
-                    --grid-spacing: ${gridSpacing}px;
-                    --item-height: ${itemHeight}px;
-                "
+                style=${styleMap({
+                    '--columns': config.columns || 2,
+                    '--grid-spacing': `${gridSpacing}px`,
+                    '--item-height': `${itemHeight}px`
+                })}
             >
                 ${items.length > 0 
                     ? items.map(item => renderInventreeItem(item, hass, config))

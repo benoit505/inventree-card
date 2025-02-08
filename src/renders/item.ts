@@ -1,6 +1,9 @@
 import { html, TemplateResult } from "lit";
 import { HomeAssistant } from "custom-card-helpers";
-import { InventreeItem, InventreeCardConfig } from "../types";
+import { InventreeItem, InventreeCardConfig, InventreeParameter } from "../core/types";
+import { styleMap } from "lit/directives/style-map.js";
+import { DEFAULT_CONFIG } from "../core/settings";
+import { ThumbnailService, StateService } from "../services";
 
 export const getStockClass = (item: InventreeItem): string => {
     if (item.in_stock <= 0) return 'out-of-stock';
@@ -8,12 +11,66 @@ export const getStockClass = (item: InventreeItem): string => {
     return 'good-stock';
 };
 
+export const getThumbnailPath = (item: InventreeItem, config: InventreeCardConfig): string => {
+    const thumbnails = {
+        ...DEFAULT_CONFIG.thumbnails,
+        ...(config.thumbnails || {})
+    };
+    
+    if (thumbnails.mode === 'manual' && thumbnails.custom_path) {
+        return `${thumbnails.custom_path}/part_${item.pk}.png`;
+    }
+    
+    return `${thumbnails.local_path}/part_${item.pk}.png`;
+};
+
 export const renderInventreeItem = (
     item: InventreeItem,
     hass: HomeAssistant,
     config: InventreeCardConfig
 ): TemplateResult => {
+    const display = config.display || {};
+    const style = config.style || {};
+    const layout = config.layout || {};
+    
+    console.debug('Item render - Layout settings:', {
+        layout,
+        transparent: layout.transparent,
+        item: item.name
+    });
+
+    // Use ThumbnailService instead of direct path construction
+    const thumbnailPath = ThumbnailService.getThumbnailPath(item, config);
+    
+    // Use StateService for stock class
+    const stockClass = StateService.getStockClass(item);
+    
+    // If image_only is true, render just the image
+    if (display.image_only) {
+        return html`
+            <div class="item-frame image-only" 
+                style=${styleMap({
+                    background: style.background || 'transparent',
+                    padding: '0'
+                })}
+            >
+                ${item.thumbnail && display.show_image ? html`
+                    <div class="image-container" 
+                        style=${styleMap({
+                            height: `${style.image_size || 50}px`,
+                            width: `${style.image_size || 50}px`
+                        })}
+                    >
+                        <img src="${thumbnailPath}" alt="${item.name}" loading="lazy" />
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // Regular item render with configurable elements
     const isLowStock = item.in_stock < item.minimum_stock;
+    const transparentClass = layout.transparent ? 'transparent' : '';
     
     const handleAdjust = async (amount: number) => {
         console.debug('Adjusting stock:', { item: item.name, amount });
@@ -41,46 +98,59 @@ export const renderInventreeItem = (
     };
     
     return html`
-        <div class="item-frame ${isLowStock && config.show_low_stock ? 'low-stock' : ''} ${config.compact_view ? 'compact' : ''}">
-            <div class="main-box ${getStockClass(item)}">
+        <div class="item-frame ${isLowStock && config.show_low_stock ? 'low-stock' : ''} 
+                               ${config.compact_view ? 'compact' : ''} 
+                               ${transparentClass}"
+            style=${styleMap({
+                background: layout.transparent ? 'transparent !important' : null,
+                gap: `${style.spacing || 10}px`
+            })}
+        >
+            <div class="main-box ${stockClass}"
+                style=${styleMap({
+                    background: layout.transparent ? 'transparent !important' : null
+                })}
+            >
                 <div class="content">
-                    ${item.thumbnail ? html`
+                    ${item.thumbnail && display.show_image ? html`
                         <div class="image-container">
-                            <img 
-                                src="${item.thumbnail}" 
-                                alt="${item.name}"
-                                loading="lazy"
-                                @error=${(e: Event) => {
-                                    // Hide broken images
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                            />
+                            <img src="${thumbnailPath}" alt="${item.name}" loading="lazy" />
                         </div>
                     ` : ''}
-                    <div class="name">${item.full_name || item.name}</div>
-                    ${item.description ? html`
+                    
+                    ${display.show_name ? html`
+                        <div class="name">${item.full_name || item.name}</div>
+                    ` : ''}
+
+                    ${display.show_description && item.description ? html`
                         <div class="description">${item.description}</div>
                     ` : ''}
-                    <div class="stock-info">
-                        <div class="stock">In Stock: ${item.in_stock}</div>
-                        ${item.allocated_to_build_orders > 0 ? html`
-                            <div class="allocated">Allocated: ${item.allocated_to_build_orders}</div>
-                        ` : ''}
-                        ${item.ordering > 0 ? html`
-                            <div class="ordering">On Order: ${item.ordering}</div>
-                        ` : ''}
-                    </div>
-                    ${config.show_minimum ? html`
-                        <div class="minimum">Minimum: ${item.minimum_stock}</div>
+
+                    ${display.show_stock ? html`
+                        <div class="stock-info">
+                            <div class="stock">In Stock: ${item.in_stock}</div>
+                            ${item.allocated_to_build_orders > 0 ? html`
+                                <div class="allocated">Allocated: ${item.allocated_to_build_orders}</div>
+                            ` : ''}
+                            ${item.ordering > 0 ? html`
+                                <div class="ordering">On Order: ${item.ordering}</div>
+                            ` : ''}
+                        </div>
                     ` : ''}
-                    <div class="badges">
-                        ${item.purchaseable ? html`<span class="badge purchaseable">Purchaseable</span>` : ''}
-                        ${item.salable ? html`<span class="badge salable">Salable</span>` : ''}
-                        ${!item.active ? html`<span class="badge inactive">Inactive</span>` : ''}
-                    </div>
+
+                    ${display.show_parameters && item.parameters ? html`
+                        <div class="parameters">
+                            ${item.parameters.map((param: InventreeParameter) => html`
+                                <div class="parameter">
+                                    ${param.template_detail.name}: ${param.template_detail.data || ''}
+                                </div>
+                            `)}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
-            ${(config.enable_quick_add || config.enable_print_labels) ? html`
+
+            ${display.show_buttons ? html`
                 <div class="button-container">
                     ${config.enable_quick_add ? html`
                         <button class="adjust-button minus" @click=${() => handleAdjust(-1)}>-1</button>
@@ -93,9 +163,7 @@ export const renderInventreeItem = (
                         </div>
                     ` : ''}
                     ${config.enable_print_labels ? html`
-                        <button class="adjust-button print" @click=${handlePrint}>
-                            🖨️
-                        </button>
+                        <button class="adjust-button print" @click=${handlePrint}>🖨️</button>
                     ` : ''}
                 </div>
             ` : ''}

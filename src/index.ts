@@ -1,4 +1,4 @@
-import { CARD_NAME, CARD_TYPE } from './utils/constants';
+import { CARD_NAME, CARD_TYPE } from './core/constants';
 import { InventreeCard } from './inventree-card';
 
 console.info('InvenTree Card: Starting registration...');
@@ -22,6 +22,6 @@ console.info('InvenTree Card: Registration complete');
 
 // Export for external use
 export * from './inventree-card';
-export * from './types';
-export * from './utils/settings';
+export * from './core/types';
+export * from './core/settings';
 export * from './editors/editor'; 

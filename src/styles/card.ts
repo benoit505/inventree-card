@@ -187,55 +187,52 @@ export const cardStyles = css`
         transform: scale(1.05);
     }
 
-    .description {
-        font-size: 0.9em;
-        opacity: 0.8;
-        margin-bottom: 8px;
+    .item-frame.image-only {
+        border: none;
+        background: transparent;
+        min-height: auto;
+        padding: 0;
     }
 
-    .stock-info {
+    .image-only .image-container {
+        margin: 0;
+    }
+
+    .parameters {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 8px 0;
-    }
-
-    .allocated {
-        color: var(--warning-color);
-        font-weight: 500;
-    }
-
-    .ordering {
-        color: var(--info-color);
-        font-weight: 500;
-    }
-
-    .badges {
-        display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
         gap: 4px;
         margin-top: 8px;
     }
 
-    .badge {
-        font-size: 0.8em;
+    .parameter {
+        font-size: 0.9em;
         padding: 2px 6px;
-        border-radius: 12px;
         background: var(--secondary-background-color);
+        border-radius: 4px;
     }
 
-    .badge.purchaseable {
-        background: var(--success-color);
-        color: var(--text-primary-color);
+    .transparent {
+        background: transparent !important;
     }
 
-    .badge.salable {
-        background: var(--info-color);
-        color: var(--text-primary-color);
+    .transparent .main-box {
+        background: transparent !important;
     }
 
-    .badge.inactive {
-        background: var(--error-color);
-        color: var(--text-primary-color);
+    .transparent .button-container {
+        background: transparent !important;
+    }
+
+    .transparent .out-of-stock {
+        background-color: rgba(219, 68, 55, 0.7) !important;
+    }
+
+    .transparent .low-stock {
+        background-color: rgba(255, 167, 38, 0.7) !important;
+    }
+
+    .transparent .good-stock {
+        background-color: rgba(67, 160, 71, 0.7) !important; 
     }
 `;
