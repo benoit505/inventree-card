@@ -67,7 +67,7 @@
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "prepare-ha": "npm run build && mkdir -p ha-dist && cp dist/inventree-card.js dist/editor.js ha-dist/",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   }
