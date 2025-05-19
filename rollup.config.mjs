@@ -5,34 +5,38 @@ import babel from '@rollup/plugin-babel';
 import terser from '@rollup/plugin-terser';
 import serve from 'rollup-plugin-serve';
 import json from '@rollup/plugin-json';
+import replace from '@rollup/plugin-replace';
 
 const dev = process.env.ROLLUP_WATCH;
 
-const plugins = [
+const sharedPlugins = [
   nodeResolve({
     browser: true,
     preferBuiltins: false,
     dedupe: ['lit'],
-    extensions: ['.ts', '.js', '.json']
+    extensions: ['.ts', '.tsx', '.js', '.json']
   }),
   commonjs({
     include: 'node_modules/**'
   }),
+  replace({
+    preventAssignment: true,
+    'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production')
+  }),
   typescript({
     tsconfig: './tsconfig.json',
-    include: ['src/**/*.ts'],
+    include: ['src/**/*.ts', 'src/**/*.tsx'],
     exclude: ['dev/**/*.ts'],
     sourceMap: true,
     inlineSources: true,
-    module: 'esnext'
   }),
   json(),
   babel({
     exclude: 'node_modules/**',
     babelHelpers: 'bundled',
-    extensions: ['.ts'],
+    extensions: ['.js', '.jsx'],
     presets: [
-      ['@babel/preset-typescript']
+      ['@babel/preset-react', { runtime: 'automatic' }]
     ],
     plugins: [
       ['@babel/plugin-proposal-decorators', { legacy: true }],
@@ -51,16 +55,39 @@ const plugins = [
   !dev && terser()
 ].filter(Boolean);
 
-export default {
-  input: 'src/index.ts',
-  output: {
-    dir: 'dist',
-    format: 'es',
-    entryFileNames: 'inventree-card.js',
-    sourcemap: true,
-    preserveModules: false
+// Build two separate bundles to avoid circular references
+export default [
+  // Main card bundle
+  {
+    input: 'src/index.ts',
+    output: {
+      dir: 'dist',
+      format: 'es',
+      entryFileNames: 'inventree-card.js',
+      sourcemap: true
+    },
+    plugins: sharedPlugins,
+    onwarn(warning, warn) {
+      // Skip certain warnings
+      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+      warn(warning);
+    }
   },
-  preserveEntrySignatures: false,
-  context: 'this',
-  plugins,
-};
+  // Editor bundle as a separate build
+  {
+    input: 'src/editors/editor.ts',
+    output: {
+      dir: 'dist',
+      format: 'es',
+      entryFileNames: 'editor.js',
+      sourcemap: true
+    },
+    external: ['lit', 'lit/decorators.js', 'custom-card-helpers'],
+    plugins: sharedPlugins,
+    onwarn(warning, warn) {
+      // Skip certain warnings
+      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+      warn(warning);
+    }
+  }
+];

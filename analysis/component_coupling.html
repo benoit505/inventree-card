@@ -1,0 +1,93 @@
+
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <title>Component Coupling Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+      .chord { opacity: 0.8; }
+      .node { font-size: 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>Component Coupling Visualization</h1>
+    <div id="chord"></div>
+    <script>
+      // Convert coupling matrix to D3 format
+      const components = ["adapters","components","core","editors","hooks","index.ts","inventree-card.ts","services","store","styles","types","types.d.ts","utils"];
+      const matrix = [];
+      
+      components.forEach(compA => {
+        const row = [];
+        components.forEach(compB => {
+          const coupling = {"adapters":{"adapters":0,"components":{"callCount":15,"dependencyStrength":1.2},"core":{"callCount":47,"dependencyStrength":1.7},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":7,"dependencyStrength":0.8},"services":{"callCount":18,"dependencyStrength":1.3},"store":{"callCount":5,"dependencyStrength":0.7},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":3,"dependencyStrength":0.5}},"components":{"adapters":{"callCount":111,"dependencyStrength":2},"components":0,"core":{"callCount":265,"dependencyStrength":2.4},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":1,"dependencyStrength":0},"services":{"callCount":140,"dependencyStrength":2.1},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":23,"dependencyStrength":1.4}},"core":{"adapters":{"callCount":0,"dependencyStrength":0},"components":{"callCount":0,"dependencyStrength":0},"core":0,"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":44,"dependencyStrength":1.6},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":0,"dependencyStrength":0}},"editors":{"adapters":{"callCount":3,"dependencyStrength":0.5},"components":{"callCount":6,"dependencyStrength":0.8},"core":{"callCount":13,"dependencyStrength":1.1},"editors":0,"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":0,"dependencyStrength":0},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":9,"dependencyStrength":1}},"hooks":{"adapters":{"callCount":0,"dependencyStrength":0},"components":{"callCount":2,"dependencyStrength":0.3},"core":{"callCount":0,"dependencyStrength":0},"editors":{"callCount":0,"dependencyStrength":0},"hooks":0,"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":6,"dependencyStrength":0.8},"store":{"callCount":3,"dependencyStrength":0.5},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":0,"dependencyStrength":0}},"index.ts":{"adapters":{"callCount":0,"dependencyStrength":0},"components":{"callCount":0,"dependencyStrength":0},"core":{"callCount":0,"dependencyStrength":0},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":0,"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":0,"dependencyStrength":0},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":0,"dependencyStrength":0}},"inventree-card.ts":{"adapters":{"callCount":48,"dependencyStrength":1.7},"components":{"callCount":13,"dependencyStrength":1.1},"core":{"callCount":83,"dependencyStrength":1.9},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":0,"services":{"callCount":18,"dependencyStrength":1.3},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":1,"dependencyStrength":0}},"services":{"adapters":{"callCount":71,"dependencyStrength":1.9},"components":{"callCount":5,"dependencyStrength":0.7},"core":{"callCount":289,"dependencyStrength":2.5},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":0,"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":15,"dependencyStrength":1.2}},"store":{"adapters":{"callCount":5,"dependencyStrength":0.7},"components":{"callCount":7,"dependencyStrength":0.8},"core":{"callCount":12,"dependencyStrength":1.1},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":1,"dependencyStrength":0},"store":0,"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":1,"dependencyStrength":0},"utils":{"callCount":8,"dependencyStrength":0.9}},"styles":{"adapters":{"callCount":0,"dependencyStrength":0},"components":{"callCount":0,"dependencyStrength":0},"core":{"callCount":0,"dependencyStrength":0},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":0,"dependencyStrength":0},"store":{"callCount":0,"dependencyStrength":0},"styles":0,"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":0,"dependencyStrength":0}},"types":{"adapters":{"callCount":0,"dependencyStrength":0},"components":{"callCount":0,"dependencyStrength":0},"core":{"callCount":0,"dependencyStrength":0},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":0,"dependencyStrength":0},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":0,"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":{"callCount":0,"dependencyStrength":0}},"types.d.ts":{"adapters":{"callCount":0,"dependencyStrength":0},"components":{"callCount":0,"dependencyStrength":0},"core":{"callCount":0,"dependencyStrength":0},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":0,"dependencyStrength":0},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":0,"utils":{"callCount":0,"dependencyStrength":0}},"utils":{"adapters":{"callCount":20,"dependencyStrength":1.3},"components":{"callCount":0,"dependencyStrength":0},"core":{"callCount":74,"dependencyStrength":1.9},"editors":{"callCount":0,"dependencyStrength":0},"hooks":{"callCount":0,"dependencyStrength":0},"index.ts":{"callCount":0,"dependencyStrength":0},"inventree-card.ts":{"callCount":0,"dependencyStrength":0},"services":{"callCount":72,"dependencyStrength":1.9},"store":{"callCount":0,"dependencyStrength":0},"styles":{"callCount":0,"dependencyStrength":0},"types":{"callCount":0,"dependencyStrength":0},"types.d.ts":{"callCount":0,"dependencyStrength":0},"utils":0}}[compA][compB];
+          row.push(coupling ? coupling.callCount : 0);
+        });
+        matrix.push(row);
+      });
+      
+      // Set up chord diagram
+      const width = 700;
+      const height = 700;
+      const innerRadius = Math.min(width, height) * 0.4;
+      const outerRadius = innerRadius * 1.1;
+      
+      const svg = d3.select("#chord")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${width / 2}, ${height / 2})`);
+        
+      const chord = d3.chord()
+        .padAngle(0.05)
+        .sortSubgroups(d3.descending);
+        
+      const arc = d3.arc()
+        .innerRadius(innerRadius)
+        .outerRadius(outerRadius);
+        
+      const ribbon = d3.ribbon()
+        .radius(innerRadius);
+        
+      const color = d3.scaleOrdinal()
+        .domain(d3.range(components.length))
+        .range(d3.schemeCategory10);
+        
+      const chords = chord(matrix);
+      
+      svg.append("g")
+        .selectAll("path")
+        .data(chords)
+        .join("path")
+        .attr("class", "chord")
+        .attr("d", ribbon)
+        .attr("fill", d => color(d.source.index))
+        .attr("stroke", d => d3.rgb(color(d.source.index)).darker());
+        
+      const group = svg.append("g")
+        .selectAll("g")
+        .data(chords.groups)
+        .join("g");
+        
+      group.append("path")
+        .attr("d", arc)
+        .attr("fill", d => color(d.index))
+        .attr("stroke", d => d3.rgb(color(d.index)).darker());
+        
+      group.append("text")
+        .each(d => { d.angle = (d.startAngle + d.endAngle) / 2; })
+        .attr("dy", ".35em")
+        .attr("transform", d => `
+          rotate(${(d.angle * 180 / Math.PI - 90)})
+          translate(${outerRadius + 10})
+          ${d.angle > Math.PI ? "rotate(180)" : ""}
+        `)
+        .attr("text-anchor", d => d.angle > Math.PI ? "end" : null)
+        .text(d => components[d.index]);
+    </script>
+  </body>
+  </html>
+  

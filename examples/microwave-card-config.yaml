@@ -1,0 +1,69 @@
+# Example configuration for a microwave card
+type: custom:inventree-card
+view_type: detail
+entity: sensor.inventree_appliances_stock
+name: Microwave
+display:
+  show_header: true
+  show_image: true
+  show_name: true
+  show_stock: false
+  show_description: true
+  show_category: false
+  show_stock_status_border: false
+  show_stock_status_colors: false
+  show_buttons: true
+  show_parameters: true
+style:
+  image_size: 90
+  background: var(--card-background-color)
+parameters:
+  enabled: true
+  show_section: true
+  conditions:
+    # Change appearance based on power state
+    - parameter: power_on
+      operator: equals
+      value: "True"
+      action: highlight
+      action_value: "#e6ffe6"
+      id: condition-power-on
+    - parameter: power_on
+      operator: equals
+      value: "False"
+      action: highlight
+      action_value: "#ffe6e6"
+      id: condition-power-off
+    # Add a badge to show power state
+    - parameter: power_on
+      operator: equals
+      value: "True"
+      action: badge
+      action_value: "ON"
+      id: condition-badge-on
+    - parameter: power_on
+      operator: equals
+      value: "False"
+      action: badge
+      action_value: "OFF"
+      id: condition-badge-off
+  # Actions to control the microwave
+  actions:
+    - label: "Power On"
+      icon: mdi:power
+      parameter: power_on
+      value: "True"
+      id: action-power-on
+    - label: "Power Off"
+      icon: mdi:power-off
+      parameter: power_on
+      value: "False"
+      id: action-power-off
+    # Action to update all microwavable items
+    - label: "Update All Items"
+      icon: mdi:refresh
+      parameter: sensor.inventree_meals_stock:Status
+      value: "Available"
+      confirmation: true
+      confirmation_text: "Update all microwavable items to Available?"
+      id: action-update-all 

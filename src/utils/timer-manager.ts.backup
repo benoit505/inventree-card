@@ -1,0 +1,772 @@
+import { Logger } from './logger';
+
+// Try to import feature flags if available
+let getFeatureFlag: (flag: string) => boolean;
+try {
+  const featureFlagsModule = require('../adapters/feature-flags');
+  getFeatureFlag = featureFlagsModule.getFeatureFlag;
+} catch (error) {
+  // Create a fallback feature flag function if the module isn't available
+  getFeatureFlag = () => false;
+}
+
+/**
+ * Enhanced TimerManager that manages all timeouts, intervals, and animation frames
+ * to prevent memory leaks and ensure they are cleaned up when components are destroyed.
+ * 
+ * Implements a singleton pattern with component registration to coordinate timers across
+ * the entire application.
+ */
+export class TimerManager {
+    private static instance: TimerManager;
+    
+    // Component ID for backward compatibility
+    private _componentId: string = 'unknown';
+    
+    // Track all active timers
+    private timeouts: Map<number, { componentId: string, label?: string, startTime: number }> = new Map();
+    private intervals: Map<number, { componentId: string, label?: string, startTime: number }> = new Map();
+    private animationFrames: Map<number, { componentId: string, label?: string, startTime: number }> = new Map();
+    
+    // Track components that have registered timers
+    private components: Map<string, {
+        timeouts: Set<number>,
+        intervals: Set<number>,
+        animationFrames: Set<number>,
+        isActive: boolean
+    }> = new Map();
+    
+    // Keep track of timer sequence numbers for debugging
+    private timeoutCounter: number = 0;
+    private intervalCounter: number = 0;
+    private animFrameCounter: number = 0;
+    
+    // Locks to prevent timer operation during shutdown
+    private isDestroying: boolean = false;
+    
+    // Prevent timer thrashing (creating/clearing the same timer repeatedly)
+    private throttleMap: Map<string, {
+        lastCreated: number,
+        value: number
+    }> = new Map();
+    
+    // Minimum time between creating timers with the same label (ms)
+    private throttleTime: number = 50;
+    
+    // Initialize properties to prevent TypeScript errors
+    private logger: Logger = Logger.getInstance();
+    private debugEnabled: boolean = false;
+    
+    /**
+     * Constructor - supports both singleton and direct instantiation patterns for backward compatibility
+     * @param componentId Optional component ID for backward compatibility
+     * @param debug Optional debug flag for backward compatibility
+     */
+    constructor(componentId?: string, debug: boolean = false) {
+        this.debugEnabled = debug;
+        this._componentId = componentId || 'default';
+        
+        // If we created a global instance, register it here
+        if (componentId && TimerManager.instance === this) {
+            this.registerComponent(componentId, debug);
+            return;
+        }
+        
+        // If this is a local instance, register it
+        if (componentId) {
+            TimerManager.instance?.registerComponent(componentId, debug);
+            return TimerManager.instance;
+        }
+        
+        // Generate a default ID if none provided
+        const defaultId = `TimerManager-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        this._componentId = defaultId;
+        console.warn(`TimerManager: No component ID provided, using generated ID: ${defaultId}`);
+        TimerManager.instance?.registerComponent(defaultId, debug);
+        return TimerManager.instance;
+    }
+    
+    /**
+     * Check if a singleton instance already exists
+     * @returns true if an instance exists, false otherwise
+     */
+    public static hasInstance(): boolean {
+        return !!TimerManager.instance;
+    }
+    
+    /**
+     * Get or create the singleton instance of the timer manager
+     * @param componentId Optional component ID to register with the timer manager
+     * @param debug Whether to enable debug logs
+     * @returns The singleton TimerManager instance
+     */
+    public static getInstance(componentId?: string, debug: boolean = false): TimerManager {
+        // Check if Redux timers are enabled first
+        try {
+            if (getFeatureFlag('useReduxTimers')) {
+                // If Redux timers are enabled and no singleton exists yet, 
+                // create a minimal instance without console logs to avoid confusing users
+                if (!TimerManager.instance) {
+                    TimerManager.instance = new TimerManager('ReduxCompatTimerManager', false);
+                }
+                if (componentId) {
+                    TimerManager.instance.registerComponent(componentId, false);
+                }
+                return TimerManager.instance;
+            }
+        } catch (error) {
+            // Feature flags not available, continue with regular initialization
+        }
+        
+        // Normal initialization path when Redux timers are disabled or feature flags aren't available
+        if (!TimerManager.instance) {
+            // Create the singleton instance
+            TimerManager.instance = new TimerManager('GlobalTimerManager', true);
+            console.log('TimerManager: Created new GlobalTimerManager instance');
+        }
+        
+        if (componentId) {
+            TimerManager.instance.registerComponent(componentId, debug);
+            
+            // Log registration for debugging
+            if (debug) {
+                console.log(`TimerManager: Component ${componentId} registered with GlobalTimerManager`);
+            }
+        }
+        
+        return TimerManager.instance;
+    }
+    
+    /**
+     * Enable or disable debug mode
+     * @param debug Whether to enable debug messages
+     */
+    public setDebug(debug: boolean): void {
+        this.debugEnabled = debug;
+    }
+    
+    /**
+     * Register a component with the timer manager
+     * @param componentId Unique ID for the component
+     * @param debug Whether to enable debug logs for this component's timers
+     * @returns A reference to the TimerManager instance for chaining
+     */
+    public registerComponent(componentId: string, debug: boolean = false): TimerManager {
+        try {
+            // Generate a valid ID if blank
+            const validId = componentId || `AnonymousComponent-${Date.now()}`;
+            
+            if (!componentId) {
+                console.warn(`TimerManager: Empty component ID provided, using generated ID: ${validId}`);
+            }
+            
+            if (!this.components.has(validId)) {
+                this.components.set(validId, {
+                    timeouts: new Set(),
+                    intervals: new Set(),
+                    animationFrames: new Set(),
+                    isActive: true
+                });
+                
+                if (debug) {
+                    this.logger.log('TimerManager', `Registered component: ${validId}`);
+                }
+            }
+            
+            this.setDebug(debug);
+            return this;
+        } catch (error) {
+            console.error(`TimerManager: Error registering component ${componentId}:`, error);
+            // Create a component entry anyway as a fallback
+            this.components.set(componentId || 'error-component', {
+                timeouts: new Set(),
+                intervals: new Set(),
+                animationFrames: new Set(),
+                isActive: true
+            });
+            return this;
+        }
+    }
+    
+    /**
+     * Deregister a component and clean up all its timers
+     * @param componentId Unique ID for the component
+     */
+    public deregisterComponent(componentId: string): void {
+        const component = this.components.get(componentId);
+        if (component) {
+            // Mark component as inactive to prevent new timers
+            component.isActive = false;
+            
+            // Clear all timeouts for this component
+            component.timeouts.forEach(id => {
+                window.clearTimeout(id);
+                this.timeouts.delete(id);
+            });
+            
+            // Clear all intervals for this component
+            component.intervals.forEach(id => {
+                window.clearInterval(id);
+                this.intervals.delete(id);
+            });
+            
+            // Cancel all animation frames for this component
+            component.animationFrames.forEach(id => {
+                window.cancelAnimationFrame(id);
+                this.animationFrames.delete(id);
+            });
+            
+            // Remove the component from the registry
+            this.components.delete(componentId);
+            
+            this.logger.log('TimerManager', `Deregistered component: ${componentId}`);
+        }
+    }
+
+    /**
+     * Create a timeout - legacy version
+     */
+    public setTimeout(callback: (...args: any[]) => void, delay: number, label?: string): number;
+
+    /**
+     * Create a timeout with component ID
+     */
+    public setTimeout(componentId: string, callback: (...args: any[]) => void, delay: number, label?: string): number;
+    
+    /**
+     * Implementation for both overloads
+     */
+    public setTimeout(componentIdOrCallback: string | ((...args: any[]) => void), 
+                     callbackOrDelay: ((...args: any[]) => void) | number, 
+                     delayOrLabel?: number | string, 
+                     label?: string): number {
+        let componentId: string;
+        let callback: (...args: any[]) => void;
+        let delay: number;
+        
+        // Handle both overload types
+        if (typeof componentIdOrCallback === 'function') {
+            // setTimeout(callback, delay, label)
+            componentId = this._componentId;
+            callback = componentIdOrCallback;
+            delay = callbackOrDelay as number;
+            label = delayOrLabel as string;
+        } else {
+            // setTimeout(componentId, callback, delay, label)
+            componentId = componentIdOrCallback;
+            callback = callbackOrDelay as (...args: any[]) => void;
+            delay = delayOrLabel as number;
+        }
+        
+        // Skip if component is not registered or is inactive
+        let component = this.components.get(componentId);
+        if (!component || !component.isActive) {
+            // Enhanced debugging to identify the source of the error
+            console.warn(`[TimerManager] Cannot create timeout for component "${componentId}" - component not registered or inactive. Auto-registering for safety. Stack trace:`, new Error().stack);
+            
+            // Auto-register the component as a fallback to prevent errors
+            this.registerComponent(componentId, true);
+            
+            // Now try to get the component again after registration
+            component = this.components.get(componentId);
+            if (!component || !component.isActive) {
+                // If still failing, return 0 as a fallback
+                console.error(`[TimerManager] Failed to auto-register component "${componentId}". Using fallback timeout.`);
+                return window.setTimeout(callback, delay);
+            }
+        }
+        
+        // Check if we're creating this timer too frequently (prevent thrashing)
+        if (label) {
+            const throttleKey = `${componentId}:${label}`;
+            const throttleInfo = this.throttleMap.get(throttleKey);
+            const now = Date.now();
+            
+            if (throttleInfo && (now - throttleInfo.lastCreated) < this.throttleTime) {
+                // Return the existing timer instead of creating a new one
+                if (this.debugEnabled) {
+                    this.logger.log('TimerManager', `Throttled timeout ${label} for ${componentId}, reusing existing timer ${throttleInfo.value}`);
+                }
+                return throttleInfo.value;
+            }
+        }
+        
+        // Create the timeout
+        this.timeoutCounter++;
+        const id = window.setTimeout(() => {
+            // Clean up when the timer executes
+            this.timeouts.delete(id);
+            
+            // Make sure component still exists before trying to delete the timeout
+            const componentStillExists = this.components.get(componentId);
+            if (componentStillExists) {
+                componentStillExists.timeouts.delete(id);
+            }
+            
+            // Remove from throttle map if it exists
+            if (label) {
+                const throttleKey = `${componentId}:${label}`;
+                this.throttleMap.delete(throttleKey);
+            }
+            
+            // Execute the callback
+            try {
+                callback();
+            } catch (error) {
+                this.logger.error('TimerManager', `Error in timeout callback (${label || id}): ${error}`);
+            }
+        }, delay);
+        
+        // Store the timeout information
+        this.timeouts.set(id, {
+            componentId,
+            label,
+            startTime: Date.now()
+        });
+        
+        // Register this timeout with the component
+        component.timeouts.add(id);
+        
+        // Update throttle map if label is provided
+        if (label) {
+            const throttleKey = `${componentId}:${label}`;
+            this.throttleMap.set(throttleKey, {
+                lastCreated: Date.now(),
+                value: id
+            });
+        }
+        
+        if (this.debugEnabled) {
+            this.logger.log('TimerManager', `Created timeout ${id} (${label || 'unnamed'}) with delay ${delay}ms for component ${componentId}`);
+        }
+        
+        return id;
+    }
+    
+    /**
+     * Clear a timeout
+     * @param id The timeout ID to clear
+     * @returns Whether the timeout was successfully cleared
+     */
+    public clearTimeout(id: number): boolean {
+        try {
+            const timeoutInfo = this.timeouts.get(id);
+            if (!timeoutInfo) {
+                // Timer may have already been cleared or executed
+                return false;
+            }
+            
+            // Clear the timeout
+            window.clearTimeout(id);
+            
+            // Get the component that owns this timeout
+            const component = this.components.get(timeoutInfo.componentId);
+            if (component) {
+                component.timeouts.delete(id);
+            }
+            
+            // Remove from the throttle map if it exists
+            if (timeoutInfo.label) {
+                const throttleKey = `${timeoutInfo.componentId}:${timeoutInfo.label}`;
+                this.throttleMap.delete(throttleKey);
+            }
+            
+            // Remove from the timeouts map
+            this.timeouts.delete(id);
+            
+            if (this.debugEnabled) {
+                const elapsed = Date.now() - (timeoutInfo.startTime || 0);
+                this.logger.log('TimerManager', `Cleared timeout ${id} (${timeoutInfo.label || 'unnamed'}) after ${elapsed}ms`);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error(`Error clearing timeout ${id}:`, error);
+            // Try the native clearTimeout as a fallback
+            try {
+                window.clearTimeout(id);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Create an interval - legacy version
+     */
+    public setInterval(callback: (...args: any[]) => void, delay: number, label?: string): number;
+
+    /**
+     * Create an interval with component ID
+     */
+    public setInterval(componentId: string, callback: (...args: any[]) => void, delay: number, label?: string): number;
+    
+    /**
+     * Implementation for both overloads
+     */
+    public setInterval(componentIdOrCallback: string | ((...args: any[]) => void), 
+                      callbackOrDelay: ((...args: any[]) => void) | number, 
+                      delayOrLabel?: number | string, 
+                      label?: string): number {
+        let componentId: string;
+        let callback: (...args: any[]) => void;
+        let delay: number;
+        
+        // Handle both overload types
+        if (typeof componentIdOrCallback === 'function') {
+            // setInterval(callback, delay, label)
+            componentId = this._componentId;
+            callback = componentIdOrCallback;
+            delay = callbackOrDelay as number;
+            label = delayOrLabel as string;
+        } else {
+            // setInterval(componentId, callback, delay, label)
+            componentId = componentIdOrCallback;
+            callback = callbackOrDelay as (...args: any[]) => void;
+            delay = delayOrLabel as number;
+        }
+        
+        // Ensure delay is a number (default to 1000ms if not provided)
+        delay = delay || 1000;
+        
+        // Skip if component is not registered or is inactive
+        let component = this.components.get(componentId);
+        if (!component || !component.isActive) {
+            // Enhanced debugging to identify the source of the error
+            console.warn(`[TimerManager] Cannot create interval for component "${componentId}" - component not registered or inactive. Auto-registering for safety. Stack trace:`, new Error().stack);
+            
+            // Auto-register the component as a fallback to prevent errors
+            this.registerComponent(componentId, true);
+            
+            // Now try to get the component again after registration
+            component = this.components.get(componentId);
+            if (!component || !component.isActive) {
+                // If still failing, return a fallback interval
+                console.error(`[TimerManager] Failed to auto-register component "${componentId}". Using fallback interval.`);
+                return window.setInterval(callback, delay);
+            }
+        }
+        
+        // Check if we already have an interval with this label
+        if (label) {
+            const throttleKey = `${componentId}:${label}`;
+            const throttleInfo = this.throttleMap.get(throttleKey);
+            
+            if (throttleInfo) {
+                // Return the existing interval instead of creating a new one
+                if (this.debugEnabled) {
+                    this.logger.log('TimerManager', `Interval ${label} already exists for ${componentId}, reusing existing interval ${throttleInfo.value}`);
+                }
+                return throttleInfo.value;
+            }
+        }
+        
+        // Create the interval
+        this.intervalCounter++;
+        const id = window.setInterval(() => {
+            try {
+                callback();
+            } catch (error) {
+                this.logger.error('TimerManager', `Error in interval callback (${label || id}): ${error}`);
+            }
+        }, delay);
+        
+        // Store the interval information
+        this.intervals.set(id, {
+            componentId,
+            label,
+            startTime: Date.now()
+        });
+        
+        // Register this interval with the component
+        component.intervals.add(id);
+        
+        // Update throttle map if label is provided
+        if (label) {
+            const throttleKey = `${componentId}:${label}`;
+            this.throttleMap.set(throttleKey, {
+                lastCreated: Date.now(),
+                value: id
+            });
+        }
+        
+        if (this.debugEnabled) {
+            this.logger.log('TimerManager', `Created interval ${id} (${label || 'unnamed'}) with delay ${delay}ms for component ${componentId}`);
+        }
+        
+        return id;
+    }
+    
+    /**
+     * Clear an interval
+     * @param id The interval ID to clear
+     * @returns Whether the interval was successfully cleared
+     */
+    public clearInterval(id: number): boolean {
+        const intervalInfo = this.intervals.get(id);
+        if (!intervalInfo) {
+            // Interval may have already been cleared
+            return false;
+        }
+        
+        // Clear the interval
+        window.clearInterval(id);
+        
+        // Get the component that owns this interval
+        const component = this.components.get(intervalInfo.componentId);
+        if (component) {
+            component.intervals.delete(id);
+        }
+        
+        // Remove from the throttle map if it exists
+        if (intervalInfo.label) {
+            const throttleKey = `${intervalInfo.componentId}:${intervalInfo.label}`;
+            this.throttleMap.delete(throttleKey);
+        }
+        
+        // Remove from the intervals map
+        this.intervals.delete(id);
+        
+        if (this.debugEnabled) {
+            const elapsed = Date.now() - (intervalInfo.startTime || 0);
+            this.logger.log('TimerManager', `Cleared interval ${id} (${intervalInfo.label || 'unnamed'}) after running for ${elapsed}ms`);
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Request an animation frame that will be automatically cancelled when the component is destroyed
+     * @param componentId The component ID that owns this animation frame
+     * @param callback Function to call on the next animation frame
+     * @param label Optional label for debugging purposes
+     * @returns The animation frame ID
+     */
+    public requestAnimationFrame(componentId: string, callback: FrameRequestCallback, label?: string): number {
+        // Skip if component is not registered or is inactive
+        const component = this.components.get(componentId);
+        if (!component || !component.isActive) {
+            this.logger.warn('TimerManager', `Cannot create animation frame for unregistered/inactive component: ${componentId}`);
+            return 0;
+        }
+        
+        // Create the animation frame request
+        this.animFrameCounter++;
+        const id = window.requestAnimationFrame((timestamp) => {
+            // Clean up before executing the callback
+            this.animationFrames.delete(id);
+            component.animationFrames.delete(id);
+            
+            // Execute the callback
+            try {
+                callback(timestamp);
+            } catch (error) {
+                this.logger.error('TimerManager', `Error in animation frame callback (${label || id}): ${error}`);
+            }
+        });
+        
+        // Store the animation frame information
+        this.animationFrames.set(id, {
+            componentId,
+            label,
+            startTime: Date.now()
+        });
+        
+        // Register this animation frame with the component
+        component.animationFrames.add(id);
+        
+        if (this.debugEnabled) {
+            this.logger.log('TimerManager', `Requested animation frame ${id} (${label || 'unnamed'}) for component ${componentId}`);
+        }
+        
+        return id;
+    }
+    
+    /**
+     * Cancel an animation frame
+     * @param id The animation frame ID to cancel
+     * @returns Whether the animation frame was successfully cancelled
+     */
+    public cancelAnimationFrame(id: number): boolean {
+        const animFrameInfo = this.animationFrames.get(id);
+        if (!animFrameInfo) {
+            // Animation frame may have already been cancelled or executed
+            return false;
+        }
+        
+        // Cancel the animation frame
+        window.cancelAnimationFrame(id);
+        
+        // Get the component that owns this animation frame
+        const component = this.components.get(animFrameInfo.componentId);
+        if (component) {
+            component.animationFrames.delete(id);
+        }
+        
+        // Remove from the animation frames map
+        this.animationFrames.delete(id);
+        
+        if (this.debugEnabled) {
+            const elapsed = Date.now() - (animFrameInfo.startTime || 0);
+            this.logger.log('TimerManager', `Cancelled animation frame ${id} (${animFrameInfo.label || 'unnamed'}) after ${elapsed}ms`);
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Clear all timers for a specific component
+     * @param componentId The component ID whose timers should be cleared
+     * @returns The number of timers that were cleared
+     */
+    public clearComponentTimers(componentId: string): number {
+        const component = this.components.get(componentId);
+        if (!component) {
+            return 0;
+        }
+        
+        let count = 0;
+        
+        // Clear all timeouts for this component
+        component.timeouts.forEach(id => {
+            window.clearTimeout(id);
+            this.timeouts.delete(id);
+            count++;
+        });
+        component.timeouts.clear();
+        
+        // Clear all intervals for this component
+        component.intervals.forEach(id => {
+            window.clearInterval(id);
+            this.intervals.delete(id);
+            count++;
+        });
+        component.intervals.clear();
+        
+        // Cancel all animation frames for this component
+        component.animationFrames.forEach(id => {
+            window.cancelAnimationFrame(id);
+            this.animationFrames.delete(id);
+            count++;
+        });
+        component.animationFrames.clear();
+        
+        // Clean up throttle map entries for this component
+        for (const [key, value] of this.throttleMap.entries()) {
+            if (key.startsWith(`${componentId}:`)) {
+                this.throttleMap.delete(key);
+            }
+        }
+        
+        if (this.debugEnabled && count > 0) {
+            this.logger.log('TimerManager', `Cleared ${count} timers for component ${componentId}`);
+        }
+        
+        return count;
+    }
+    
+    /**
+     * Clear all timers for all components
+     * @returns The number of timers that were cleared
+     */
+    public clearAll(): number {
+        const totalCount = this.timeouts.size + this.intervals.size + this.animationFrames.size;
+        
+        // Clear all timeouts
+        this.timeouts.forEach((_, id) => window.clearTimeout(id));
+        this.timeouts.clear();
+        
+        // Clear all intervals
+        this.intervals.forEach((_, id) => window.clearInterval(id));
+        this.intervals.clear();
+        
+        // Cancel all animation frames
+        this.animationFrames.forEach((_, id) => window.cancelAnimationFrame(id));
+        this.animationFrames.clear();
+        
+        // Reset all component timer collections
+        this.components.forEach(component => {
+            component.timeouts.clear();
+            component.intervals.clear();
+            component.animationFrames.clear();
+        });
+        
+        // Clear the throttle map
+        this.throttleMap.clear();
+        
+        if (this.debugEnabled && totalCount > 0) {
+            this.logger.log('TimerManager', `Cleared all timers (${totalCount} total)`);
+        }
+        
+        return totalCount;
+    }
+    
+    /**
+     * Get statistics about active timers in the old format
+     * @returns Stats object in the legacy format
+     */
+    public getStats(): { timeouts: number, intervals: number, component: string } {
+        return {
+            timeouts: this.timeouts.size,
+            intervals: this.intervals.size,
+            component: this._componentId
+        };
+    }
+    
+    /**
+     * Get statistics about active timers
+     * @returns Object containing counts of active timers by type and component
+     */
+    public getActiveTimers(): {
+        total: number,
+        timeouts: number,
+        intervals: number,
+        animationFrames: number,
+        byComponent: Record<string, {
+            timeouts: number,
+            intervals: number,
+            animationFrames: number,
+            total: number
+        }>
+    } {
+        const stats = {
+            total: this.timeouts.size + this.intervals.size + this.animationFrames.size,
+            timeouts: this.timeouts.size,
+            intervals: this.intervals.size,
+            animationFrames: this.animationFrames.size,
+            byComponent: {} as Record<string, any>
+        };
+        
+        // Collect stats by component
+        this.components.forEach((component, componentId) => {
+            stats.byComponent[componentId] = {
+                timeouts: component.timeouts.size,
+                intervals: component.intervals.size,
+                animationFrames: component.animationFrames.size,
+                total: component.timeouts.size + component.intervals.size + component.animationFrames.size
+            };
+        });
+        
+        return stats;
+    }
+}
+
+// Backwards compatibility - export singleton instance as default, but only if Redux timers aren't enabled
+let globalTimerManager: TimerManager | null = null;
+
+try {
+    if (!getFeatureFlag('useReduxTimers')) {
+        globalTimerManager = TimerManager.getInstance();
+        console.log('TimerManager: Created global singleton instance for default export');
+    } else {
+        console.log('TimerManager: Redux timers enabled, not creating global singleton instance');
+        // Create a minimal instance that will just forward to Redux
+        globalTimerManager = new TimerManager('ReduxCompatTimerManager', false);
+    }
+} catch (error) {
+    // Feature flags not available, use traditional approach
+    globalTimerManager = TimerManager.getInstance();
+}
+
+export default globalTimerManager!;

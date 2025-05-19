@@ -1,0 +1,52 @@
+import { TemplateResult, PropertyValues } from 'lit';
+import { HomeAssistant } from 'custom-card-helpers';
+import { InventreeCardConfig, InventreeItem } from '../../core/types';
+import { Logger } from '../../utils/logger';
+import { ReduxLitElement } from '../../components/redux-lit-element';
+import { RootState } from '../../store';
+export declare class InvenTreeVariantLayout extends ReduxLitElement {
+    hass: HomeAssistant;
+    config: InventreeCardConfig;
+    parts: InventreeItem[];
+    private _locatingPartId;
+    private _processedVariants;
+    private _selectedVariantGroupIndex;
+    private _expandedGroups;
+    private _parameterStatus;
+    private _requiredPartIds;
+    private _isLoadingParameters;
+    protected logger: Logger;
+    static styles: import("lit").CSSResult[];
+    constructor();
+    private getReferencedPartIdsFromConditions;
+    private getAllVariantPartIds;
+    stateMap(state: RootState): {
+        _locatingPartId: number | null;
+        _parameterStatus: Record<number, "loading" | "idle" | "succeeded" | "failed">;
+    };
+    dispatchMap(): {
+        locatePart: (partId: number) => any;
+        adjustStock: (partId: number, amount: number) => any;
+        updateParameter: (partId: number, parameter: string, value: string) => any;
+        fetchParameters: (partIds: number[]) => any;
+    };
+    updated(changedProperties: PropertyValues): void;
+    private checkAndFetchParameters;
+    private _updateGlobalLoadingState;
+    private _handleParameterActionClick;
+    private _getContainerStyle;
+    private _getTextStyle;
+    private _handleImageError;
+    protected render(): TemplateResult;
+    private _renderDropdownView;
+    private _renderTabsView;
+    private _renderListView;
+    private _renderTreeView;
+    private _renderGridView;
+    private _renderVariantGroupContent;
+    private _renderVariantGroupItem;
+    private _renderPartItem;
+    private _selectVariantGroup;
+    private _handleTabClick;
+    private _toggleGroup;
+}

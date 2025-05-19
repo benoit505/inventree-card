@@ -1,0 +1,74 @@
+# Example configuration for a microwavables card that references the microwave's power state
+type: custom:inventree-card
+view_type: list
+entity: sensor.inventree_meals_stock
+name: Microwavable Items
+display:
+  show_header: true
+  show_image: true
+  show_name: true
+  show_stock: true
+  show_description: false
+  show_category: false
+  show_stock_status_border: false
+  show_stock_status_colors: false
+  show_buttons: true
+  show_parameters: true
+style:
+  image_size: 50
+  background: var(--card-background-color)
+parameters:
+  enabled: true
+  show_section: true
+  # Filter to only show items that are microwavable
+  conditions:
+    - parameter: microwavable
+      operator: equals
+      value: "True"
+      action: filter
+      action_value: show
+      id: condition-microwavable
+    # Cross-entity reference to the microwave's power_on parameter
+    # This will highlight items when the microwave is on
+    - parameter: sensor.inventree_appliances_stock:power_on
+      operator: equals
+      value: "True"
+      action: highlight
+      action_value: "#e6ffe6"
+      id: condition-microwave-on
+    # Change text color when microwave is off
+    - parameter: sensor.inventree_appliances_stock:power_on
+      operator: equals
+      value: "False"
+      action: text_color
+      action_value: "#888888"
+      id: condition-microwave-off
+    # Add a badge when the item's Status is "In_Use"
+    - parameter: Status
+      operator: equals
+      value: "In_Use"
+      action: badge
+      action_value: "In Use"
+      id: condition-in-use
+  # Actions to update the item's status
+  actions:
+    - label: "Use"
+      icon: mdi:microwave
+      parameter: Status
+      value: "In_Use"
+      confirmation: true
+      confirmation_text: "Start using this item in the microwave?"
+      id: action-use
+    - label: "Done"
+      icon: mdi:check
+      parameter: Status
+      value: "Available"
+      id: action-done
+    # Cross-entity action to update the microwave's current_item parameter
+    - label: "Select"
+      icon: mdi:arrow-right
+      parameter: sensor.inventree_appliances_stock:current_item
+      value: "${part.name}"
+      confirmation: true
+      confirmation_text: "Set this as the current item in the microwave?"
+      id: action-select 

@@ -2,12 +2,30 @@
   "compilerOptions": {
     "target": "es2017",
     "module": "esnext",
-    "moduleResolution": "node",
-    "lib": ["es2017", "dom", "dom.iterable"],
-    "noEmit": false,
     "strict": true,
-    "experimentalDecorators": true,
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
     "useDefineForClassFields": false,
-    "isolatedModules": true
-  }
+    "experimentalDecorators": true,
+    "declaration": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "types": ["react", "react-dom", "node"],
+    "typeRoots": ["./node_modules/@types"]
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "backup/**/*"
+  ]
 }

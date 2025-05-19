@@ -1,5 +1,6 @@
-import { InventreeItem, InventreeCardConfig } from "../core/types";
+import { InventreeItem, InventreeCardConfig } from "../types";
 import { DEFAULT_CONFIG } from "../core/settings";
+import { Logger } from "../utils/logger";
 
 export class ThumbnailService {
     static getThumbnailPath(item: InventreeItem, config: InventreeCardConfig): string {
@@ -21,7 +22,7 @@ export class ThumbnailService {
             return item.thumbnail;
         }
         
-        if (thumbnails.mode === 'manual' && thumbnails.custom_path) {
+        if (thumbnails.mode === 'custom' && thumbnails.custom_path) {
             const path = `${thumbnails.custom_path}/part_${item.pk}.png`;
             console.warn('🖼️ Using manual mode:', path);
             return path;

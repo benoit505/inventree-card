@@ -1,0 +1,71 @@
+# Example Home Assistant automation for microwave integration
+# This automation updates the microwave power state and then updates all microwavable items
+
+# First automation: When microwave turns on, update its power_on parameter
+- alias: "Update Microwave Power State On"
+  trigger:
+    - platform: state
+      entity_id: switch.microwave_power
+      to: "on"
+  action:
+    # 1. Update the microwave's power_on parameter to true
+    - service: inventree.update_parameter
+      data:
+        part_id: 123  # Replace with your microwave's part ID
+        parameter_name: power_on
+        value: "True"
+    
+    # 2. Update all microwavable items to show they can be used
+    - service: browser_mod.dispatch
+      data:
+        eventName: inventree-parameter-update
+        detail:
+          parameterRef: sensor.inventree_meals_stock:Status
+          value: "Available"
+
+# Second automation: When microwave turns off, update its power_on parameter
+- alias: "Update Microwave Power State Off"
+  trigger:
+    - platform: state
+      entity_id: switch.microwave_power
+      to: "off"
+  action:
+    # 1. Update the microwave's power_on parameter to false
+    - service: inventree.update_parameter
+      data:
+        part_id: 123  # Replace with your microwave's part ID
+        parameter_name: power_on
+        value: "False"
+    
+    # 2. Update all microwavable items to show they can't be used
+    - service: browser_mod.dispatch
+      data:
+        eventName: inventree-parameter-update
+        detail:
+          parameterRef: sensor.inventree_meals_stock:Status
+          value: "Unavailable"
+
+# Alternative approach using the quick update service directly
+- alias: "Update Microwave Status Using Quick Update Service"
+  trigger:
+    - platform: state
+      entity_id: switch.microwave_power
+  action:
+    # 1. Update the microwave's power_on parameter
+    - service: inventree.update_parameter
+      data:
+        part_id: 123  # Replace with your microwave's part ID
+        parameter_name: power_on
+        value: "{{ trigger.to_state.state == 'on' }}"
+    
+    # 2. Update all items with microwavable=True to set their Status parameter
+    - service: inventree.update_parameter
+      data:
+        part_id: 456  # Replace with any microwavable item's part ID
+        parameter_name: Status
+        value: "{{ trigger.to_state.state == 'on' and 'Available' or 'Unavailable' }}"
+    
+    # 3. Force refresh of the sensor
+    - service: homeassistant.update_entity
+      data:
+        entity_id: sensor.inventree_meals_stock 

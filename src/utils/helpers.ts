@@ -1,5 +1,6 @@
 import { HomeAssistant } from "custom-card-helpers";
-import { InventreeItem } from "../core/types";
+import { InventreeItem } from "../types";
+import { TemplateResult } from "lit";
 
 export const parseState = (hass: HomeAssistant, entityId: string): InventreeItem[] => {
     console.debug('🔍 Starting parseState for:', entityId);

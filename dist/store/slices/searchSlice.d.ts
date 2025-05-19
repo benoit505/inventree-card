@@ -1,0 +1,11 @@
+import { InventreeItem } from '../../types';
+import { RootState } from '../index';
+type SearchResultItem = Pick<InventreeItem, 'pk' | 'name' | 'thumbnail'>;
+export declare const setSearchQuery: any, clearSearch: any;
+export declare const selectSearchQuery: (state: RootState) => string;
+export declare const selectSearchResults: (state: RootState) => SearchResultItem[];
+export declare const selectSearchLoading: (state: RootState) => "idle" | "pending" | "succeeded" | "failed";
+export declare const selectSearchError: (state: RootState) => string | null;
+export declare const selectHasSearchResults: (state: RootState) => boolean;
+declare const _default: any;
+export default _default;
