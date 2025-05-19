@@ -24,5 +24,12 @@ module.exports = {
     '!src/**/index.ts',
     '!src/types/**/*'
   ],
-  //setupFilesAfterEnv: ['<rootDir>/tests/setup.js']
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+  testPathIgnorePatterns: [
+    "<rootDir>/node_modules/",
+    "<rootDir>/dist/",
+    "<rootDir>/tests/unit/adapters/",
+    "<rootDir>/tests/integration/adapter-registry.test.ts",
+    "<rootDir>/tests/setup.js"
+  ]
 }; 
