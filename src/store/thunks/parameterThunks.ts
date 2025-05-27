@@ -4,160 +4,60 @@
 
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import { RootState } from '../index';
-import { ParameterDetail, InventreeCardConfig } from '../../types';
+// Consolidated imports from '../../types'
+import { 
+    ParameterDetail, 
+    // REMOVED: InventreeCardConfig, // If no longer used directly by these thunks
+    // REMOVED: ParameterCondition, // If no longer used
+    // REMOVED: ParameterOperator, 
+    // REMOVED: ParameterActionType, 
+    // REMOVED: InventreeItem, 
+    // REMOVED: ConditionalPartEffect, 
+    InventreeParameterFetchConfig, 
+    ConditionRuleDefinition // Keep if any remaining thunk processes raw rules, otherwise remove
+} from '../../types'; 
 import { selectApiUrl, selectApiKey, selectApiInitialized } from '../slices/apiSlice'; // Import API selectors
 import { Logger } from '../../utils/logger';
 import { selectParameterLoadingStatus } from '../slices/parametersSlice'; // Import the selector
 import { inventreeApiService } from '../../services/inventree-api-service'; // Import the refactored service
 
-// Import necessary actions and types from parametersSlice
-import { 
-    setDefinedConditions, 
-    setProcessedConditions,
-    ProcessedCondition,
-    setConditionalPartEffectsBatch,
-    clearConditionalPartEffects,
-    ConditionalPartEffect
-} from '../slices/parametersSlice';
-import { ParameterCondition, ParameterOperator, ParameterActionType, InventreeItem } from '../../types';
+// REMOVED: Imports from parametersSlice for setDefinedConditions, setProcessedConditions, ProcessedCondition
+// import {
+//     setDefinedConditions,
+//     setProcessedConditions,
+//     ProcessedCondition,
+//     // setConditionalPartEffectsBatch, // This is used by ConditionalEffectsEngine, not directly here
+//     // clearConditionalPartEffects
+// } from '../slices/parametersSlice';
+
+// ADD: Import selectAllPartIds from partsSlice
+import { selectAllPartIds, selectAllParts } from '../slices/partsSlice'; 
 // Remove the placeholder/import for selectPrimaryPartId
 // const selectPrimaryPartId = (state: RootState): number | null => { ... };
+
+import { selectInventreeParametersToFetch } from '../slices/configSlice'; // Assuming this selector exists or will be created
+// REMOVED: import { ConditionalEffectsEngine } from '../../core/ConditionalEffectsEngine';
 
 const logger = Logger.getInstance();
 
 // Thunk to initialize conditions and fetch required parameters
-export const initializeConditionsAndParameters = createAsyncThunk<
-  void, // Return type
-  ParameterCondition[], // Argument type: raw conditions from config
-  { state: RootState; rejectValue: string }
->(
-  'parameters/initializeConditions',
-  async (rawConditions, { dispatch, getState, rejectWithValue }) => {
-    logger.log('ParameterThunk', 'Initializing conditions and parameters...', { rawConditionsCount: rawConditions.length });
-
-    if (!rawConditions || rawConditions.length === 0) { // Ensure to handle empty array too
-      logger.log('ParameterThunk', 'No raw conditions provided. Clearing processed conditions.');
-      dispatch(setDefinedConditions([]));
-      dispatch(setProcessedConditions([]));
-      return;
-    }
-
-    dispatch(setDefinedConditions(rawConditions));
-
-    const state = getState();
-    // Remove primaryPartId, as it must come from the condition string
-    const processedConditions: ProcessedCondition[] = [];
-    const partIdsToFetch = new Set<number>();
-
-    for (let i = 0; i < rawConditions.length; i++) {
-      const rawCond = rawConditions[i];
-      let partId: number | null = null;
-      let parameterName = '';
-
-      const paramString = rawCond.parameter;
-      // Expect format: "part:<ID>:<PARAMETER_NAME>"
-      if (paramString && paramString.startsWith('part:')) { // Add null check for paramString
-        const parts = paramString.split(':');
-        if (parts.length === 3) {
-          const parsedPartId = parseInt(parts[1], 10);
-          if (!isNaN(parsedPartId)) {
-            partId = parsedPartId;
-            parameterName = parts[2];
-          } else {
-            logger.warn('ParameterThunk', `Invalid partId in condition parameter string: ${paramString}` , { rawCond });
-            continue; // Skip this condition
-          }
-        } else {
-          logger.warn('ParameterThunk', `Malformed condition parameter string (expected part:id:name): ${paramString}` , { rawCond });
-          continue; // Skip this condition
-        }
-      } else {
-        logger.warn('ParameterThunk', `Condition parameter string does not follow part:id:name format: ${paramString}` , { rawCond });
-        continue; // Skip this condition if format is not met
-      }
-
-      // partId and parameterName must be resolved at this point from the string
-      if (partId !== null && parameterName) { 
-        if (rawCond.operator && rawCond.action && rawCond.action_value !== undefined) {
-            processedConditions.push({
-                id: `cond-${i}-${Date.now()}`,
-                rawConditionString: JSON.stringify(rawCond),
-                sourceParameterString: rawCond.parameter,
-                partId: partId, // partId is now guaranteed to be a number here
-                parameterName: parameterName,
-                operator: rawCond.operator as ParameterOperator,
-                valueToCompare: rawCond.value,
-                action: rawCond.action as ParameterActionType,
-                actionValue: rawCond.action_value,
-                targetPartIds: rawCond.targetPartIds,
-            });
-
-            // Check if parameters for this partId need fetching
-            const currentStatus = selectParameterLoadingStatus(state, partId);
-            // Check if the specific parameter value exists in the store for this part
-            // const parameterValueExists = !!state.parameters.parameterValues[partId]?.[parameterName]; // Commented out as new logic is simpler
-
-            // Only fetch if truly idle. If failed, it requires a manual refresh or different trigger.
-            // If loading, let the current fetch complete.
-            if (currentStatus === 'idle') {
-                partIdsToFetch.add(partId);
-            } else if (currentStatus === 'failed') {
-                logger.warn('ParameterThunk', `Parameters for part ${partId} previously failed to load. Skipping automatic refetch in this cycle. Part: ${partId}, ParamName: ${parameterName}`);
-            } else if (currentStatus === 'loading') {
-                logger.log('ParameterThunk', `Parameters for part ${partId} are already loading. Skipping. Part: ${partId}, ParamName: ${parameterName}`, { level: 'debug' });
-            }
-        } else {
-            logger.warn('ParameterThunk', 'Skipping condition due to missing operator, action, or action_value', { rawCond });
-        }
-      } // No else needed here as we `continue` above if partId/parameterName are not resolved
-    }
-
-    dispatch(setProcessedConditions(processedConditions));
-    logger.log('ParameterThunk', `Processed ${processedConditions.length} conditions.`, { processedConditions });
-
-    if (partIdsToFetch.size > 0) {
-      const idsArray = Array.from(partIdsToFetch);
-      logger.log('ParameterThunk', `Need to fetch parameters for part IDs: ${idsArray.join(', ')}`);
-      // Consider using fetchParametersForReferencedParts if it's more efficient for multiple IDs
-      // For simplicity here, dispatching individually, but batching is better.
-      // Using fetchParametersForReferencedParts directly
-      if (idsArray.length > 0) {
-          try {
-            await dispatch(fetchParametersForReferencedParts(idsArray)).unwrap();
-            logger.log('ParameterThunk', `Successfully initiated fetch for referenced parts: ${idsArray.join(', ')}`);
-          } catch (error) {
-            logger.error('ParameterThunk', `Failed to fetch parameters for referenced parts: ${idsArray.join(', ')}`, { error });
-            // Do not reject the whole thunk if fetches fail, still try to evaluate with what we have or log it.
-            // return rejectWithValue(`Failed to fetch some referenced parameters: ${error}`);
-          }
-      }
-    } else {
-      logger.log('ParameterThunk', 'No new part parameters need to be fetched based on conditions.');
-    }
-
-    // Always evaluate conditions after setup, even if some fetches failed or none were needed
-    // This ensures that effects are cleared or updated based on current state.
-    try {
-      await dispatch(evaluateAndApplyConditions()).unwrap(); // Dispatch and await our new thunk
-    } catch (evalError) {
-      logger.error('ParameterThunk', 'Error during evaluateAndApplyConditions', { evalError });
-      // Optionally, reject the initializeConditionsAndParameters thunk if eval is critical
-      // return rejectWithValue('Failed to evaluate and apply conditions');
-    }
-  }
-);
+// REMOVED: Old initializeConditionsAndParameters thunk (lines ~40-160)
+// ... (Thunk code was here)
 
 // Thunk action to fetch parameter data for a specific part
 export const fetchParametersForPart = createAsyncThunk<
-  { partId: number, parameters: ParameterDetail[] }, // Updated return type on success
-  number, // Argument type (partId)
-  { state: RootState; rejectValue: string } // ThunkAPI config with rejectValue
+  { partId: number, parameters: ParameterDetail[] },
+  number, 
+  { state: RootState; rejectValue: string }
 >(
-  'parameters/fetchForPart', // Action type prefix
+  'parameters/fetchForPart',
   async (partId, thunkAPI) => {
+    // ADD TEMP LOG
+    // console.log(`[TEMP LOG - parameterThunks.ts:25] fetchParametersForPart THUNK START for partId: ${partId}`);
     const state = thunkAPI.getState();
-    // Check if API is initialized via apiSlice
     const apiInitialized = selectApiInitialized(state);
+    // ADD TEMP LOG
+    // console.log(`[TEMP LOG - parameterThunks.ts:29] fetchParametersForPart: API Initialized: ${apiInitialized}`);
 
     logger.log('ParameterThunk', `Fetching parameters for part ID: ${partId}`, { 
       category: 'parameters',
@@ -176,10 +76,15 @@ export const fetchParametersForPart = createAsyncThunk<
 
     try {
       // Use the refactored inventreeApiService (which gets config from store)
+      // ADD TEMP LOG
+      // console.log(`[TEMP LOG - parameterThunks.ts:41] fetchParametersForPart: Calling inventreeApiService.getPartParameters(${partId})`);
       const parameters = await inventreeApiService.getPartParameters(partId);
+      // ADD TEMP LOG
+      // console.log(`[TEMP LOG - parameterThunks.ts:44] fetchParametersForPart: inventreeApiService.getPartParameters(${partId}) returned:`, JSON.parse(JSON.stringify(parameters || null)));
       
-      // Check if the result is null (API error) or an array
       if (parameters === null) {
+        // ADD TEMP LOG
+        // console.error(`[TEMP LOG - parameterThunks.ts:48] fetchParametersForPart: API call returned null for part ${partId}. Throwing error.`);
         throw new Error('API call to getPartParameters returned null.');
       }
 
@@ -191,9 +96,13 @@ export const fetchParametersForPart = createAsyncThunk<
       
       // Return the fetched data (which is guaranteed to be an array here)
       // Include the original partId in the success payload
+      // ADD TEMP LOG
+      // console.log(`[TEMP LOG - parameterThunks.ts:58] fetchParametersForPart: Success for part ${partId}. Returning:`, JSON.parse(JSON.stringify({ partId, parameters })));
       return { partId, parameters }; 
       
     } catch (error: any) {
+      // ADD TEMP LOG
+      // console.error(`[TEMP LOG - parameterThunks.ts:63] fetchParametersForPart: ERROR for part ${partId}:`, error.message, error);
       const errorMsg = `Failed to fetch parameters for part ${partId}: ${error.message || error}`;
       logger.error('ParameterThunk', errorMsg, { 
         error,
@@ -208,104 +117,146 @@ export const fetchParametersForPart = createAsyncThunk<
 
 // Thunk to fetch parameters for multiple part IDs
 export const fetchParametersForReferencedParts = createAsyncThunk<
-    Record<number, { data: ParameterDetail[]; error?: string }>, // UPDATED return type
-    number[],                        // Argument type: Array of part IDs
-    { state: RootState; rejectValue: string } // Thunk config
+    Record<number, { data: ParameterDetail[]; error?: string }>, 
+    number[],
+    { state: RootState; rejectValue: string }
 >(
     'parameters/fetchForReferencedParts',
-    async (partIds, { getState, rejectWithValue }) => {
+    async (partIds, { getState, rejectWithValue, dispatch }) => {
+        // ADD TEMP LOG
+        // console.log(`[TEMP LOG - parameterThunks.ts:76] fetchParametersForReferencedParts THUNK START. Original partIds: ${partIds.join(', ')}`);
         const state = getState();
         const apiInitialized = selectApiInitialized(state);
+        const BATCH_SIZE = 5; // Keep BATCH_SIZE if it was correctly added by a previous step
+        const INTER_CALL_DELAY_MS = 50; // Introduce this delay
 
         logger.log('fetchParametersForReferencedParts Thunk', `Thunk started. Original partIds received: ${partIds.join(', ')}`, { level: 'debug' });
+        // ADD TEMP LOG
+        // console.log(`[TEMP LOG - parameterThunks.ts:84] fetchParametersForReferencedParts: API Initialized: ${apiInitialized}`);
 
         if (!apiInitialized) {
+            // ADD TEMP LOG
+            // console.error('[TEMP LOG - parameterThunks.ts:88] fetchParametersForReferencedParts: API not initialized. Rejecting.');
             const errorMsg = 'API not initialized. Cannot fetch referenced parameters.';
             logger.error('fetchParametersForReferencedParts Thunk', errorMsg);
             return rejectWithValue(errorMsg);
         }
 
         if (!partIds || partIds.length === 0) {
+            // ADD TEMP LOG
+            // console.log('[TEMP LOG - parameterThunks.ts:95] fetchParametersForReferencedParts: No partIds provided. Returning empty object.');
             logger.log('fetchParametersForReferencedParts Thunk', 'No part IDs provided, skipping fetch.');
             return {};
         }
 
-        // Filter out part IDs that are already loading or have recently failed
         const validPartIdsToFetch = partIds.filter(id => {
             const currentStatus = selectParameterLoadingStatus(state, id);
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:103] fetchParametersForReferencedParts: Filtering partId ${id}. Current status: ${currentStatus}`);
             if (currentStatus === 'failed') {
-                logger.warn('fetchParametersForReferencedParts Thunk', `Part ${id} previously failed. Skipping fetch in this batch.`);
+                logger.warn('fetchParametersForReferencedParts Thunk', `Part ${id} previously failed. CONSIDER if this check is still needed or if fetchParametersForPart should always attempt.`);
+                // ADD TEMP LOG
+                // console.warn(`[TEMP LOG - parameterThunks.ts:113] fetchParametersForReferencedParts: PartId ${id} previously failed. SKIPPING (or consider removing this skip).`);
                 return false; 
             }
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:117] fetchParametersForReferencedParts: PartId ${id} is ${currentStatus}. INCLUDING for fetch.`);
             return true;
         });
 
         if (validPartIdsToFetch.length === 0) {
+            // ADD TEMP LOG
+            // console.log('[TEMP LOG - parameterThunks.ts:122] fetchParametersForReferencedParts: No valid partIds to fetch after filtering. Returning empty object.');
             logger.log('fetchParametersForReferencedParts Thunk', 'All provided part IDs are already loading, recently failed, or list was empty after filtering. Skipping API calls.');
             return {};
         }
 
         logger.log('fetchParametersForReferencedParts Thunk', `Attempting to fetch parameters for part IDs: ${validPartIdsToFetch.join(', ')} (after filtering). Original IDs: ${partIds.join(', ')}`);
+        // ADD TEMP LOG
+        // console.log(`[TEMP LOG - parameterThunks.ts:129] fetchParametersForReferencedParts: Valid partIds to fetch: ${validPartIdsToFetch.join(', ')}`);
+
+        const results: Record<number, { data: ParameterDetail[]; error?: string }> = {};
 
         try {
-            const results: Record<number, { data: ParameterDetail[]; error?: string }> = {}; // UPDATED type for results
-            
-            const promises = validPartIdsToFetch.map(partId => {
-                logger.log('fetchParametersForReferencedParts Thunk', `Preparing API call for partId: ${partId}`, { level: 'silly' });
-                return inventreeApiService.getPartParameters(partId)
-                 .then(parameters => ({ status: 'fulfilled', value: parameters, partId }))
-                 .catch(error => ({ status: 'rejected', reason: error, partId }));
-            });
-            
-            // Using Promise.allSettled isn't strictly necessary here since .then/.catch on individual promises handles settlement.
-            // However, to keep the structure and ensure we process all, we can map the results of Promise.all on the transformed promises.
-            // Or, more simply, await all promises and build the results object directly.
-            
-            const settledIndividualPromises = await Promise.all(promises.map(p => p.catch(e => e))); // Catch individual errors to ensure all complete
-            logger.log('fetchParametersForReferencedParts Thunk', 'Raw settledIndividualPromises:', { data: settledIndividualPromises, level: 'silly' });
+            for (let i = 0; i < validPartIdsToFetch.length; i += BATCH_SIZE) {
+                const batchPartIds = validPartIdsToFetch.slice(i, i + BATCH_SIZE);
+                // ADD TEMP LOG
+                // console.log(`[TEMP LOG - parameterThunks.ts:138] fetchParametersForReferencedParts: Processing batch: [${batchPartIds.join(', ')}]`);
+                logger.log('fetchParametersForReferencedParts Thunk', `Processing batch: [${batchPartIds.join(', ')}]`, { level: 'debug' });
 
-            settledIndividualPromises.forEach(result => {
-                // Result structure from .then/.catch is { status: 'fulfilled'/'rejected', value/reason, partId }
-                const partId = result.partId; // partId is attached in both fulfilled and rejected cases
-                logger.log('fetchParametersForReferencedParts Thunk', `Processing settled promise for partId: ${partId}`, { status: result.status, level: 'silly' });
+                for (const partId of batchPartIds) {
+                    // ADD TEMP LOG
+                    // console.log(`[TEMP LOG - parameterThunks.ts:143] fetchParametersForReferencedParts: In batch loop for partId: ${partId}. Dispatching fetchParametersForPart.`);
+                    // logger.log('fetchParametersForReferencedParts Thunk', `Fetching parameters for partId: ${partId}`, { level: 'silly' });
+                    try {
+                        // Instead of direct API call, dispatch the individual thunk
+                        // const parameters = await inventreeApiService.getPartParameters(partId);
+                        // ADD TEMP LOG
+                        // console.log(`[TEMP LOG - parameterThunks.ts:149] fetchParametersForReferencedParts: Dispatching fetchParametersForPart(${partId}) from within batch.`);
+                        const resultAction = await dispatch(fetchParametersForPart(partId));
+                        // ADD TEMP LOG
+                        // console.log(`[TEMP LOG - parameterThunks.ts:152] fetchParametersForReferencedParts: Result action from dispatched fetchParametersForPart(${partId}):`, JSON.parse(JSON.stringify(resultAction || {})));
 
-                if (result.status === 'fulfilled') {
-                    const parameters = result.value as ParameterDetail[] | null; // value from .then
-                    if (parameters === null) {
-                        const errorMsg = `API returned null or failed to fetch parameters for part ${partId}.`;
-                        logger.warn('fetchParametersForReferencedParts Thunk', errorMsg, { partIdForContext: partId });
+                        if (fetchParametersForPart.fulfilled.match(resultAction)) {
+                            results[partId] = { data: resultAction.payload.parameters };
+                            // ADD TEMP LOG
+                            // console.log(`[TEMP LOG - parameterThunks.ts:157] fetchParametersForReferencedParts: fetchParametersForPart(${partId}) FULFILLED. Count: ${resultAction.payload.parameters.length}. Stored in results.`);
+                            logger.log('fetchParametersForReferencedParts Thunk', `Fetched ${resultAction.payload.parameters.length} parameters for part ${partId}.`, { level: 'debug', partIdForContext: partId });
+                        } else if (fetchParametersForPart.rejected.match(resultAction)) {
+                            const errorMsg = `Nested fetch for part ${partId} rejected: ${resultAction.payload || resultAction.error.message}`;
+                            results[partId] = { data: [], error: errorMsg };
+                            // ADD TEMP LOG
+                            // console.error(`[TEMP LOG - parameterThunks.ts:163] fetchParametersForReferencedParts: fetchParametersForPart(${partId}) REJECTED: ${errorMsg}`);
+                            logger.error('fetchParametersForReferencedParts Thunk', errorMsg, { partIdForContext: partId, errorDetail: resultAction.payload || resultAction.error });
+                        } else {
+                            // Should not happen if thunk lifecycle is correct
+                            const errorMsg = `Nested fetch for part ${partId} had unexpected result.`;
+                            results[partId] = { data: [], error: errorMsg };
+                            // ADD TEMP LOG
+                            // console.error(`[TEMP LOG - parameterThunks.ts:170] fetchParametersForReferencedParts: fetchParametersForPart(${partId}) UNEXPECTED RESULT.`);
+                            logger.error('fetchParametersForReferencedParts Thunk', errorMsg, { partIdForContext: partId, resultAction });
+                        }
+                    } catch (error: any) {
+                        // This catch is for errors in dispatching or unwrap itself, not for the logic of the dispatched thunk
+                        const errorMsg = `Critical error dispatching/handling fetch for part ${partId}: ${error?.message || String(error)}`;
+                        // ADD TEMP LOG
+                        // console.error(`[TEMP LOG - parameterThunks.ts:177] fetchParametersForReferencedParts: CRITICAL ERROR dispatching/handling fetch for part ${partId}: ${errorMsg}`);
+                        logger.error('fetchParametersForReferencedParts Thunk', errorMsg, { partIdForContext: partId, errorDetail: error });
                         results[partId] = { data: [], error: errorMsg };
-                    } else {
-                        results[partId] = { data: parameters };
-                        logger.log('fetchParametersForReferencedParts Thunk', `Fetched ${parameters.length} parameters for part ${partId}.`, { level: 'debug', partIdForContext: partId });
                     }
-                } else { // status === 'rejected' or it's the caught error object itself
-                    const errorReason = result.reason || result; // reason from .catch or the error if map(p => p.catch(e => e)) was used
-                    const errorMsg = errorReason?.message || String(errorReason);
-                    logger.error('fetchParametersForReferencedParts Thunk', `Failed to fetch parameters for part ${partId}: ${errorMsg}`, { partIdForContext: partId, errorDetail: errorReason });
-                    results[partId] = { data: [], error: errorMsg };
+
+                    // Delay before the next call *within the same batch*, unless it's the very last ID overall or last in this specific batch
+                    const isLastOverall = validPartIdsToFetch.indexOf(partId) === validPartIdsToFetch.length - 1;
+                    const isLastInBatch = batchPartIds.indexOf(partId) === batchPartIds.length - 1;
+
+                    if (!isLastOverall && !isLastInBatch) { // Only delay if there's another call coming *in this batch*
+                         logger.log('fetchParametersForReferencedParts Thunk', `Delaying ${INTER_CALL_DELAY_MS}ms before next call in batch.`, { level: 'silly' });
+                         await new Promise(resolve => setTimeout(resolve, INTER_CALL_DELAY_MS));
+                    }
                 }
-            });
+                 // Optional: Add a small delay between batches if still seeing issues
+                 // if (i + BATCH_SIZE < validPartIdsToFetch.length) {
+                 //    logger.log('fetchParametersForReferencedParts Thunk', `Delaying 100ms before next BATCH.`, { level: 'debug' });
+                 //    await new Promise(resolve => setTimeout(resolve, 100)); // e.g., 100ms between batches
+                 // }
+            }
 
             logger.log('fetchParametersForReferencedParts Thunk', `Finished processing parameter fetches for ${validPartIdsToFetch.length} parts.`);
             logger.log('fetchParametersForReferencedParts Thunk', 'Final results object being returned:', { data: results, level: 'debug' });
-            return results;
-        } catch (error: any) { 
-            const errorMsg = `Overall failure in fetchParametersForReferencedParts thunk: ${error.message || error}`;
-            logger.error('fetchParametersForReferencedParts Thunk', errorMsg);
-            // For a top-level error, we might want to reject the whole thunk
-            // or return a structure indicating failure for all initially requested validPartIds.
-            // For now, let's attempt to return error for all parts it was trying to fetch.
-            const failedResults: Record<number, { data: ParameterDetail[]; error?: string }> = {};
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:202] fetchParametersForReferencedParts THUNK END. Returning results:`, JSON.parse(JSON.stringify(results)));
+            return results; 
+        } catch (batchError: any) { 
+            // ADD TEMP LOG
+            // console.error(`[TEMP LOG - parameterThunks.ts:206] fetchParametersForReferencedParts: CRITICAL BATCH ERROR: ${batchError.message}`, batchError);
+            const errorMsg = `Critical error during batch processing in fetchParametersForReferencedParts: ${batchError.message || batchError}`;
+            logger.error('fetchParametersForReferencedParts Thunk', errorMsg, {batchIds: validPartIdsToFetch});
             validPartIdsToFetch.forEach(id => {
-                failedResults[id] = { data: [], error: errorMsg };
+                if (!results[id]) { 
+                    results[id] = { data: [], error: `Batch processing error: ${errorMsg}` };
+                }
             });
-            // This rejectWithValue will make the whole thunk action '.rejected'
-            // If we want partial success/failure to be handled by '.fulfilled', the catch block
-            // for individual promises inside the try is more appropriate.
-            // The current structure aims for the latter.
-            // So, if an error reaches here, it's unexpected.
-            return rejectWithValue(errorMsg); // This makes the entire thunk fail.
+            return results;
         }
     }
 );
@@ -318,11 +269,16 @@ export const updateParameterValue = createAsyncThunk<
 >(
     'parameters/updateValue',
     async ({ partId, paramName, value }, { getState, rejectWithValue }) => {
+        // ADD TEMP LOG
+        // console.log(`[TEMP LOG - parameterThunks.ts:220] updateParameterValue THUNK START for partId: ${partId}, paramName: ${paramName}, value: ${value}`);
         const state = getState();
-        // Check API initialization
         const apiInitialized = selectApiInitialized(state);
+        // ADD TEMP LOG
+        // console.log(`[TEMP LOG - parameterThunks.ts:224] updateParameterValue: API Initialized: ${apiInitialized}`);
 
         if (!apiInitialized) {
+            // ADD TEMP LOG
+            // console.error('[TEMP LOG - parameterThunks.ts:228] updateParameterValue: API not initialized. Rejecting.');
             const errorMsg = 'API not initialized. Cannot update parameter.';
             logger.error('updateParameterValue Thunk', errorMsg);
             return rejectWithValue(errorMsg);
@@ -337,7 +293,12 @@ export const updateParameterValue = createAsyncThunk<
             const parametersForPart = state.parameters.parametersByPartId[partId] || [];
             const parameterToUpdate = parametersForPart.find((p: ParameterDetail) => p.template_detail?.name === paramName);
 
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:245] updateParameterValue: Parameter to update:`, JSON.parse(JSON.stringify(parameterToUpdate || null)));
+
             if (!parameterToUpdate) {
+                 // ADD TEMP LOG
+                // console.error(`[TEMP LOG - parameterThunks.ts:249] updateParameterValue: Parameter '${paramName}' not found for part ${partId}. Rejecting.`);
                  const errorMsg = `Parameter '${paramName}' not found in state for part ${partId}. Cannot get PK for update.`;
                  logger.error('updateParameterValue Thunk', errorMsg);
                  return rejectWithValue(errorMsg);
@@ -346,17 +307,25 @@ export const updateParameterValue = createAsyncThunk<
             const parameterInstancePk = parameterToUpdate.pk;
 
             // Call the refactored service method with the instance PK
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:257] updateParameterValue: Calling inventreeApiService.updatePartParameter(${parameterInstancePk}, ${value})`);
             const updateResult = await inventreeApiService.updatePartParameter(parameterInstancePk, value);
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:260] updateParameterValue: inventreeApiService.updatePartParameter returned:`, JSON.parse(JSON.stringify(updateResult || null)));
 
             if (!updateResult) {
-                // Throw an error if the API call failed (returned null)
+                // ADD TEMP LOG
+                // console.error(`[TEMP LOG - parameterThunks.ts:264] updateParameterValue: API call returned null for update. Throwing error.`);
                 throw new Error('API call to updatePartParameter returned null.');
             }
 
             logger.log('updateParameterValue Thunk', `Successfully updated param PK ${parameterInstancePk} (${paramName}) for part ${partId} to ${value}.`);
-            // Return the original arguments on success, as expected by the reducer
+            // ADD TEMP LOG
+            // console.log(`[TEMP LOG - parameterThunks.ts:270] updateParameterValue THUNK END. Success. Returning:`, JSON.parse(JSON.stringify({ partId, parameterName: paramName, value })));
             return { partId, parameterName: paramName, value };
         } catch (error: any) {
+            // ADD TEMP LOG
+            // console.error(`[TEMP LOG - parameterThunks.ts:274] updateParameterValue: ERROR for partId ${partId}, paramName ${paramName}:`, error.message, error);
             const errorMsg = `Failed to update parameter ${paramName} for part ${partId}: ${error.message || error}`;
             logger.error('updateParameterValue Thunk', errorMsg);
             return rejectWithValue(errorMsg);
@@ -364,158 +333,94 @@ export const updateParameterValue = createAsyncThunk<
     }
 );
 
-// NEW Thunk: Evaluates conditions and applies their effects
-export const evaluateAndApplyConditions = createAsyncThunk<
+// NEW Thunk: Fetches parameters based on declarative configuration in configSlice
+export const fetchConfiguredParameters = createAsyncThunk<
   void, // Return type
   void, // Argument type (none for this thunk)
   { state: RootState; rejectValue: string }
 >(
-  'parameters/evaluateAndApplyConditions',
-  async (_, { dispatch, getState }) => {
-    // logger.log('ParameterThunk', 'Evaluating and applying conditions...'); // Original log
+  'parameters/fetchConfigured',
+  async (_, { dispatch, getState, rejectWithValue }) => {
+    // ADD TEMP LOG
+    // console.log('[TEMP LOG - parameterThunks.ts:284] fetchConfiguredParameters THUNK START');
+    logger.log('ParameterThunk', 'Fetching parameters based on config.dataSources.inventreeParametersToFetch...');
     const state = getState();
-    const { processedConditions, parameterValues } = state.parameters;
-
-    // NEW CONSOLE LOG HERE
-    console.log('[PT_DEBUG] evaluateAndApplyConditions - START. Processed Conditions:', JSON.parse(JSON.stringify(processedConditions)));
-    console.log('[PT_DEBUG] evaluateAndApplyConditions - Current parameterValues:', JSON.parse(JSON.stringify(parameterValues)));
-
-    const allPartsById = state.parts.partsById; // Used for wildcard target
-
-    if (!processedConditions || processedConditions.length === 0) {
-      logger.log('ParameterThunk', 'No processed conditions to evaluate. Clearing existing effects.');
-      dispatch(clearConditionalPartEffects());
+    const apiInitialized = selectApiInitialized(state);
+    // ADD TEMP LOG
+    // console.log(`[TEMP LOG - parameterThunks.ts:289] fetchConfiguredParameters: API Initialized: ${apiInitialized}`);
+    if (!apiInitialized) {
+      // ADD TEMP LOG
+      // console.warn('[TEMP LOG - parameterThunks.ts:292] fetchConfiguredParameters: API not initialized. Returning early.');
+      logger.warn('ParameterThunk', 'API not initialized. Cannot fetch configured parameters.');
       return;
     }
 
-    const newEffects: Record<number, ConditionalPartEffect> = {};
+    // ADD TEMP LOG
+    // console.log('[TEMP LOG - parameterThunks.ts:298] fetchConfiguredParameters: Calling selectInventreeParametersToFetch(state)');
+    const parametersToFetchConfig = selectInventreeParametersToFetch(state);
+    // ADD TEMP LOG
+    // console.log('[TEMP LOG - parameterThunks.ts:301] fetchConfiguredParameters: selectInventreeParametersToFetch returned:', JSON.parse(JSON.stringify(parametersToFetchConfig || [])));
+    const allLoadedPartsMap = state.parts.partsById; 
+    const allLoadedPartIds = Object.keys(allLoadedPartsMap).map(pk => parseInt(pk, 10));
+    // ADD TEMP LOG
+    // console.log('[TEMP LOG - parameterThunks.ts:305] fetchConfiguredParameters: All loaded part IDs:', JSON.parse(JSON.stringify(allLoadedPartIds)));
 
-    // Helper to merge effects for a part
-    const mergeEffect = (partId: number, effect: Partial<ConditionalPartEffect>) => {
-      if (!newEffects[partId]) {
-        newEffects[partId] = {};
-      }
-      // Simple merge: last condition setting an effect wins for that specific effect property
-      // More sophisticated merging (e.g., for borders, or multiple badges) could be added if needed
-      newEffects[partId] = { ...newEffects[partId], ...effect };
-    };
-
-    for (const condition of processedConditions) {
-      const paramValue = parameterValues[condition.partId]?.[condition.parameterName]?.data;
-      let conditionMet = false;
-
-      // Specific log for our target condition
-      if (condition.partId === 145 && condition.parameterName === 'microwavables') {
-        console.log('[PT_DEBUG] Evaluating condition for part:145:microwavables', {
-          conditionSourceString: condition.sourceParameterString,
-          operator: condition.operator,
-          valueToCompare: condition.valueToCompare,
-          paramValueReadFromState: paramValue, 
-          currentParameterValuesForPart145: parameterValues[145]
-        });
-      }
-
-      // --- Evaluate Condition --- (Simplified, can be expanded)
-      switch (condition.operator) {
-        case 'equals': conditionMet = String(paramValue) === String(condition.valueToCompare); break;
-        case 'not_equals': conditionMet = String(paramValue) !== String(condition.valueToCompare); break;
-        case 'contains': conditionMet = String(paramValue).includes(String(condition.valueToCompare)); break;
-        case 'exists': conditionMet = paramValue !== undefined && paramValue !== null && paramValue !== ''; break;
-        case 'is_empty': conditionMet = paramValue === undefined || paramValue === null || paramValue === ''; break;
-        case 'greater_than': conditionMet = parseFloat(paramValue) > parseFloat(condition.valueToCompare); break;
-        case 'less_than': conditionMet = parseFloat(paramValue) < parseFloat(condition.valueToCompare); break;
-        default: logger.warn('ParameterThunk', `Unknown operator: ${condition.operator}`, { condition });
-      }
-
-      if (conditionMet) {
-        // Using console.log for this specific MET log
-        console.log('[PT_DEBUG] Condition MET', { 
-          conditionSource: condition.sourceParameterString, 
-          evaluatedParamValue: paramValue, 
-          comparedTo: condition.valueToCompare,
-          operator: condition.operator
-        });
-        let targetPartPks: number[] = [];
-
-        if (condition.targetPartIds === '*') {
-          targetPartPks = Object.keys(allPartsById).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-        } else if (Array.isArray(condition.targetPartIds)) {
-          targetPartPks = condition.targetPartIds;
-        }
-        // ELSE: targetPartPks remains [] if not '*' and not an array
-
-        logger.log('ParameterThunk', '[DEBUG] Target Part ID Resolution', {
-          level: 'info',
-          conditionSource: condition.sourceParameterString,
-          rawTargetPartIds: condition.targetPartIds, // Log the raw value
-          resolvedTargetPartPks: targetPartPks,     // Log the resolved array
-          targetPartPksLength: targetPartPks.length
-        });
-
-        if (targetPartPks.length > 0) {
-          let effectToApply: Partial<ConditionalPartEffect> = {};
-          switch (condition.action) {
-            case 'filter': effectToApply.isVisible = condition.actionValue === 'show'; break;
-            case 'highlight': effectToApply.highlight = condition.actionValue; break;
-            case 'text_color': effectToApply.textColor = condition.actionValue; break;
-            case 'border': effectToApply.border = condition.actionValue; break; // Assuming actionValue is a valid CSS border string
-            case 'icon': effectToApply.icon = condition.actionValue; break;
-            case 'badge': effectToApply.badge = condition.actionValue; break;
-            // 'sort', 'priority', 'show_section' might need different handling or state structures
-            // For now, logging them:
-            case 'sort': 
-            case 'priority': 
-            case 'show_section': 
-              logger.log('ParameterThunk', `Action type '${condition.action}' requires specific handling not yet implemented in basic effects.`, { condition });
-              break;
-            default: logger.warn('ParameterThunk', `Unknown action type: ${condition.action}`, { condition });
-          }
-
-          // Using console.log for this specific effect log
-          console.log('[PT_DEBUG] Effect to Apply for MET condition', {
-            conditionSource: condition.sourceParameterString,
-            action: condition.action,
-            actionValue: condition.actionValue,
-            effectToApply, 
-            targetPartPks 
-          });
-
-          if (Object.keys(effectToApply).length > 0) {
-            targetPartPks.forEach(pk => mergeEffect(pk, effectToApply));
-          } else {
-            // Using console.log for this specific warning
-            console.warn('[PT_DEBUG] effectToApply is empty, no effect merged.', {
-                conditionSource: condition.sourceParameterString,
-                action: condition.action,
-                actionValue: condition.actionValue,
-                targetPartPks
-            });
-          }
-        } else {
-          // This new log will be crucial if targetPartPks is empty
-          logger.warn('ParameterThunk', '[DEBUG] No target part PKs resolved for MET condition. Effect will not be applied.', {
-              conditionSource: condition.sourceParameterString,
-              rawTargetPartIds: condition.targetPartIds,
-              conditionAction: condition.action, // Adding more context
-              conditionActionValue: condition.actionValue
-          });
-        }
-      } else { // Log when condition is NOT met
-        logger.log('ParameterThunk', 'Condition NOT MET', {
-          level: 'info', // Elevate for clarity
-          conditionSource: condition.sourceParameterString,
-          evaluatedParamValue: paramValue,
-          comparedTo: condition.valueToCompare,
-          operator: condition.operator
-        });
-      }
+    if (!parametersToFetchConfig || parametersToFetchConfig.length === 0) {
+      // ADD TEMP LOG
+      // console.log('[TEMP LOG - parameterThunks.ts:309] fetchConfiguredParameters: No inventreeParametersToFetch configured. Returning early.');
+      logger.log('ParameterThunk', 'No inventreeParametersToFetch configured. Skipping proactive parameter fetch.');
+      return;
     }
-    
-    // Using console.log for the final effects object
-    console.log('[PT_DEBUG] Final newEffects before dispatching setConditionalPartEffectsBatch', {
-      newEffects 
+
+    const partIdsToFetchSet = new Set<number>();
+
+    parametersToFetchConfig.forEach((configEntry: InventreeParameterFetchConfig) => { 
+      // ADD TEMP LOG
+      // console.log('[TEMP LOG - parameterThunks.ts:318] fetchConfiguredParameters: Processing configEntry:', JSON.parse(JSON.stringify(configEntry)));
+      if (configEntry.targetPartIds === 'all_loaded') {
+        // ADD TEMP LOG
+        // console.log('[TEMP LOG - parameterThunks.ts:321] fetchConfiguredParameters: targetPartIds is \'all_loaded\'. Adding all loaded part IDs to set.');
+        allLoadedPartIds.forEach(id => partIdsToFetchSet.add(id));
+      } else if (Array.isArray(configEntry.targetPartIds)) {
+        // ADD TEMP LOG
+        // console.log('[TEMP LOG - parameterThunks.ts:325] fetchConfiguredParameters: targetPartIds is an array. Adding to set:', JSON.parse(JSON.stringify(configEntry.targetPartIds)));
+        configEntry.targetPartIds.forEach(id => {
+          if (typeof id === 'number' && !isNaN(id)) {
+            partIdsToFetchSet.add(id);
+          }
+        });
+      }
+      // The parameterNames and fetchOnlyIfUsed fields are noted but not directly used by this thunk's logic;
+      // fetchParametersForReferencedParts fetches all parameters for the given IDs.
+      // Future optimizations could pass specific parameter names if the API/thunk supports it.
     });
-    dispatch(setConditionalPartEffectsBatch(newEffects));
-    logger.log('ParameterThunk', 'Finished evaluating conditions and dispatched effects batch.', { newEffectsCount: Object.keys(newEffects).length });
+
+    const uniquePartIdsArray = Array.from(partIdsToFetchSet);
+    // ADD TEMP LOG
+    // console.log('[TEMP LOG - parameterThunks.ts:336] fetchConfiguredParameters: Unique part IDs to fetch:', JSON.parse(JSON.stringify(uniquePartIdsArray)));
+
+    if (uniquePartIdsArray.length > 0) {
+      logger.log('ParameterThunk', `Dispatching fetchParametersForReferencedParts for configured part IDs: ${uniquePartIdsArray.join(', ')}`);
+      // ADD TEMP LOG
+      // console.log(`[TEMP LOG - parameterThunks.ts:341] fetchConfiguredParameters: Dispatching fetchParametersForReferencedParts with IDs: ${uniquePartIdsArray.join(', ')}`);
+      try {
+        // ADD TEMP LOG
+        // console.log('[TEMP LOG - parameterThunks.ts:344] fetchConfiguredParameters: AWAITING dispatch(fetchParametersForReferencedParts(...)).unwrap()');
+        await dispatch(fetchParametersForReferencedParts(uniquePartIdsArray)).unwrap();
+        // ADD TEMP LOG
+        // console.log('[TEMP LOG - parameterThunks.ts:347] fetchConfiguredParameters: fetchParametersForReferencedParts dispatch UNWRAPPED successfully.');
+        logger.log('ParameterThunk', `Successfully initiated fetch for configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`);
+      } catch (error) {
+        // ADD TEMP LOG
+        // console.error('[TEMP LOG - parameterThunks.ts:351] fetchConfiguredParameters: ERROR during fetchParametersForReferencedParts dispatch/unwrap:', error);
+        logger.error('ParameterThunk', `Failed to fetch some configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`, { error });
+      }
+    } else {
+      // ADD TEMP LOG
+      // console.log('[TEMP LOG - parameterThunkscard/src/store/thunks/parameterThunks.ts:356] fetchConfiguredParameters: No unique part IDs derived. SKIPPING dispatch of fetchParametersForReferencedParts.');
+      logger.log('ParameterThunk', 'No specific part IDs derived from inventreeParametersToFetch configuration.');
+    }
+    // ADD TEMP LOG
+    // console.log('[TEMP LOG - parameterThunks.ts:360] fetchConfiguredParameters THUNK END');
   }
 );

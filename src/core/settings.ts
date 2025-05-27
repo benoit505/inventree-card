@@ -130,59 +130,31 @@ export const SETTINGS_SCHEMA = {
 
 // Default values
 export const DEFAULT_CONFIG: Partial<InventreeCardConfig> = {
-    view_type: 'detail',
-    selected_entities: [],
-    columns: 3,
-    grid_spacing: 8,
-    item_height: 170,
-    parts_config: {
-        entities: [],  // Required empty array for entities
-        show_stock: true,
-        show_description: false,
-        show_category: false
+    // Core fields initialized by getStubConfig: type, name
+    // 'entity' is also handled by getStubConfig for initial data_sources population
+
+    view_type: 'detail', // Default view
+
+    // NEW: data_sources - matches structure in types.d.ts and editor
+    data_sources: {
+        inventree_hass_sensors: [], // Populated by getStubConfig if an entity is found
+        ha_entities: [],
+        inventree_pks: [],
+        inventree_parameters: [],
+        // api config is under direct_api
     },
-    style: {
-        background: "var(--card-background-color)",
-        spacing: 8,
-        image_size: 50
+
+    // NEW: layout_options - replaces top-level layout fields
+    layout_options: {
+        columns: 3,
+        grid_spacing: 8,
+        item_height: 170,
+        // min_height, max_height, transparent are part of InventreeCardLayout,
+        // which is not directly part of InventreeCardConfig.
+        // If needed for a specific layout, they should be within its specific options object.
     },
-    thumbnails: {
-        mode: "auto",
-        custom_path: "/local/inventree_thumbs",
-        local_path: "/local/inventree_thumbs",
-        enable_bulk_import: false
-    },
-    buttons: {
-        preset: 'default',
-        custom_buttons: []
-    },
-    parameters: {
-        enabled: false,
-        show_section: true,
-        collapsed_by_default: false,
-        group_parameters: false,
-        conditions: [],
-        actions: []
-    },
-    services: {
-        wled: {
-            enabled: false,
-            entity_id: 'light.wled_inventory',
-            ip_address: '',
-            parameter_name: 'led_xaxis',
-            effect: 'Scan',
-            intensity: 128,
-            palette: 'Red',
-            speed: 128,
-            segment_id: 0,
-            reverse: false
-        },
-        print: {
-            enabled: false,
-            template_id: 2,
-            plugin: 'zebra'
-        }
-    },
+
+    // UPDATED: display - align with getStubConfig and ensure all DisplayConfig fields are present
     display: {
         show_header: true,
         show_image: true,
@@ -190,51 +162,123 @@ export const DEFAULT_CONFIG: Partial<InventreeCardConfig> = {
         show_stock: true,
         show_description: false,
         show_category: false,
+        show_ipn: false,
+        show_location: false,
+        show_supplier: false,
+        show_manufacturer: false,
+        show_notes: false,
+        show_buttons: true, // Corresponds to interactions.buttons area
         show_stock_status_border: true,
         show_stock_status_colors: true,
-        show_parameters: false,
-        show_buttons: true
+        show_related_parts: false,
+        show_parameters: true, // Toggle for a dedicated parameters display section
+        show_part_details_component: true,
+        // Fields for variants (if variants view is used)
+        show_stock_status_border_for_templates: false, // Example, adjust as needed
+        show_buttons_for_variants: true,
+        show_part_details_component_for_variants: true,
+        show_image_for_variants: true,
+        show_stock_for_variants: true,
+        show_name_for_variants: true,
     },
-    variant_view_type: 'grid',
-    auto_detect_variants: true,
-    variant_groups: [],
-    debug: false,
-    debug_api: false,
-    debug_parameters: false,
-    debug_websocket: false,
-    debug_layouts: false,
-    debug_rendering: false,
+
+    // UPDATED: direct_api - keep as is from previous DEFAULT_CONFIG, ensure it matches DirectApiConfig
     direct_api: {
         enabled: false,
         url: '',
         api_key: '',
-        method: 'websocket',
-        websocket_url: '',
+        method: 'websocket', // Default method
+        websocket_url: '',   // Default empty
         idle_render_time: 60,
-        performance: {
-            api: {
-                throttle: 0.2,
-                cacheLifetime: 60,
+        // performance sub-config for direct_api specific overrides
+        performance: { // This is DirectApiConfig.performance
+            api: { // Matches PerformanceConfig.api
+                throttle: 0.2, // Default API throttle (seconds)
+                cacheLifetime: 60, // Default API cache lifetime (seconds)
                 batchSize: 20,
-                failedRequestRetryDelaySeconds: 30
+                failedRequestRetryDelaySeconds: 30,
             },
-            websocket: {
+            websocket: { // Matches PerformanceConfig.websocket
                 reconnectInterval: 5000,
-                messageDebounce: 50
-            }
+                messageDebounce: 50,
+            },
+            // No rendering or parameters sub-sections here for direct_api.performance
         }
     },
-    performance: {
+
+    // UPDATED: parameters - for the display section, not conditional logic rules
+    parameters: { // This is ParameterConfig from types.d.ts
+        enabled: true, // Whether the "Parameters" display section is enabled at all
+        show_section: true, // If enabled, should it be shown (can be overridden by conditional logic)
+        collapsed_by_default: false,
+        group_parameters: false,
+        // conditions and actions are REMOVED (moved to conditional_logic and interactions)
+        filter_fallback_mode: 'all',
+    },
+
+    // NEW: conditional_logic - for React Query Builder rules
+    conditional_logic: { // This is ConditionalLogicConfig from types.d.ts
+        definedLogics: [], // Initialize with no defined logic blocks
+    },
+    
+    // UPDATED: style - align with getStubConfig and StyleConfig
+    style: {
+        background: 'var(--ha-card-background, var(--card-background-color, white))',
+        spacing: 8,
+        image_size: 50
+    },
+
+    // NEW: interactions - replaces top-level 'buttons' and 'services'
+    interactions: { // This is InteractionsConfig from types.d.ts
+        buttons: [] // Initialize with no custom actions
+    },
+    
+    // REMOVED: filters (top-level FilterConfig[]) - if needed, should be part of conditional_logic or a new transformation section
+
+    // UPDATED: performance - main performance settings for the card
+    performance: { // This is PerformanceConfig from types.d.ts
         rendering: {
             debounceTime: 50,
             idleRenderInterval: 5000,
             maxRenderFrequency: 10
         },
-        parameters: {
+        api: { // General API settings (can be overridden by direct_api.performance.api)
+            throttle: 0.2, // Default API throttle (seconds)
+            cacheLifetime: 60, // Default API cache lifetime (seconds)
+            batchSize: 20,
+            failedRequestRetryDelaySeconds: 30,
+        },
+        websocket: { // General WebSocket settings (can be overridden by direct_api.performance.websocket)
+            reconnectInterval: 5000,
+            messageDebounce: 50
+        },
+        parameters: { // For parameter data fetching and condition evaluation engine
             updateFrequency: 1000,
             conditionEvalFrequency: 1000
         }
-    }
+    },
+
+    // Debug flags
+    debug: false,
+    debug_verbose: false,
+    // debug_hierarchical is not included in stub, initialized on first use if needed by logger
+    show_debug: false, // For the debug UI panel
+
+    // Legacy fields to be explicitly REMOVED from DEFAULT_CONFIG:
+    // selected_entities: [], // Now under data_sources.inventree_hass_sensors or ha_entities
+    // columns: 3, // Now under layout_options
+    // grid_spacing: 8, // Now under layout_options
+    // item_height: 170, // Now under layout_options
+    // parts_config: {}, // Legacy
+    // thumbnails: {}, // Legacy, or needs re-evaluation for new structure
+    // buttons: {}, // Legacy (top-level), replaced by interactions
+    // services: {}, // Legacy, replaced by interactions
+    // variant_view_type: 'grid', // Should be part of a specific layout's config if needed, or general display
+    // auto_detect_variants: true, // Logic for this should be handled by data processing or variant layout
+    // variant_groups: [], // Legacy
+
+    // Ensure any other InventreeCardConfig fields from types.d.ts have defaults if not covered by getStubConfig
+    // custom_view: undefined, // Example, if custom_view had a default
 };
 
 // Validation helper

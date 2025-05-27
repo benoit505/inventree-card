@@ -11,6 +11,8 @@ import { RootState } from '../index';
 import { setWebSocketStatus } from '../slices/websocketSlice';
 import { inventreeApiService } from '../../services/inventree-api-service';
 import { store } from '../../store';
+import { fetchHaEntityStatesThunk } from './genericHaStateThunks';
+import { selectFullConfig } from '../slices/configSlice';
 
 // Thunk to initialize the Direct API
 export const initializeDirectApi = createAsyncThunk(
@@ -96,33 +98,26 @@ export const processHassEntities = createAsyncThunk(
   async (
     args: {
       hass: HomeAssistant;
-      mainEntityId?: string;
-      selectedEntities?: string[];
+      entityIds: string[];
       logger: Logger;
     },
     { dispatch }
   ) => {
-    const { hass, mainEntityId, selectedEntities = [], logger } = args;
+    const { hass, entityIds, logger } = args;
     let processedCount = 0;
-    const entityIdsToProcess = new Set<string>();
 
-    if (mainEntityId) {
-      entityIdsToProcess.add(mainEntityId);
-    }
-    selectedEntities.forEach(id => entityIdsToProcess.add(id));
-
-    if (entityIdsToProcess.size === 0) {
+    if (!entityIds || entityIds.length === 0) {
       logger.warn('Thunk:processHassEntities', 'No entities configured for HASS processing.');
       trackUsage('redux', 'thunk:processHassEntities:noentities');
       return { processedCount: 0, errors: 0 };
     }
 
-    logger.log('Thunk:processHassEntities', `Processing HASS state for entities: ${Array.from(entityIdsToProcess).join(', ')}`);
-    trackUsage('redux', 'thunk:processHassEntities:attempt', { count: entityIdsToProcess.size });
+    logger.log('Thunk:processHassEntities', `Processing HASS state for entities: ${entityIds.join(', ')}`);
+    trackUsage('redux', 'thunk:processHassEntities:attempt', { count: entityIds.length });
 
     let errorCount = 0;
 
-    for (const entityId of entityIdsToProcess) {
+    for (const entityId of entityIds) {
       const entityState = hass.states[entityId];
       if (!entityState) {
         logger.warn('Thunk:processHassEntities', `Entity ${entityId} not found in HASS states.`);
@@ -139,17 +134,17 @@ export const processHassEntities = createAsyncThunk(
         if (parts.length > 0) {
           logger.log('Thunk:processHassEntities', `Dispatching setParts for ${entityId} with ${parts.length} items.`);
           dispatch(setParts({ entityId, parts }));
-          dispatch(registerEntity({ entityId, partIds }));
+          dispatch(registerEntity(entityId));
           processedCount++;
         } else {
           logger.log('Thunk:processHassEntities', `No items found for entity ${entityId} after processing.`);
           dispatch(setParts({ entityId, parts: [] }));
-          dispatch(registerEntity({ entityId, partIds: [] }));
+          dispatch(registerEntity(entityId));
         }
       } else {
         logger.warn('Thunk:processHassEntities', `No 'items' attribute or not an array for entity ${entityId}.`, { attributes: entityState.attributes });
         dispatch(setParts({ entityId, parts: [] }));
-        dispatch(registerEntity({ entityId, partIds: [] }));
+        dispatch(registerEntity(entityId));
         errorCount++;
       }
     }
@@ -158,4 +153,39 @@ export const processHassEntities = createAsyncThunk(
   }
 );
 
-// We can add initializeWebSocketPlugin thunk here later 
+// NEW THUNK: Initializes generic HA entity states based on card configuration
+export const initializeGenericHaStatesFromConfig = createAsyncThunk<
+  void, // Return type
+  { hass: HomeAssistant; logger: Logger }, // Argument type
+  { state: RootState; rejectValue: string }
+>(
+  'system/initializeGenericHaStatesFromConfig',
+  async ({ hass, logger }, { dispatch, getState, rejectWithValue }) => {
+    logger.log('SystemThunks', 'Initializing generic HA states from config...');
+    const state = getState();
+    const config = selectFullConfig(state); // Assuming selectFullConfig selector exists in configSlice
+
+    if (!config) {
+      const errorMsg = 'Card configuration not found in state.';
+      logger.error('SystemThunks', errorMsg);
+      return rejectWithValue(errorMsg);
+    }
+
+    const genericEntityIds = config.data_sources?.ha_entities;
+
+    if (genericEntityIds && Array.isArray(genericEntityIds) && genericEntityIds.length > 0) {
+      logger.log('SystemThunks', `Found ${genericEntityIds.length} generic HA entity IDs in config. Dispatching fetchHaEntityStatesThunk.`);
+      try {
+        await dispatch(fetchHaEntityStatesThunk({ hass, entityIds: genericEntityIds })).unwrap();
+        logger.log('SystemThunks', 'Successfully dispatched and processed fetchHaEntityStatesThunk for generic HA entities.');
+      } catch (error: any) {
+        const errorMsg = `Error fetching generic HA entity states: ${error.message || error}`;
+        logger.error('SystemThunks', errorMsg, { errorData: error });
+        // Not rejecting the parent thunk here, as failure to fetch some generic HA states might not be critical
+        // Individual errors are logged by fetchHaEntityStatesThunk
+      }
+    } else {
+      logger.log('SystemThunks', 'No generic HA entity IDs found in config.data_sources.ha_entities.');
+    }
+  }
+);

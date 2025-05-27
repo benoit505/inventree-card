@@ -155,6 +155,8 @@ const partsSlice = createSlice({
   initialState,
   reducers: {
     setParts(state: PartsState, action: PayloadAction<{ entityId: string, parts: InventreeItem[] }>) {
+      console.log('[partsSlice] setParts PAYLOAD:', JSON.stringify(action.payload, null, 2));
+      
       const { entityId, parts } = action.payload;
       const partIds: number[] = [];
       parts.forEach(part => {
@@ -166,6 +168,23 @@ const partsSlice = createSlice({
       });
       state.partsByEntity[entityId] = partIds;
       logger.log('partsSlice', `Set ${parts.length} parts for entity '${entityId}'. Part IDs: [${partIds.join(', ')}]`, { level: 'debug' });
+    },
+    addParts(state: PartsState, action: PayloadAction<InventreeItem[]>) {
+      const newParts = action.payload;
+      newParts.forEach(part => {
+        if (!part.pk) {
+          logger.warn('partsSlice', 'Attempted to add a part without a PK.', { partData: part });
+          return; // Skip parts without PK
+        }
+        state.partsById[part.pk] = {
+          ...state.partsById[part.pk], // Preserve existing client-side state if any
+          ...part,
+          source: state.partsById[part.pk]?.source || 'api:direct_pk', // Mark source if not already set
+        };
+        logger.log('partsSlice', `Added/Updated part ${part.pk} from direct PK fetch.`, { level: 'debug' });
+        // Note: We are not adding to partsByEntity here, as these are fetched by PK, not by a HASS entity.
+        // If a part fetched by PK was ALSO from a HASS entity, its partsByEntity mapping would already exist.
+      });
     },
     updatePart(state: PartsState, action: PayloadAction<InventreeItem>) {
       const part = action.payload;
@@ -305,6 +324,7 @@ const partsSlice = createSlice({
 
 export const {
   setParts,
+  addParts,
   updatePart,
   updatePartStock,
   clearParts,
@@ -428,5 +448,14 @@ export const selectCombinedParts = createSelector(
     });
 
     return Array.from(combinedPartIds).map((id: number) => partsById[id]).filter((part?: InventreeItem): part is InventreeItem => part !== undefined);
+  }
+);
+
+// New selector to get parts by an array of PKs
+export const selectPartsByPks = createSelector(
+  [selectPartsById, (_state: RootState, pks: number[]) => pks],
+  (partsById, pks) => {
+    if (!pks || pks.length === 0) return [];
+    return pks.map(pk => partsById[pk]).filter(part => part !== undefined);
   }
 ); 

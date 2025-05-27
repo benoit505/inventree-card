@@ -1,0 +1,16 @@
+import { ParameterDetail, ConditionalPartEffect } from '../../types';
+import { RootState } from '../index';
+export declare const setConditionalPartEffectsBatch: any, clearConditionalPartEffects: any, setActions: any, setConfig: any, setStrictWebSocketMode: any, clearConditionCache: any, clearCache: any, checkCondition: any, updateValue: any, webSocketUpdateReceived: any, markChanged: any, addParametersForPart: any, updateParameterForPart: any;
+export declare const selectActions: (state: RootState, entityId: string) => any;
+export declare const selectParameterLoadingStatus: (state: RootState, partId: number) => "idle" | "loading" | "succeeded" | "failed";
+export declare const selectPartParameterError: (state: RootState, partId: number) => string | null;
+export declare const selectParametersLoadingStatus: (state: RootState, partIds: number[]) => Record<number, "idle" | "loading" | "succeeded" | "failed">;
+export declare const selectStrictWebSocketMode: (state: RootState) => any;
+export declare const selectParameterConfig: (state: RootState) => any;
+export declare const selectRecentlyChangedParameters: (state: RootState) => any;
+export declare const selectParametersForPart: (state: RootState, partId: number) => ParameterDetail[] | undefined;
+export declare const selectParameterValue: (state: RootState, partId: number, paramName: string) => string | null;
+export declare const selectConditionalPartEffects: (state: RootState) => Record<number, ConditionalPartEffect>;
+export declare const selectConditionalEffectForPart: (state: RootState, partId: number) => ConditionalPartEffect | undefined;
+declare const _default: any;
+export default _default;

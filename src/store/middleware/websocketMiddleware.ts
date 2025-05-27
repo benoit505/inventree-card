@@ -11,7 +11,7 @@ import { WebSocketPlugin } from '../../services/websocket-plugin';
 import { Logger } from '../../utils/logger';
 import { setParts, partStockUpdateFromWebSocket, fetchPartDetails } from '../slices/partsSlice'; // Added partStockUpdateFromWebSocket and fetchPartDetails
 import { WebSocketEventMessage, EnhancedStockItemEventData, EnhancedParameterEventData } from '../../types'; // Import new types
-import { evaluateAndApplyConditions } from '../thunks/parameterThunks';
+import { evaluateAndApplyEffectsThunk } from '../thunks/conditionalLogicThunks'; // NEW IMPORT
 
 const logger = Logger.getInstance();
 // let isWebSocketInitialized = false; // This flag is not currently used in the provided snippet, commented out to avoid lint error
@@ -71,19 +71,19 @@ export const websocketMiddleware: Middleware = (storeAPI: MiddlewareAPI<Dispatch
                         if (evalScheduledTimeoutId) {
                             clearTimeout(evalScheduledTimeoutId);
                             evalScheduledTimeoutId = null;
-                            logger.log('WebSocketMiddleware', 'Cleared pending (trailing) evaluateAndApplyConditions call due to new trigger.', { level: 'silly' });
+                            logger.log('WebSocketMiddleware', 'Cleared pending (trailing) evaluateAndApplyEffectsThunk call due to new trigger.', { level: 'silly' });
                         }
 
                         if (now - lastEvalDispatchTime > conditionEvalFrequency) {
-                            logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyConditions (direct). Interval: ${conditionEvalFrequency}ms. lastEval: ${lastEvalDispatchTime}, now: ${now}`, { level: 'info' });
-                            storeAPI.dispatch(evaluateAndApplyConditions() as any); // Cast to any if thunk type causes issues with dispatch
+                            logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (direct). Interval: ${conditionEvalFrequency}ms. lastEval: ${lastEvalDispatchTime}, now: ${now}`, { level: 'info' });
+                            storeAPI.dispatch(evaluateAndApplyEffectsThunk() as any); // MODIFIED
                             lastEvalDispatchTime = now;
                         } else {
                             const delay = Math.max(0, conditionEvalFrequency - (now - lastEvalDispatchTime));
-                            logger.log('WebSocketMiddleware', `Throttling evaluateAndApplyConditions. Scheduling trailing call. Delay: ${delay}ms. lastEval: ${lastEvalDispatchTime}, now: ${now}`, { level: 'info' });
+                            logger.log('WebSocketMiddleware', `Throttling evaluateAndApplyEffectsThunk. Scheduling trailing call. Delay: ${delay}ms. lastEval: ${lastEvalDispatchTime}, now: ${now}`, { level: 'info' });
                             evalScheduledTimeoutId = setTimeout(() => {
-                                logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyConditions (trailing call). Interval: ${conditionEvalFrequency}ms.`, { level: 'info' });
-                                storeAPI.dispatch(evaluateAndApplyConditions() as any); // Cast to any
+                                logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (trailing call). Interval: ${conditionEvalFrequency}ms.`, { level: 'info' });
+                                storeAPI.dispatch(evaluateAndApplyEffectsThunk() as any); // MODIFIED
                                 lastEvalDispatchTime = Date.now();
                                 evalScheduledTimeoutId = null;
                             }, delay);

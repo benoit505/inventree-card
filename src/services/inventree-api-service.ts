@@ -1,132 +1,168 @@
 import { InventreeItem, ParameterDetail, StockItem } from '../types';
 import { Logger } from '../utils/logger';
-import { store } from '../store'; // Import the Redux store
-import { selectApiConfig, selectApiThrottleDelayMs } from '../store/slices/apiSlice'; // Import the selector
+import { store } from '../store';
+import { selectApiConfig } from '../store/slices/apiSlice';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig, AxiosHeaders } from 'axios';
 
 const logger = Logger.getInstance();
 
-/**
- * Placeholder for InvenTree API Service.
- * Implement actual API calls here.
- */
 class InventreeApiService {
+  private axiosInstance: AxiosInstance;
   private lastApiCallTimestamp: number = 0;
-  private lastApiFailureTimestamp: number = 0; // Timestamp of the last API failure
+  private lastApiFailureTimestamp: number = 0;
 
   constructor() {
-    logger.log('InventreeApiService', `Initialized.`);
+    logger.log('InventreeApiService', `Initializing with Axios.`);
+    this.axiosInstance = axios.create();
+
+    this.axiosInstance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+      const state = store.getState();
+      const apiSliceConfig = selectApiConfig(state);
+      const apiKey = apiSliceConfig.apiKey;
+
+      config.headers = config.headers || new AxiosHeaders();
+
+      if (apiKey) {
+        (config.headers as AxiosHeaders).set('Authorization', `Token ${apiKey}`);
+      }
+      
+      if ((config.method?.toLowerCase() === 'post' || config.method?.toLowerCase() === 'patch' || config.method?.toLowerCase() === 'put')) {
+        (config.headers as AxiosHeaders).set('Content-Type', 'application/json');
+      }
+      logger.log('InventreeApiService', `Axios Request: ${config.method?.toUpperCase()} ${config.url}`, { data: config.data, level: 'debug' });
+      return config;
+    }, (error: AxiosError) => {
+      logger.error('InventreeApiService', 'Axios Request Error Interceptor', { data: error });
+      return Promise.reject(error);
+    });
+
+    this.axiosInstance.interceptors.response.use((response: AxiosResponse) => {
+      logger.log('InventreeApiService', `Axios Response: ${response.status} from ${response.config.url}`, { level: 'debug' });
+      this.lastApiFailureTimestamp = 0;
+      return response;
+    }, (error: AxiosError) => {
+      logger.error('InventreeApiService', `Axios Response Error Interceptor: ${error.message}`, { 
+        data: {
+          url: error.config?.url,
+          status: error.response?.status,
+          responseData: error.response?.data
+        }
+      });
+      this.lastApiFailureTimestamp = Date.now();
+      return Promise.reject(error);
+    });
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(endpoint: string, options: AxiosRequestConfig = {}): Promise<T> {
     const state = store.getState();
-    const apiSliceConfig = state.api; // Get the whole api slice state
+    const apiSliceConfig = selectApiConfig(state);
+    // console.log(`[TEMP LOG - inventree-api-service.ts:57] request: Endpoint: ${endpoint}, Options:`, JSON.parse(JSON.stringify(options)), 'ApiSliceConfig:', JSON.parse(JSON.stringify(apiSliceConfig)));
     
     const baseUrl = apiSliceConfig.url;
-    const apiKey = apiSliceConfig.apiKey;
     const throttleDelayMs = apiSliceConfig.throttleDelayMs;
     const failedRequestRetryDelayMs = apiSliceConfig.failedRequestRetryDelayMs;
 
-    if (!baseUrl || !apiKey) {
-      const errorMsg = 'API base URL or API key is not configured in Redux store (apiSlice).';
+    if (!baseUrl) {
+      const errorMsg = 'API base URL is not configured in Redux store (apiSlice).';
       logger.error('InventreeApiService', errorMsg);
-      this.lastApiFailureTimestamp = Date.now(); // Treat config error as a failure to prevent spamming
+      this.lastApiFailureTimestamp = Date.now();
       throw new Error(errorMsg);
     }
 
-    // Ensure baseUrl has no trailing slash for consistency before appending endpoint
     const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    const url = `${cleanBaseUrl}/${endpoint.startsWith('/') ? endpoint.substring(1) : endpoint}`;
+    const requestUrl = `${cleanBaseUrl}/${endpoint.startsWith('/') ? endpoint.substring(1) : endpoint}`;
     
-    const headers = new Headers({
-      'Authorization': `Token ${apiKey}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    });
-
-    logger.log('InventreeApiService', `Requesting URL: ${url}`, { method: options.method || 'GET', level: 'debug' });
-
-    // 1. Handle Failure-Specific Delay (if a recent failure occurred)
     if (this.lastApiFailureTimestamp > 0) {
       const timeSinceLastFailure = Date.now() - this.lastApiFailureTimestamp;
       if (timeSinceLastFailure < failedRequestRetryDelayMs) {
         const failureDelayNeeded = failedRequestRetryDelayMs - timeSinceLastFailure;
-        logger.warn('InventreeApiService', `Recent API Failure: Delaying next request by ${failureDelayNeeded}ms. Cooldown until ${new Date(Date.now() + failureDelayNeeded).toISOString()}`);
+        logger.warn('InventreeApiService', `Recent API Failure: Delaying next request by ${failureDelayNeeded}ms.`);
         await new Promise(resolve => setTimeout(resolve, failureDelayNeeded));
-        // After this enforced delay, we still respect the general throttle for the actual call attempt.
       }
     }
 
-    // 2. General Throttling (based on last *attempt*)
-    // This ensures that even after the failure delay, we don't spam rapid calls.
     if (throttleDelayMs > 0) {
-      const currentTimeForThrottle = Date.now(); // Get current time *after* potential failure delay
+      const currentTimeForThrottle = Date.now(); 
       const timeSinceLastAttempt = currentTimeForThrottle - this.lastApiCallTimestamp;
       if (timeSinceLastAttempt < throttleDelayMs) {
         const generalDelayNeeded = throttleDelayMs - timeSinceLastAttempt;
         logger.log('InventreeApiService', `General Throttling: Delaying by ${generalDelayNeeded}ms.`, { level: 'debug' });
         await new Promise(resolve => setTimeout(resolve, generalDelayNeeded));
+        this.lastApiCallTimestamp = Date.now();
+      } else {
+        this.lastApiCallTimestamp = Date.now();
       }
+    } else {
+      this.lastApiCallTimestamp = Date.now();
     }
-    
-    this.lastApiCallTimestamp = Date.now(); // Update timestamp *before* making the actual call
 
     try {
-      const response = await fetch(url, { ...options, headers });
+      const finalOptions: AxiosRequestConfig = {
+        url: requestUrl,
+        method: options.method || 'GET',
+        data: options.data,
+        params: options.params,
+        headers: options.headers,
+        timeout: 15000,
+        ...options,
+      };
+      // console.log(`[TEMP LOG - inventree-api-service.ts:102] request: Making Axios request with finalOptions:`, JSON.parse(JSON.stringify(finalOptions)));
 
-      if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (e) {
-          errorData = await response.text();
-        }
-        const errorMsg = `API request failed: ${response.status} ${response.statusText}`;
-        logger.error('InventreeApiService', errorMsg, { url, status: response.status, errorData });
-        this.lastApiFailureTimestamp = Date.now(); // Record failure timestamp
-        throw new Error(errorMsg); // Propagate error
+      let response: AxiosResponse<T>;
+      try {
+        // console.log(`[TEMP LOG - inventree-api-service.ts N1] PRE-AWAIT for ${finalOptions.url}`);
+        response = await this.axiosInstance.request<T>(finalOptions);
+        // console.log(`[TEMP LOG - inventree-api-service.ts N2] POST-AWAIT for ${finalOptions.url}. Response status: ${response?.status}`);
+      } catch (axiosCallError: any) {
+        /* console.error(`[TEMP LOG - inventree-api-service.ts N3] INNER CATCH for ${finalOptions.url}. Axios call FAILED. Error Details:`, {
+            message: axiosCallError.message,
+            code: axiosCallError.code,
+            isAxiosError: axiosCallError.isAxiosError,
+            configUrl: axiosCallError.config?.url,
+            responseStatus: axiosCallError.response?.status,
+            responseData: axiosCallError.response?.data,
+            stack: axiosCallError.stack // Include stack for more detailed debugging
+        }); */
+        // For a more raw view of the error object if the above misses something
+        // console.error(`[TEMP LOG - inventree-api-service.ts N3-RAW] Raw error object:`, JSON.parse(JSON.stringify(axiosCallError, Object.getOwnPropertyNames(axiosCallError))));
+        throw axiosCallError; // Re-throw to be caught by the outer catch
       }
-      
-      // Handle cases where response might be empty (e.g., 204 No Content for DELETE)
+
+      // console.log(`[TEMP LOG - inventree-api-service.ts:107] request: Axios response for ${requestUrl}: Status ${response.status}, Data:`, JSON.parse(JSON.stringify(response.data || null)));
+
       if (response.status === 204) {
-        this.lastApiFailureTimestamp = 0; // Reset on success
-        return null as T; 
+        return null as T;
       }
-      
-      const responseData = await response.json() as T;
-      this.lastApiFailureTimestamp = 0; // Reset on success
-      return responseData;
+      return response.data;
 
-    } catch (error) { // This catches fetch internal errors (network, CORS after preflight) and the re-thrown !response.ok error
-      logger.error('InventreeApiService', `Catch-all for ${url}. Setting failure timestamp. Error:`, error);
-      // Ensure lastApiFailureTimestamp is set for any error during the try block related to the request
-      this.lastApiFailureTimestamp = Date.now();
-      throw error; // Re-throw the error to be caught by the caller (thunks)
+    } catch (error) {
+      // console.error(`[TEMP LOG - inventree-api-service.ts:117] request: Axios request to ${requestUrl} FAILED (OUTER CATCH). Error:`, error);
+      logger.error('InventreeApiService', `Axios request to ${requestUrl} failed in main try-catch.`, { data: error });
+      throw error;
     }
   }
 
   async getPart(partId: number): Promise<InventreeItem | null> {
+    // console.log(`[TEMP LOG - inventree-api-service.ts:125] getPart called with partId: ${partId}`);
     logger.log('InventreeApiService', `Fetching part ${partId}...`);
     try {
       return await this.request<InventreeItem>(`part/${partId}/`);
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to get part ${partId}:`, error);
+      // console.error(`[TEMP LOG - inventree-api-service.ts:131] getPart FAILED for partId ${partId}. Error:`, error);
+      logger.error('InventreeApiService', `Failed to get part ${partId}:`, { data: error });
       return null;
     }
   }
 
-  /**
-   * Fetches multiple parts based on provided parameters.
-   * Example: getParts({ category: 5, limit: 10 })
-   * Example: getParts({ pk__in: [1, 2, 3] })
-   */
   async getParts(params: Record<string, any> = {}): Promise<InventreeItem[]> {
-    logger.log('InventreeApiService', 'Fetching parts with params:', params);
+    // console.log(`[TEMP LOG - inventree-api-service.ts:139] getParts called with params:`, JSON.parse(JSON.stringify(params)));
+    logger.log('InventreeApiService', 'Fetching parts with params:', { data: params });
     try {
-      const queryParams = new URLSearchParams(params).toString();
-      return await this.request<InventreeItem[]>(`part/?${queryParams}`);
+      return await this.request<InventreeItem[]>('part/', { params: params });
     } catch (error) {
-      logger.error('InventreeApiService', 'Failed to get parts:', { params, error });
-      return []; // Return empty array on error, or rethrow if preferred
+      // console.error(`[TEMP LOG - inventree-api-service.ts:145] getParts FAILED. Params:`, JSON.parse(JSON.stringify(params)), 'Error:', error);
+      logger.error('InventreeApiService', 'Failed to get parts:', { data: { params, error } });
+      return [];
     }
   }
 
@@ -134,66 +170,47 @@ class InventreeApiService {
     logger.log('InventreeApiService', `Adjusting stock for part ${partId} by ${relativeAmount}. Location: ${locationId}, Notes: "${notes}"`);
     try {
       if (relativeAmount === 0) {
-        logger.log('InventreeApiService', `Relative amount is 0 for part ${partId}, no stock change needed. Fetching current stock.`);
-        // No operation needed, just return current stock
+        logger.log('InventreeApiService', `Relative amount is 0 for part ${partId}, no stock change needed.`);
       } else if (relativeAmount > 0) {
-        // --- Add Stock --- 
         const addResult = await this.addStockItem(partId, relativeAmount, locationId, notes);
         if (!addResult) {
           throw new Error('Failed to add stock item during positive adjustment.');
         }
         logger.log('InventreeApiService', `Added stock item PK: ${addResult.pk} for part ${partId}.`);
       } else { 
-        // --- Remove Stock --- 
         const amountToRemove = Math.abs(relativeAmount);
         logger.log('InventreeApiService', `Attempting to remove ${amountToRemove} for part ${partId}.`);
-
-        // 1. Consolidate stock first to make removal simpler/more predictable
-        //    Consolidate to the target location if specified, otherwise let the function decide.
-        const consolidatedItem = await this.consolidateStockForPart(partId, locationId, notes || 'Consolidating before stock removal');
-        
-        // Check current stock *after* consolidation attempt
+        await this.consolidateStockForPart(partId, locationId, notes || 'Consolidating before stock removal');
         const currentStockItems = await this.getStockItemsForPart(partId, locationId);
         const currentTotalStock = currentStockItems?.reduce((sum, item) => sum + parseFloat(item.quantity || '0'), 0) ?? 0;
 
         if (!currentStockItems || currentStockItems.length === 0 || currentTotalStock < amountToRemove) {
             logger.warn('InventreeApiService', `Cannot remove ${amountToRemove} for part ${partId}: Insufficient stock (${currentTotalStock}) available after consolidation attempt.`);
-             // Even if we can't remove, fetch final state
         } else {
-            // We have enough stock. If consolidated, there should be one item.
-            // If not consolidated (e.g., multiple batches remained), remove from the first available.
-            const itemToRemoveFrom = currentStockItems[0]; // Assume first item after potential consolidation
-            
+            const itemToRemoveFrom = currentStockItems[0];
             if (!itemToRemoveFrom) {
-                // This case should ideally not happen if currentTotalStock > 0
                 logger.error('InventreeApiService', `Logic error: Stock exists (${currentTotalStock}) but no stock item found after consolidation for part ${partId}.`);
                 throw new Error('Stock item not found after consolidation despite available quantity.');
             }
-
             logger.log('InventreeApiService', `Removing ${amountToRemove} from stock item PK ${itemToRemoveFrom.pk} for part ${partId}.`);
             const removeResult = await this.removeStockItems([{ pk: itemToRemoveFrom.pk, quantity: amountToRemove }], notes || 'Stock removal');
             if (!removeResult) {
                  logger.error('InventreeApiService', `Stock removal API call failed for part ${partId}, item ${itemToRemoveFrom.pk}.`);
-                // Allow proceeding to fetch final state despite API error
             }
         }
       }
 
-      // --- Final Step: Fetch updated part details --- 
       logger.log('InventreeApiService', `Fetching final part details for ${partId} after stock adjustment.`);
       const updatedPart = await this.getPart(partId);
       if (!updatedPart) {
         logger.error('InventreeApiService', `Failed to fetch updated part details for part ${partId} after stock adjustment.`);
-        // Return null if the final part fetch fails, as we can't confirm the stock level
         return null;
       }
-
       logger.log('InventreeApiService', `Stock adjustment process complete for part ${partId}. Final stock: ${updatedPart.in_stock}.`);
       return { pk: partId, newTotalStock: updatedPart.in_stock };
 
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to adjust stock for part ${partId}:`, error);
-      // Attempt to fetch final part details even on error during adjustment steps
+      logger.error('InventreeApiService', `Failed to adjust stock for part ${partId}:`, { data: error });
        try {
            const finalPartCheck = await this.getPart(partId);
            if (finalPartCheck) {
@@ -201,53 +218,48 @@ class InventreeApiService {
                return { pk: partId, newTotalStock: finalPartCheck.in_stock };
            }
        } catch (finalFetchError) {
-            logger.error('InventreeApiService', `Failed to fetch final part details for ${partId} even after catching primary error:`, finalFetchError);
+            logger.error('InventreeApiService', `Failed to fetch final part details for ${partId} even after catching primary error:`, { data: finalFetchError });
        }
-      return null; // Return null if adjustment failed and final fetch also failed
+      return null;
     }
   }
   
-  // Add other API methods as needed, e.g.,
-  // async getCategories(): Promise<any[]> { ... }
-  // async getStockLocations(): Promise<any[]> { ... }
-
   async getPartParameters(partId: number): Promise<ParameterDetail[] | null> {
+    // console.log(`[TEMP LOG - inventree-api-service.ts:191] getPartParameters called with partId: ${partId}`);
     logger.log('InventreeApiService', `Fetching parameters for part ${partId}...`);
     try {
-      // The API returns a list of PartParameter objects
-      return await this.request<ParameterDetail[]>(`part/parameter/?part=${partId}`);
+      return await this.request<ParameterDetail[]>('part/parameter/', { params: { part: partId } });
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to get parameters for part ${partId}:`, error);
+      // console.error(`[TEMP LOG - inventree-api-service.ts:197] getPartParameters FAILED for partId ${partId}. Error:`, error);
+      logger.error('InventreeApiService', `Failed to get parameters for part ${partId}:`, { data: error });
       return null;
     }
   }
 
   async updatePartParameter(parameterInstancePk: number, newValue: string): Promise<ParameterDetail | null> {
+    // console.log(`[TEMP LOG - inventree-api-service.ts:205] updatePartParameter called with PK: ${parameterInstancePk}, Value: "${newValue}"`);
     logger.log('InventreeApiService', `Updating parameter ${parameterInstancePk} to value: "${newValue}"...`);
     try {
       return await this.request<ParameterDetail>(`part/parameter/${parameterInstancePk}/`, {
         method: 'PATCH',
-        body: JSON.stringify({ data: newValue }),
+        data: { data: newValue },
       });
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to update parameter ${parameterInstancePk}:`, error);
+      logger.error('InventreeApiService', `Failed to update parameter ${parameterInstancePk}:`, { data: error });
       return null;
     }
   }
 
-  // --- Robust Stock Adjustment Methods (Phase R3.4) ---
-
   async getStockItemsForPart(partId: number, locationId?: number): Promise<StockItem[] | null> {
     logger.log('InventreeApiService', `Fetching stock items for part ${partId}${locationId ? ` at location ${locationId}` : ''}...`);
     try {
-      const params = new URLSearchParams({ part: String(partId) });
+      const params: Record<string, any> = { part: String(partId) };
       if (locationId !== undefined) {
-        params.set('location', String(locationId));
+        params.location = String(locationId);
       }
-      // Use the internal request helper
-      return await this.request<StockItem[]>(`stock/?${params.toString()}`);
+      return await this.request<StockItem[]>('stock/', { params: params });
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to get stock items for part ${partId}:`, error);
+      logger.error('InventreeApiService', `Failed to get stock items for part ${partId}:`, { data: error });
       return null;
     }
   }
@@ -257,8 +269,8 @@ class InventreeApiService {
     try {
       const payload: any = {
         part: partId,
-        quantity: String(quantity), // Ensure quantity is sent as string
-        status: 10, // Default to OK status = 10 in InvenTree
+        quantity: String(quantity),
+        status: 10, 
       };
       if (locationId !== undefined) {
         payload.location = locationId;
@@ -266,13 +278,12 @@ class InventreeApiService {
       if (notes) {
         payload.notes = notes;
       }
-      // Use the internal request helper
       return await this.request<StockItem>('stock/', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        data: payload,
       });
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to add stock for part ${partId}:`, error);
+      logger.error('InventreeApiService', `Failed to add stock for part ${partId}:`, { data: error });
       return null;
     }
   }
@@ -281,24 +292,21 @@ class InventreeApiService {
     logger.log('InventreeApiService', `Removing stock for items: ${stockItems.map(si => `PK: ${si.pk}, Qty: ${si.quantity}`).join('; ')}. Notes: "${notes}"`);
     if (stockItems.length === 0) {
         logger.warn('InventreeApiService', 'removeStockItems called with empty stockItems array.');
-        return { success: true, message: 'No items to remove.' }; // Indicate success as nothing needed doing
+        return { success: true, message: 'No items to remove.' };
     }
     try {
       const payload: any = {
-        // Ensure quantity is stringified
         items: stockItems.map(item => ({ pk: item.pk, quantity: String(item.quantity) })),
       };
       if (notes) {
         payload.notes = notes;
       }
-      // Use the internal request helper
-      // Endpoint is /api/stock/remove/
       return await this.request<any>('stock/remove/', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        data: payload,
       });
     } catch (error) {
-      logger.error('InventreeApiService', 'Failed to remove stock items:', { stockItems, error });
+      logger.error('InventreeApiService', 'Failed to remove stock items:', { data: { stockItems, error } });
       return null;
     }
   }
@@ -306,38 +314,32 @@ class InventreeApiService {
   async deleteStockItem(stockItemPk: number): Promise<void | null> {
     logger.log('InventreeApiService', `Deleting stock item PK ${stockItemPk}...`);
     try {
-      // Use the internal request helper, endpoint is /api/stock/{pk}/
-      // DELETE requests usually don't have a body and often return 204 No Content on success.
       await this.request<void>(`stock/${stockItemPk}/`, {
         method: 'DELETE',
       });
-      return; // Explicitly return void on success (or handle 204 specifically in request helper)
+      return;
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to delete stock item ${stockItemPk}:`, error);
-      return null; // Indicate failure
+      logger.error('InventreeApiService', `Failed to delete stock item ${stockItemPk}:`, { data: error });
+      return null;
     }
   }
 
-  // Placeholder for consolidateStockForPart
   async consolidateStockForPart(partId: number, targetLocationId?: number, notes?: string): Promise<StockItem | null> {
     logger.log('InventreeApiService', `Consolidating stock for part ${partId}${targetLocationId !== undefined ? ` to location ${targetLocationId}` : ''}...`);
     try {
-      // 1. Get all existing stock items for the part
       const existingStockItems = await this.getStockItemsForPart(partId);
       if (!existingStockItems) {
           logger.error('InventreeApiService', `Failed to fetch existing stock items for part ${partId} during consolidation.`);
-          return null; // Error fetching items
+          return null;
       }
       if (existingStockItems.length === 0) {
         logger.log('InventreeApiService', `No stock items found for part ${partId} to consolidate.`);
-        // Nothing to consolidate, return null as no *new* consolidated item was created.
         return null;
       }
 
-      // 2. Calculate total quantity
       let totalQuantity = 0;
       existingStockItems.forEach(item => {
-        const itemQuantity = parseFloat(item.quantity); // Handle string quantity
+        const itemQuantity = parseFloat(item.quantity);
         if (!isNaN(itemQuantity)) {
             totalQuantity += itemQuantity;
         } else {
@@ -347,41 +349,31 @@ class InventreeApiService {
 
       const consolidatedNotes = notes || `Consolidated from ${existingStockItems.length} item(s).`;
       const itemPksToDelete = existingStockItems.map(item => item.pk);
-
-      // Determine the location for the new consolidated stock item
-      // Priority: targetLocationId > first item's location > undefined (error)
       let determinedLocationId: number | undefined | null = targetLocationId;
       if (determinedLocationId === undefined) {
-          determinedLocationId = existingStockItems[0]?.location; // Use optional chaining
+          determinedLocationId = existingStockItems[0]?.location;
       }
-      // Convert null location (meaning top-level/no specific location) to undefined for addStockItem if necessary,
-      // but keep it as number if it's a valid location PK.
       const newLocationId = determinedLocationId === null ? undefined : determinedLocationId;
 
-      if (newLocationId === undefined && totalQuantity > 0) { // Only require location if adding stock
-          // Attempt to find *any* location from the items if target wasn't specified and first item had no location
+      if (newLocationId === undefined && totalQuantity > 0) {
           const firstLocatedItem = existingStockItems.find(item => item.location !== null && item.location !== undefined);
-          if (firstLocatedItem) {
+          if (firstLocatedItem && firstLocatedItem.location !== null && firstLocatedItem.location !== undefined) {
                logger.warn('InventreeApiService', `No targetLocationId provided and first item had no location. Using location ${firstLocatedItem.location} from item ${firstLocatedItem.pk}.`);
                determinedLocationId = firstLocatedItem.location;
-               // newLocationId = determinedLocationId; // Re-assign - done above
           } else {
                logger.error('InventreeApiService', `Cannot determine location for consolidated stock for part ${partId}. Provide targetLocationId or ensure at least one existing item has a location.`);
-               return null; // Fail if no location can be determined and stock needs to be added
+               return null;
           }
       }
 
-      // 3. Create ONE new stock item with the total quantity (if > 0)
       let newStockItem: StockItem | null = null;
       if (totalQuantity > 0) {
           newStockItem = await this.addStockItem(partId, totalQuantity, newLocationId, consolidatedNotes);
           if (!newStockItem) {
             logger.error('InventreeApiService', `Failed to create new consolidated stock item for part ${partId}. Aborting consolidation.`);
-            // Don't delete old items if we couldn't create the new one
             return null;
           }
           logger.log('InventreeApiService', `Created new consolidated stock item PK: ${newStockItem.pk}`);
-          // Ensure we don't delete the item we just created if it somehow shared a PK (highly unlikely)
           const indexOfNew = itemPksToDelete.indexOf(newStockItem.pk);
           if (indexOfNew > -1) {
               itemPksToDelete.splice(indexOfNew, 1);
@@ -390,31 +382,27 @@ class InventreeApiService {
            logger.log('InventreeApiService', `Total quantity is 0 for part ${partId}. Proceeding to delete old items.`);
       }
 
-      // 4. Delete all the old stock items
       logger.log('InventreeApiService', `Deleting ${itemPksToDelete.length} old stock items for part ${partId}: [${itemPksToDelete.join(', ')}]`);
       let deleteErrors = 0;
       for (const pk of itemPksToDelete) {
         const deleteResult = await this.deleteStockItem(pk);
-        if (deleteResult === null) { // deleteStockItem returns null on failure
+        if (deleteResult === null) {
             logger.warn('InventreeApiService', `Failed to delete old stock item ${pk} during consolidation.`);
             deleteErrors++;
-            // Continue deleting others even if one fails
         }
       }
 
       if (deleteErrors > 0) {
            logger.warn('InventreeApiService', `Consolidation completed for part ${partId}, but ${deleteErrors} old stock items failed to delete.`);
       }
-
       logger.log('InventreeApiService', `Successfully consolidated stock for part ${partId}. Returning ${newStockItem ? `new item PK ${newStockItem.pk}` : 'null (zero stock)'}.`);
-      return newStockItem; // Return the new item (or null if total quantity was 0)
+      return newStockItem;
 
     } catch (error) {
-      logger.error('InventreeApiService', `Failed to consolidate stock for part ${partId}:`, error);
+      logger.error('InventreeApiService', `Failed to consolidate stock for part ${partId}:`, { data: error });
       return null;
     }
   }
 }
 
-// Export a singleton instance
 export const inventreeApiService = new InventreeApiService(); 

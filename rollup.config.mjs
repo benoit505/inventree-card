@@ -6,6 +6,8 @@ import terser from '@rollup/plugin-terser';
 import serve from 'rollup-plugin-serve';
 import json from '@rollup/plugin-json';
 import replace from '@rollup/plugin-replace';
+import postcss from 'rollup-plugin-postcss';
+import dts from 'rollup-plugin-dts';
 
 const dev = process.env.ROLLUP_WATCH;
 
@@ -31,6 +33,11 @@ const sharedPlugins = [
     inlineSources: true,
   }),
   json(),
+  postcss({
+    extract: true,
+    minimize: !dev,
+    sourceMap: dev ? 'inline' : false,
+  }),
   babel({
     exclude: 'node_modules/**',
     babelHelpers: 'bundled',
@@ -73,21 +80,11 @@ export default [
       warn(warning);
     }
   },
-  // Editor bundle as a separate build
+  // DTS bundle
   {
-    input: 'src/editors/editor.ts',
-    output: {
-      dir: 'dist',
-      format: 'es',
-      entryFileNames: 'editor.js',
-      sourcemap: true
-    },
-    external: ['lit', 'lit/decorators.js', 'custom-card-helpers'],
-    plugins: sharedPlugins,
-    onwarn(warning, warn) {
-      // Skip certain warnings
-      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
-      warn(warning);
-    }
+    input: 'dist/tmp/index.d.ts',
+    output: [{ file: 'dist/inventree-card.d.ts', format: 'es' }],
+    plugins: [dts()],
+    external: [/\.css$/],
   }
 ];

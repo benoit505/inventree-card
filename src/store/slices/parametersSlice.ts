@@ -1,42 +1,13 @@
-import { createSlice, PayloadAction, ActionReducerMapBuilder } from '@reduxjs/toolkit';
-import { ParameterAction, ParameterCondition, InventreeCardConfig, InventreeItem, ParameterDetail, ParameterConfig, ParameterOperator, ParameterActionType } from '../../types';
+import { createSlice, PayloadAction, ActionReducerMapBuilder, current } from '@reduxjs/toolkit';
+import { ParameterAction, InventreeCardConfig, InventreeItem, ParameterDetail, ParameterConfig, ParameterOperator, ParameterActionType, ConditionalPartEffect, ParameterCondition } from '../../types';
 import { RootState } from '../index';
 import { fetchParametersForPart, updateParameterValue, fetchParametersForReferencedParts } from '../thunks/parameterThunks';
 import { Logger } from '../../utils/logger';
 
 const logger = Logger.getInstance();
 
-// Interface for a single processed condition
-export interface ProcessedCondition {
-  id: string; // A unique ID for this condition (e.g., derived from the raw string or a simple index)
-  rawConditionString: string; // The original condition string from config
-  sourceParameterString: string; // The 'parameter' field from the original ParameterCondition object
-  partId: number; // e.g., 145. Now guaranteed to be a number due to previous thunk changes.
-  parameterName: string; // e.g., "microwavables"
-  operator: ParameterOperator;
-  valueToCompare: any;  // e.g., true (boolean), "active" (string), 10 (number)
-  action: ParameterActionType;
-  actionValue: string;
-  targetPartIds?: number[] | string; // UPDATED: Mirrored from ParameterCondition, can be array or wildcard string
-}
-
-// NEW: Interface for the effects applied by conditions
-export interface ConditionalPartEffect {
-  isVisible?: boolean;
-  highlight?: string; // e.g., color code
-  textColor?: string; // e.g., color code
-  border?: string; // e.g., CSS border string like "2px solid red"
-  // Add other effect types as needed based on ParameterActionType
-  icon?: string; // mdi icon name
-  badge?: string; // text for a badge
-  // sort, priority, show_section might be handled differently or also influence this object
-}
-
 interface ParametersState {
-  conditions: Record<string, ParameterCondition[]>; // Raw conditions from config, keyed by entityId (legacy)
-  definedConditions: ParameterCondition[]; // Stores active ParameterCondition objects from the config
-  processedConditions: ProcessedCondition[]; // Stores parsed and structured conditions
-  conditionalPartEffects: Record<number, ConditionalPartEffect>; // NEW: Stores effects for each partId
+  conditionalPartEffects: Record<number, ConditionalPartEffect>;
   actions: Record<string, ParameterAction[]>;
   parameterValues: Record<number, Record<string, ParameterDetail>>;
   parameterLoadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
@@ -52,10 +23,7 @@ interface ParametersState {
 }
 
 const initialState: ParametersState = {
-  conditions: {},
-  definedConditions: [],
-  processedConditions: [],
-  conditionalPartEffects: {}, // NEW: Initialize as empty object
+  conditionalPartEffects: {},
   actions: {},
   parameterValues: {},
   parameterLoadingStatus: {},
@@ -74,20 +42,7 @@ const parametersSlice = createSlice({
   name: 'parameters',
   initialState,
   reducers: {
-    setConditions(state: ParametersState, action: PayloadAction<{ entityId: string, conditions: ParameterCondition[] }>) {
-      const { entityId, conditions } = action.payload;
-      state.conditions[entityId] = conditions;
-    },
-    setDefinedConditions(state: ParametersState, action: PayloadAction<ParameterCondition[]>) {
-      state.definedConditions = action.payload;
-      logger.log('parametersSlice', 'Defined conditions have been set.', { count: action.payload.length, level: 'debug' });
-    },
-    setProcessedConditions(state: ParametersState, action: PayloadAction<ProcessedCondition[]>) {
-      state.processedConditions = action.payload;
-      logger.log('parametersSlice', 'Processed conditions have been set.', { count: action.payload.length, level: 'debug' });
-    },
     setConditionalPartEffectsBatch(state: ParametersState, action: PayloadAction<Record<number, ConditionalPartEffect>>) {
-      // Replace the entire effects object. The thunk will calculate the complete new state.
       state.conditionalPartEffects = action.payload;
       logger.log('parametersSlice', 'Conditional part effects batch updated.', { count: Object.keys(action.payload).length, level: 'debug' });
     },
@@ -297,7 +252,7 @@ const parametersSlice = createSlice({
       })
       .addCase(fetchParametersForReferencedParts.pending, (state: ParametersState, action) => {
         logger.log('parametersSlice', 'Handling fetchParametersForReferencedParts.pending', { level: 'debug', subsystem: 'thunkStatus'});
-        const partIdsFromThunkArg = action.meta.arg as number[]; // Explicitly type here
+        const partIdsFromThunkArg = action.meta.arg as number[];
         logger.log('parametersSlice', `- Pending for partIds from thunk argument: ${partIdsFromThunkArg.join(', ')}`, { level: 'debug', subsystem: 'thunkStatus', data: partIdsFromThunkArg });
         
         partIdsFromThunkArg.forEach((partId: number) => { 
@@ -397,9 +352,6 @@ const parametersSlice = createSlice({
 });
 
 export const { 
-  setConditions, 
-  setDefinedConditions,
-  setProcessedConditions,
   setConditionalPartEffectsBatch,
   clearConditionalPartEffects,
   setActions, 
@@ -415,7 +367,6 @@ export const {
   updateParameterForPart
 } = parametersSlice.actions;
 
-export const selectConditions = (state: RootState, entityId: string) => state.parameters.conditions[entityId] || [];
 export const selectActions = (state: RootState, entityId: string) => state.parameters.actions[entityId] || [];
 
 export const selectParameterLoadingStatus = (state: RootState, partId: number): 'idle' | 'loading' | 'succeeded' | 'failed' => {
@@ -443,8 +394,6 @@ export const selectParameterValue = (state: RootState, partId: number, paramName
     return partParams?.[paramName]?.data ?? null;
 };
 
-export const selectDefinedConditions = (state: RootState): ParameterCondition[] => state.parameters.definedConditions;
-export const selectProcessedConditions = (state: RootState): ProcessedCondition[] => state.parameters.processedConditions;
 export const selectConditionalPartEffects = (state: RootState): Record<number, ConditionalPartEffect> => state.parameters.conditionalPartEffects;
 export const selectConditionalEffectForPart = (state: RootState, partId: number): ConditionalPartEffect | undefined => state.parameters.conditionalPartEffects[partId];
 

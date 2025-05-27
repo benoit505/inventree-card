@@ -27,23 +27,6 @@ logger.info('Index', 'Starting React module initialization', {
   subsystem: 'index' 
 });
 
-// Explicitly import editor to ensure it's registered
-import { InventreeCardEditor } from './editors/editor';
-
-// Register editor component explicitly to avoid dynamic loading issues
-try {
-  safelyRegisterElement(EDITOR_NAME, InventreeCardEditor);
-  logger.info('Index', `Registering editor component: ${EDITOR_NAME}`, {
-    category: 'initialization',
-    subsystem: 'components'
-  });
-} catch (error) {
-  logger.error('Index', `Error registering editor component: ${error}`, {
-    category: 'initialization',
-    subsystem: 'components'
-  });
-}
-
 // Import services (keep if they are used globally or by middleware)
 // import { CardController } from './services/card-controller';
 // import { WebSocketPlugin } from './services/websocket-plugin';
@@ -82,7 +65,7 @@ try {
 window.customCards = window.customCards || [];
 window.customCards.push({
     type: CARD_TYPE,
-    name: "InvenTree Card (React)",
+    name: "InvenTree Card",
     description: "Display and manage InvenTree inventory (React Version)",
     preview: true
 });

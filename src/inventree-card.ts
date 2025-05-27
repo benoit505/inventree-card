@@ -3,7 +3,8 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceCard, LovelaceCardEditor } from 'custom-card-helpers';
 import { Logger } from './utils/logger';
 import { InventreeCardConfig, CustomCardEntry } from './types';
-import { CARD_NAME, EDITOR_NAME, CARD_VERSION } from './core/constants';
+import { CARD_NAME, /* EDITOR_NAME, */ CARD_VERSION } from './core/constants'; // Comment out old EDITOR_NAME
+import { DEFAULT_CONFIG } from './core/settings'; // ADDED IMPORT
 import { store, RootState } from './store';
 import { trackUsage } from './utils/metrics-tracker';
 import { locatePartById, adjustPartStock } from './store/slices/partsSlice';
@@ -15,8 +16,8 @@ import ReactDOM from 'react-dom/client'; // Import createRoot
 import { ReactApp } from './react-app'; // Import our React root component
 // --- End React Imports ---
 
-// Import editor
-import { InventreeCardEditor } from './editors/editor';
+// Import the React Editor Host and its registration function
+import { REACT_EDITOR_TAG_NAME, defineReactEditorHost } from './editors/ReactEditorHost';
 
 // Remove Lit layout/component imports if they are no longer directly used by the Lit wrapper
 // import './components/grid/grid-layout'; 
@@ -44,14 +45,14 @@ declare global {
 }
 
 // Register custom card info
-if (!window.customCards) window.customCards = [] as CustomCardEntry[];
+// if (!window.customCards) window.customCards = [] as CustomCardEntry[]; // REMOVE
 
-window.customCards.push({
-    type: "inventree-card",
-    name: "InvenTree Card",
-    description: "A card for displaying InvenTree inventory data",
-    preview: true
-});
+// window.customCards.push({ // REMOVE BLOCK
+// type: "inventree-card", // REMOVE
+// name: "InvenTree Card", // REMOVE
+// description: "A card for displaying InvenTree inventory data", // REMOVE
+// preview: true // REMOVE
+// }); // REMOVE
 
 // Use LitElement directly
 const BaseClass = LitElement;
@@ -67,7 +68,7 @@ try {
         @state() private _hass!: HomeAssistant | null; 
         private logger: Logger = Logger.getInstance();
         private _cleanupFunctions: Array<() => void> = [];
-        private _entitySubscriptions: Map<string, () => void> = new Map();
+        // private _entitySubscriptions: Map<string, () => void> = new Map();
         private _websocketSubscriptions: Array<() => void> = [];
         // No need for manual store subscription if React handles it
         // private _unsubscribeStore: (() => void) | null = null; 
@@ -103,41 +104,63 @@ try {
         ];
 
         public static async getConfigElement(): Promise<LovelaceCardEditor> {
-            if (!customElements.get(EDITOR_NAME)) {
-                Logger.getInstance().log('InventreeCard', `Editor not registered yet, importing dynamically`, { category: 'card', subsystem: 'editor' });
-                try {
-                    await import('./editors/editor'); // Keep editor import
-                    Logger.getInstance().log('InventreeCard', `Dynamic editor import successful`, { category: 'card', subsystem: 'editor' });
-                } catch (error) {
-                    Logger.getInstance().error('InventreeCard', `Error importing editor component: ${error}`, { category: 'card', subsystem: 'editor', data: error });
-                }
+            const logger = Logger.getInstance(); // Local logger instance for static method
+            logger.log('InventreeCard', 'getConfigElement called for React editor', { category: 'card', subsystem: 'editor' });
+            
+            // Ensure the React editor host element is defined
+            defineReactEditorHost(); 
+            
+            logger.log('InventreeCard', `Creating editor element: ${REACT_EDITOR_TAG_NAME}`, { category: 'card', subsystem: 'editor' });
+            const editor = document.createElement(REACT_EDITOR_TAG_NAME) as LovelaceCardEditor;
+            if (!editor) {
+                logger.error('InventreeCard', `Failed to create editor element: ${REACT_EDITOR_TAG_NAME}`);
+                // Fallback or throw error
+                throw new Error(`Failed to create editor element: ${REACT_EDITOR_TAG_NAME}`);
             }
-            Logger.getInstance().log('InventreeCard', `Creating editor element: ${EDITOR_NAME}`, { category: 'card', subsystem: 'editor' });
-            const editor = document.createElement(EDITOR_NAME) as LovelaceCardEditor;
-            Logger.getInstance().log('InventreeCard', `Editor element created`, { category: 'card', subsystem: 'editor' });
+            logger.log('InventreeCard', `React editor host element created: ${REACT_EDITOR_TAG_NAME}`, { category: 'card', subsystem: 'editor' });
             return editor;
         }
 
         public static getStubConfig(hass: HomeAssistant): InventreeCardConfig {
-             // Keep stub config logic
+            // Find the first available InvenTree sensor
             const entity = Object.keys(hass.states).find(eid => 
                 eid.startsWith('sensor.') && 
                 hass.states[eid].attributes?.items !== undefined
             );
-            return {
-                type: `custom:${CARD_NAME}`,
-                entity: entity || '',
-                view_type: 'detail', // Default view
-                selected_entities: [],
-                // Keep other default config fields as needed by React components
-                display: { 
-                    show_header: true, 
-                    show_image: true, 
-                    // ... other display flags ...
-                },
-                direct_api: { enabled: false, url: '', api_key: '', method: 'websocket' },
-                // ... other config sections ...
-            };
+
+            // Start with a deep clone of DEFAULT_CONFIG to avoid modifying the original
+            // This ensures all nested objects from DEFAULT_CONFIG are present.
+            const stub = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as InventreeCardConfig;
+
+            // Override specific fields for a new card stub
+            stub.type = `custom:${CARD_NAME}`;
+            stub.name = 'InvenTree Card';
+            
+            // data_sources is guaranteed to exist from DEFAULT_CONFIG
+            stub.data_sources.inventree_hass_sensors = entity ? [entity] : [];
+
+            // Explicitly remove legacy top-level fields that might have been on an older DEFAULT_CONFIG version
+            // or if they were part of an even earlier stub structure before spreading DEFAULT_CONFIG.
+            // Most of these are now nested under layout_options or data_sources, or removed entirely.
+            delete (stub as any).entity; 
+            delete (stub as any).selected_entities;
+            delete (stub as any).columns; 
+            delete (stub as any).grid_spacing; 
+            delete (stub as any).item_height; 
+            delete (stub as any).parts_config; 
+            delete (stub as any).thumbnails; 
+            delete (stub as any).buttons; 
+            delete (stub as any).services; 
+            delete (stub as any).variant_groups;
+            delete (stub as any).variant_view_type;
+            delete (stub as any).auto_detect_variants;
+
+
+            // All other defaults (view_type, display, direct_api, layout_options, style, interactions, 
+            // conditional_logic, performance, parameters, debug flags) are correctly inherited 
+            // from the comprehensive DEFAULT_CONFIG.
+
+            return stub; // No need to cast again if stub is already InventreeCardConfig
         }
 
         public setConfig(config: InventreeCardConfig): void {
@@ -164,48 +187,48 @@ try {
 
         // Keep entity subscriptions if Lit wrapper needs to react to HASS state changes directly
         // Or remove if all state handling moves to React/Redux via hass prop
-        private _setupEntitySubscriptions(): void {
-            this._clearEntitySubscriptions();
-            if (!this._hass?.connection || (!this.config?.entity && (!this.config?.selected_entities || this.config.selected_entities.length === 0))) {
-                this.logger.warn('Card Lit', 'Cannot set up entity subscription - HASS connection or relevant entityIds missing.');
-                return;
-            }
+        // private _setupEntitySubscriptions(): void {
+        //     this._clearEntitySubscriptions();
+        //     if (!this._hass?.connection || (!this.config?.entity && (!this.config?.selected_entities || this.config.selected_entities.length === 0))) {
+        //         this.logger.warn('Card Lit', 'Cannot set up entity subscription - HASS connection or relevant entityIds missing.');
+        //         return;
+        //     }
 
-            const entityIdsToSubscribe = [this.config.entity, ...(this.config.selected_entities || [])].filter(Boolean) as string[];
-            const uniqueEntityIds = [...new Set(entityIdsToSubscribe)];
+        //     const entityIdsToSubscribe = [this.config.entity, ...(this.config.selected_entities || [])].filter(Boolean) as string[];
+        //     const uniqueEntityIds = [...new Set(entityIdsToSubscribe)];
 
-            uniqueEntityIds.forEach(entityId => {
-                if (this._entitySubscriptions.has(entityId)) return;
+        //     uniqueEntityIds.forEach(entityId => {
+        //         if (this._entitySubscriptions.has(entityId)) return;
 
-                const subscribe = async (idToSub: string) => {
-                    try {
-                        const unsub = await this._hass!.connection.subscribeEvents((event: any) => {
-                            if (event.data.entity_id === idToSub) {
-                                this.logger.log('Card Lit', `Entity ${idToSub} changed, triggering React update via hass prop.`);
-                                // Update the _hass property to trigger Lit's update cycle, which passes new hass to React
-                                this._hass = { ...this._hass! }; // Create new object reference
-                            }
-                        }, 'state_changed');
-                        this._entitySubscriptions.set(idToSub, unsub);
-                        this.logger.log('Card Lit', `Subscribed to HASS entity: ${idToSub}`);
-                    } catch (error) {
-                        this.logger.error('Card Lit', `Error subscribing to HASS entity ${idToSub}:`, error);
-                    }
-                };
-                subscribe(entityId);
-            });
-        }
+        //         const subscribe = async (idToSub: string) => {
+        //             try {
+        //                 const unsub = await this._hass!.connection.subscribeEvents((event: any) => {
+        //                     if (event.data.entity_id === idToSub) {
+        //                         this.logger.log('Card Lit', `Entity ${idToSub} changed, triggering React update via hass prop.`);
+        //                         // Update the _hass property to trigger Lit's update cycle, which passes new hass to React
+        //                         this._hass = { ...this._hass! }; // Create new object reference
+        //                     }
+        //                 }, 'state_changed');
+        //                 this._entitySubscriptions.set(idToSub, unsub);
+        //                 this.logger.log('Card Lit', `Subscribed to HASS entity: ${idToSub}`);
+        //             } catch (error) {
+        //                 this.logger.error('Card Lit', `Error subscribing to HASS entity ${idToSub}:`, error);
+        //             }
+        //         };
+        //         subscribe(entityId);
+        //     });
+        // }
         
-        private _clearEntitySubscriptions(): void {
-            // Keep cleanup logic
-            this.logger.log('Card Lit', 'Clearing HASS entity subscriptions');
-            for (const unsubscribe of this._entitySubscriptions.values()) {
-                if (typeof unsubscribe === 'function') {
-                    unsubscribe();
-                }
-            }
-            this._entitySubscriptions.clear();
-        }
+        // private _clearEntitySubscriptions(): void {
+        //     // Keep cleanup logic
+        //     this.logger.log('Card Lit', 'Clearing HASS entity subscriptions');
+        //     for (const unsubscribe of this._entitySubscriptions.values()) {
+        //         if (typeof unsubscribe === 'function') {
+        //             unsubscribe();
+        //         }
+        //     }
+        //     this._entitySubscriptions.clear();
+        // }
 
         // Render only the container for React
         protected render(): TemplateResult | void {
@@ -242,7 +265,7 @@ try {
             }
             // Re-setup subscriptions if config or hass changes and subscriptions are managed here
             if (changedProperties.has('config') || changedProperties.has('_hass')) {
-                 this._setupEntitySubscriptions(); 
+                // this._setupEntitySubscriptions(); 
             }
         }
 
@@ -320,7 +343,7 @@ try {
 
         private _cleanupEventListeners(): void {
             // Keep cleanup logic for subscriptions managed here
-            this._clearEntitySubscriptions();
+            // this._clearEntitySubscriptions();
             // Clear any other Lit-specific listeners
             this._websocketSubscriptions.forEach(unsubscribe => unsubscribe());
             this._websocketSubscriptions = [];
@@ -346,7 +369,7 @@ try {
                 // Ensure React is mounted/updated when connected
                 // this._mountOrUpdateReactApp(); // REMOVED: Initial mount should happen in firstUpdated
                 // Keep service/subscription setup if managed here
-                this._setupEntitySubscriptions();
+                // this._setupEntitySubscriptions();
                 // this._setupWebSocketSubscriptions(); 
                 // this._setupParameterEventListeners();
             } catch (error) {
@@ -432,16 +455,16 @@ try {
 }
 
 // Keep custom card registration
-window.customCards = window.customCards || [];
+// window.customCards = window.customCards || []; // REMOVE
 // Avoid duplicate push if script runs multiple times in dev
-if (!window.customCards.some(card => card.type === "inventree-card")) {
-    window.customCards.push({
-        type: "inventree-card",
-        name: "InvenTree Card",
-        description: "A card for displaying InvenTree inventory data",
-        preview: true
-    });
-}
+// if (!window.customCards.some(card => card.type === "inventree-card")) { // REMOVE BLOCK
+// window.customCards.push({ // REMOVE
+// type: "inventree-card", // REMOVE
+// name: "InvenTree Card", // REMOVE
+// description: "A card for displaying InvenTree inventory data", // REMOVE
+// preview: true // REMOVE
+// }); // REMOVE
+// } // REMOVE
 
 // Keep export, adjust if class name changed internally
 let InventreeCard: any;
