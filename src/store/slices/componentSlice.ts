@@ -7,7 +7,7 @@ export interface ComponentRecord {
   lastActive: number;
 }
 
-interface ComponentState {
+export interface ComponentState {
   registeredComponents: Record<string, ComponentRecord>;
 }
 

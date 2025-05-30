@@ -1,10 +1,15 @@
 import * as React from 'react';
-import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeItem, InventreeCardConfig } from '../../types';
-import { RootState } from '../../store';
-import { selectPartById } from '../../store/slices/partsSlice';
+import { InventreeItem, InventreeCardConfig, ParameterDetail } from '../../types';
 import { Logger } from '../../utils/logger';
+
+// ADDED: RTK Query hooks
+import { useGetPartQuery, useGetPartParametersQuery } from '../../store/apis/inventreeApi';
+
+// ADD: Import VisualEffect and selector
+import { VisualEffect, selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../store';
 
 // Import child React components
 import PartThumbnail from './PartThumbnail';
@@ -20,20 +25,51 @@ interface PartViewProps {
 const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
   const logger = React.useMemo(() => Logger.getInstance(), []);
 
-  const partData = useSelector((state: RootState) =>
-    partId ? selectPartById(state, partId) : undefined
+  // Fetch Part Data using RTK Query hook
+  const {
+    data: partData,
+    isLoading: isLoadingPart,
+    isError: isPartError,
+    error: partError,
+    isFetching: isFetchingPart,
+  } = useGetPartQuery(partId!, { skip: !partId });
+
+  // Fetch Parameters Data using RTK Query hook
+  const {
+    data: parametersData,
+    isLoading: isLoadingParameters,
+    isError: isParametersError,
+    error: parametersError,
+    isFetching: isFetchingParameters,
+  } = useGetPartParametersQuery(partId!, { skip: !partId || !partData });
+
+  // Visual effects selector remains the same
+  const visualEffect = useSelector((state: RootState) => 
+    partId ? selectVisualEffectForPart(state, partId) : undefined
   );
 
   React.useEffect(() => {
     if (partData) {
-      logger.log('PartView React', 'Received part data from Redux:', {
+      logger.log('PartView React', 'Part data from RTK Query:', {
         partId: partData?.pk,
         partName: partData?.name,
-        // partSource: partData?.source, // source might not be on InventreeItem
         hasPartData: !!partData,
+        isLoading: isLoadingPart,
+        isFetching: isFetchingPart,
+        isError: isPartError,
+        visualEffect,
       });
     }
-  }, [partData, logger]);
+    if (parametersData) {
+        logger.log('PartView React', 'Parameters data from RTK Query:', {
+            partId: partId,
+            parametersCount: parametersData?.length,
+            isLoading: isLoadingParameters,
+            isFetching: isFetchingParameters,
+            isError: isParametersError,
+        });
+    }
+  }, [partData, parametersData, isLoadingPart, isFetchingPart, isPartError, isLoadingParameters, isFetchingParameters, isParametersError, visualEffect, logger, partId]);
 
   const getStockStatus = React.useCallback((): 'none' | 'low' | 'good' => {
     if (!partData || typeof partData.in_stock !== 'number') return 'none';
@@ -51,9 +87,40 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
     }
   }, []);
 
-  if (!partData || !config) {
-    // logger.log('PartView React', 'Rendering null: No partData or config');
-    return null; // Or a loading/error state
+  // Handle Loading and Error states from RTK Query
+  if (!config) {
+    return <div>Configuration is missing.</div>;
+  }
+
+  if (isLoadingPart || (isFetchingPart && !partData)) { // Show loading if initially loading or fetching without data yet
+    return <div>Loading part details...</div>;
+  }
+
+  if (isPartError) {
+    // Attempt to get a more specific error message if available
+    let errorMessage = 'Unknown error';
+    if (partError) {
+        if ('status' in partError) { // FetchBaseQueryError
+            const fetchError = partError as { status?: number | string; data?: any; error?: string };
+            if (typeof fetchError.data === 'string') errorMessage = fetchError.data;
+            else if (fetchError.data && typeof fetchError.data === 'object' && fetchError.data.message) errorMessage = fetchError.data.message;
+            else if (fetchError.error) errorMessage = fetchError.error;
+            else errorMessage = `API error status: ${fetchError.status}`;
+        } else { // SerializedError
+            errorMessage = (partError as { message?: string }).message || 'Client error';
+        }
+    }
+    return <div>Error loading part: {errorMessage}</div>;
+  }
+
+  if (!partData) {
+    return <div>Part data not available.</div>;
+  }
+
+  // ADD: Check for visibility from visualEffect
+  if (visualEffect?.isVisible === false) {
+    logger.log('PartView React', `Part ${partId} is not visible due to conditional effect.`, { partId, visualEffect });
+    return null;
   }
 
   const display = config.display || {};
@@ -68,14 +135,17 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
     gap: '0.5rem',
     padding: '1rem',
     borderRadius: '4px', // var(--ha-card-border-radius, 4px)
-    background: 'white', // var(--ha-card-background, var(--card-background-color, white))
+    background: visualEffect?.highlight || 'white', // APPLY highlight
+    border: visualEffect?.border, // APPLY border
+    opacity: typeof visualEffect?.opacity === 'number' ? visualEffect.opacity : 1, // APPLY opacity
     // For the top border indicator:
-    borderTop: display.show_stock_status_border ? `3px solid ${stockIndicatorColor}` : undefined,
+    borderTop: display.show_stock_status_border && !visualEffect?.border ? `3px solid ${stockIndicatorColor}` : visualEffect?.border || undefined,
   };
 
   const partNameStyle: React.CSSProperties = {
     fontWeight: 'bold',
     fontSize: '1.1em',
+    color: visualEffect?.textColor, // APPLY textColor
   };
 
   const stockValueStyle: React.CSSProperties = {
@@ -84,7 +154,7 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
     borderRadius: '12px',
     fontSize: '0.9em',
     backgroundColor: config.display?.show_stock_status_colors ? stockIndicatorColor : 'transparent',
-    color: config.display?.show_stock_status_colors ? 'white' : 'inherit',
+    color: config.display?.show_stock_status_colors ? 'white' : visualEffect?.textColor || 'inherit', // APPLY textColor
   };
   
   const partContentStyle: React.CSSProperties = {
@@ -95,12 +165,19 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
 
   const detailsWrapperStyle: React.CSSProperties = {
     flexGrow: 1,
+    color: visualEffect?.textColor, // APPLY textColor to details wrapper
   };
+
+  const itemClasses = [
+    'part-view-container',
+    visualEffect?.priority ? `priority-${visualEffect.priority}` : '',
+    ...(visualEffect?.customClasses || [])
+  ].filter(Boolean).join(' ');
 
   // logger.log('PartView React', 'Rendering PartView for:', { partId: partData.pk, name: partData.name });
 
   return (
-    <div style={partContainerStyle}>
+    <div style={partContainerStyle} className={itemClasses}>
       {display.show_header !== false && (
         <div className="part-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {display.show_name !== false && <div style={partNameStyle}>{partData.name}</div>}
@@ -115,13 +192,26 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
       <div style={partContentStyle}>
         {display.show_image !== false && partData.thumbnail && (
           <div className="part-thumbnail-wrapper" style={{ width: '100px', height: '100px' /* Example size */ }}>
-            <PartThumbnail partData={partData} config={config} layout="detail" />
+            {/* Pass visualEffect down to PartThumbnail */}
+            <PartThumbnail partData={partData} config={config} layout="detail" visualEffect={visualEffect} />
           </div>
         )}
 
         <div style={detailsWrapperStyle}>
-          {/* PartDetails will handle its own display toggles based on config */}
-          <PartDetails partId={partData.pk} config={config} />
+          {/* Pass part data and parameter data (and their states) to PartDetails */}
+          <PartDetails 
+            config={config} 
+            visualEffect={visualEffect}
+            name={partData.name}
+            description={partData.description}
+            inStock={partData.in_stock}
+            units={partData.units}
+            minimumStock={partData.minimum_stock}
+            parametersData={parametersData}
+            isLoadingParameters={isLoadingParameters || (isFetchingParameters && !parametersData)} // Consider fetching as loading too
+            isParametersError={isParametersError}
+            parametersError={parametersError}
+          />
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { InventreeItem, InventreeCardConfig } from '../../types';
+import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 
 interface PartThumbnailProps {
   partData?: InventreeItem;
@@ -7,12 +8,17 @@ interface PartThumbnailProps {
   layout?: 'grid' | 'list' | 'detail';
   icon?: string; // From VisualModifiers
   badge?: string | number; // From VisualModifiers
+  visualEffect?: VisualEffect;
 }
 
-const PartThumbnail: React.FC<PartThumbnailProps> = ({ partData, config, layout: propLayout, icon, badge }) => {
+const PartThumbnail: React.FC<PartThumbnailProps> = ({ partData, config, layout: propLayout, icon: directIcon, badge: directBadge, visualEffect }) => {
   if (!partData) {
     return null;
   }
+
+  // Determine icon and badge from visualEffect or direct props
+  const icon = visualEffect?.icon || directIcon;
+  const badge = visualEffect?.badge || directBadge;
 
   // Determine layout: prop > config.view_type > default ('grid')
   const layout = propLayout || (config?.view_type as any) || 'grid';

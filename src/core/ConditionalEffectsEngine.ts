@@ -1,5 +1,6 @@
 import { RootState } from '../store';
-import { ConditionalPartEffect, ParameterDetail, InventreeItem, ParameterOperator, ParameterActionType, ProcessedCondition, ConditionRuleDefinition } from '../types';
+import { ParameterDetail, InventreeItem, ParameterOperator, ParameterActionType, ProcessedCondition, ConditionRuleDefinition, EffectDefinition } from '../types';
+import { VisualEffect } from '../store/slices/visualEffectsSlice';
 import { selectProcessedConditions as selectProcessedConditionsFromLogic } from '../store/slices/conditionalLogicSlice';
 import {
     selectGenericHaEntityState,
@@ -7,10 +8,46 @@ import {
     selectGenericHaEntityAttribute
 } from '../store/slices/genericHaStateSlice';
 import { Logger } from '../utils/logger';
-import { setConditionalPartEffectsBatch } from '../store/slices/parametersSlice';
-import { AppDispatch } from '../store'; // Assuming AppDispatch is exported from your store
+import { setVisualEffectsBatch } from '../store/slices/visualEffectsSlice';
+import { AppDispatch } from '../store';
+import { inventreeApi } from '../store/apis/inventreeApi';
 
 const logger = Logger.getInstance();
+
+// Helper function to map styleProperty from EffectDefinition to VisualEffect keys
+const mapStylePropertyToVisualEffectKey = (styleProperty: string): keyof VisualEffect | null => {
+    const lowerCaseProp = styleProperty.toLowerCase();
+    switch (lowerCaseProp) {
+        case 'highlight':
+        case 'backgroundcolor':
+            return 'highlight';
+        case 'textcolor':
+        case 'color':
+            return 'textColor';
+        case 'border':
+            return 'border';
+        case 'icon':
+            return 'icon';
+        case 'badge':
+            return 'badge';
+        case 'opacity':
+            return 'opacity';
+        case 'priority':
+            return 'priority';
+        // Add other direct mappings here if VisualEffect has more specific keys
+        // For example, if customClasses becomes a direct string property:
+        // case 'customclasses':
+        // return 'customClasses';
+        default:
+            // Check if it's a direct match to a VisualEffect key (for less common ones)
+            const directMatch = styleProperty as keyof VisualEffect;
+            const sampleVisualEffect: VisualEffect = { isVisible: true }; // Dummy object to check keys
+            if (Object.keys(sampleVisualEffect).includes(directMatch)) {
+                return directMatch;
+            }
+            return null;
+    }
+};
 
 export class ConditionalEffectsEngine {
     private dispatch: AppDispatch;
@@ -28,6 +65,9 @@ export class ConditionalEffectsEngine {
         const allParametersByPartId = state.parameters.parameterValues;
         const allPartsById = state.parts.partsById;
 
+        // TEMP LOG 1: Log processedConditions
+        // console.log('[TEMP LOG CEE] Initial processedConditions:', JSON.parse(JSON.stringify(conditions || [])));
+
         logger.log('[ConditionalEffectsEngine]', 'evaluateAndApplyEffects - START.', {
             level: 'debug',
             processedConditionsCount: conditions.length,
@@ -36,22 +76,22 @@ export class ConditionalEffectsEngine {
 
         if (!conditions || conditions.length === 0) {
             logger.log('ConditionalEffectsEngine', 'No processed conditions to evaluate. Clearing existing effects.');
-            this.dispatch(setConditionalPartEffectsBatch({}));
+            this.dispatch(setVisualEffectsBatch({}));
             return;
         }
 
-        const newEffects: Record<number, ConditionalPartEffect> = {};
+        const newEffects: Record<number, VisualEffect> = {};
 
-        const mergeEffect = (partId: number, effect: Partial<ConditionalPartEffect>) => {
+        const mergeEffect = (partId: number, effect: Partial<VisualEffect>) => {
             if (!newEffects[partId]) {
-                newEffects[partId] = {};
+                newEffects[partId] = {} as VisualEffect;
             }
             newEffects[partId] = { ...newEffects[partId], ...effect };
         };
 
-        for (const processedCond of conditions) { // Renamed to avoid confusion with 'condition' variable inside loop
+        for (const processedCond of conditions) {
             let conditionResult = false;
-            const rule = processedCond.originalRule; // Access the original rule definition
+            const rule = processedCond.originalRule;
 
             let targetPartPks: number[] = [];
             if (rule.targetPartIds === '*') {
@@ -66,8 +106,18 @@ export class ConditionalEffectsEngine {
             switch (processedCond.sourceType) {
                 case 'inventree_parameter':
                     if (processedCond.partId !== undefined && processedCond.parameterName) {
-                        const partParams = allParametersByPartId[processedCond.partId];
-                        valueToEvaluateAgainst = partParams?.[processedCond.parameterName]?.data;
+                        const selectGetPartParametersQuery = inventreeApi.endpoints.getPartParameters.select(processedCond.partId);
+                        const queryResult = selectGetPartParametersQuery(state);
+
+                        if (queryResult?.status === 'fulfilled' && queryResult.data) {
+                            const parameters: ParameterDetail[] = queryResult.data;
+                            const targetParameter = parameters.find(p => p.template_detail?.name === processedCond.parameterName);
+                            valueToEvaluateAgainst = targetParameter?.data;
+                            logger.log('[ConditionalEffectsEngine]', `Read from RTK Query: Part ${processedCond.partId}, Param ${processedCond.parameterName}, Value: ${valueToEvaluateAgainst}`, {level: 'debug'});
+                        } else {
+                            logger.warn('ConditionalEffectsEngine', `Parameters for part ${processedCond.partId} not fulfilled in RTK Query cache. Status: ${queryResult?.status}. Param: ${processedCond.parameterName}`, { queryStatus: queryResult?.status });
+                            valueToEvaluateAgainst = undefined; 
+                        }
                         sourceDescription += ` (Part PK: ${processedCond.partId}, Param: ${processedCond.parameterName})`;
                     } else {
                         logger.warn('ConditionalEffectsEngine', `Missing partId or parameterName for inventree_parameter type.`, { processedCond });
@@ -84,7 +134,11 @@ export class ConditionalEffectsEngine {
                     break;
                 case 'ha_entity_state':
                     if (processedCond.entityId) {
+                        // TEMP LOG 2a: Log entityId for ha_entity_state
+                        // console.log(`[TEMP LOG CEE] ha_entity_state: processing entityId: ${processedCond.entityId}`);
                         valueToEvaluateAgainst = selectGenericHaEntityActualState(state, processedCond.entityId);
+                        // TEMP LOG 2b: Log valueToEvaluateAgainst for ha_entity_state
+                        // console.log(`[TEMP LOG CEE] ha_entity_state: valueToEvaluateAgainst for ${processedCond.entityId}:`, valueToEvaluateAgainst);
                         sourceDescription += ` (Entity: ${processedCond.entityId}, State)`;
                     } else {
                         logger.warn('ConditionalEffectsEngine', `Missing entityId for ha_entity_state type.`, { processedCond });
@@ -105,6 +159,9 @@ export class ConditionalEffectsEngine {
                     break;
             }
             
+            // TEMP LOG 3: Log before operator switch
+            // console.log(`[TEMP LOG CEE] Before operator switch for rule on '${rule.parameter}': valueToEvaluateAgainst:`, valueToEvaluateAgainst, `operator: ${rule.operator}, rule.value:`, rule.value);
+
             if (valueToEvaluateAgainst === undefined || valueToEvaluateAgainst === null) {
                 switch (rule.operator) {
                     case 'exists': conditionResult = false; break;
@@ -120,29 +177,81 @@ export class ConditionalEffectsEngine {
                         break;
                 }
             } else {
-                switch (rule.operator) {
-                    case 'equals': conditionResult = String(valueToEvaluateAgainst) === String(rule.value); break;
-                    case 'not_equals': conditionResult = String(valueToEvaluateAgainst) !== String(rule.value); break;
-                    case 'contains': conditionResult = String(valueToEvaluateAgainst).includes(String(rule.value)); break;
-                    case 'exists': conditionResult = String(valueToEvaluateAgainst).trim() !== ''; break; 
-                    case 'is_empty': conditionResult = String(valueToEvaluateAgainst).trim() === ''; break; 
+                // Normalize the operator before the switch
+                let normalizedOperator: ParameterOperator = rule.operator; // Initially assume it might be a valid ParameterOperator string literal
+
+                // Check if rule.operator is a symbol and needs normalization
+                // Cast to string for the symbolic check, as rule.operator is typed ParameterOperator
+                const currentOperatorSymbol = String(rule.operator);
+                switch (currentOperatorSymbol) { 
+                    case '=': 
+                        normalizedOperator = 'equals'; 
+                        break;
+                    case '!=': 
+                        normalizedOperator = 'not_equals'; 
+                        break;
+                    case '>': 
+                        normalizedOperator = 'greater_than'; 
+                        break;
+                    case '<': 
+                        normalizedOperator = 'less_than'; 
+                        break;
+                    // If rule.operator was already 'equals', 'contains', etc., it will pass through here
+                    // and be assigned to normalizedOperator correctly in the initial declaration. 
+                    // Or, if it was a symbol not mapped above, it remains as is from initial assignment.
+                }
+
+                // If after potential normalization, it's still not a valid ParameterOperator type
+                // (e.g. a symbol we didn't map, or an invalid string from the start),
+                // we might need a final check or the switch default will catch it.
+                // For now, the switch on normalizedOperator will ensure type safety for its cases.
+
+                switch (normalizedOperator) { // Switch on the normalized operator
+                    case 'equals': 
+                        const valStr = String(valueToEvaluateAgainst);
+                        const ruleValStr = String(rule.value);
+                        conditionResult = valStr === ruleValStr;
+                        // console.log(`[TEMP LOG CEE] 'equals' operator: (Normalized from '${rule.operator}') '${valStr}' === '${ruleValStr}' -> ${conditionResult}`);
+                        break;
+                    case 'not_equals': 
+                        conditionResult = String(valueToEvaluateAgainst) !== String(rule.value); 
+                        // console.log(`[TEMP LOG CEE] 'not_equals' operator: (Normalized from '${rule.operator}') '${String(valueToEvaluateAgainst)}' !== '${String(rule.value)}' -> ${conditionResult}`);
+                        break;
+                    case 'contains': 
+                        conditionResult = String(valueToEvaluateAgainst).includes(String(rule.value)); 
+                        // console.log(`[TEMP LOG CEE] 'contains' operator: (Normalized from '${rule.operator}') '${String(valueToEvaluateAgainst)}'.includes('${String(rule.value)}') -> ${conditionResult}`);
+                        break;
+                    case 'exists': 
+                        conditionResult = String(valueToEvaluateAgainst).trim() !== ''; 
+                        // console.log(`[TEMP LOG CEE] 'exists' operator: (Normalized from '${rule.operator}') '${String(valueToEvaluateAgainst)}'.trim() !== '' -> ${conditionResult}`);
+                        break; 
+                    case 'is_empty': 
+                        conditionResult = String(valueToEvaluateAgainst).trim() === ''; 
+                        // console.log(`[TEMP LOG CEE] 'is_empty' operator: (Normalized from '${rule.operator}') '${String(valueToEvaluateAgainst)}'.trim() === '' -> ${conditionResult}`);
+                        break; 
                     case 'greater_than':
                         const numParamValGt = parseFloat(String(valueToEvaluateAgainst));
                         const numValToCompareGt = parseFloat(String(rule.value));
                         conditionResult = !isNaN(numParamValGt) && !isNaN(numValToCompareGt) && numParamValGt > numValToCompareGt;
+                        // console.log(`[TEMP LOG CEE] 'greater_than' operator: (Normalized from '${rule.operator}') ${numParamValGt} > ${numValToCompareGt} -> ${conditionResult}`);
                         break;
                     case 'less_than':
                         const numParamValLt = parseFloat(String(valueToEvaluateAgainst));
                         const numValToCompareLt = parseFloat(String(rule.value));
                         conditionResult = !isNaN(numParamValLt) && !isNaN(numValToCompareLt) && numParamValLt < numValToCompareLt;
+                        // console.log(`[TEMP LOG CEE] 'less_than' operator: (Normalized from '${rule.operator}') ${numParamValLt} < ${numValToCompareLt} -> ${conditionResult}`);
                         break;
                     default:
-                        logger.warn('ConditionalEffectsEngine', `Unknown operator: ${rule.operator}`, { rule, valueToEvaluateAgainst });
+                        // This default case should ideally not be reached if all operators are handled/normalized
+                        logger.warn('ConditionalEffectsEngine', `Unknown or unnormalized operator: ${normalizedOperator} (original: ${rule.operator})`, { rule, valueToEvaluateAgainst });
                         conditionResult = false;
                 }
             }
 
             if (conditionResult) {
+                // TEMP LOG 5a: Log condition MET
+                // console.log(`[TEMP LOG CEE] Condition MET for rule on '${rule.parameter}'`, { rule_id: processedCond.id, value_evaluated: valueToEvaluateAgainst, targetPartPks });
+
                 logger.log('ConditionalEffectsEngine', `Condition MET: ${sourceDescription}`, {
                     level: 'debug',
                     conditionId: processedCond.id,
@@ -151,31 +260,95 @@ export class ConditionalEffectsEngine {
                     targetPartPks
                 });
 
-                for (const pk of targetPartPks) {
-                    let effectToApply: Partial<ConditionalPartEffect> = {};
-                    switch (rule.action) {
-                        case 'filter': effectToApply.isVisible = rule.action_value === 'show'; break;
-                        case 'highlight': effectToApply.highlight = rule.action_value; break;
-                        case 'text_color': effectToApply.textColor = rule.action_value; break;
-                        case 'border': effectToApply.border = rule.action_value; break;
-                        case 'icon': effectToApply.icon = rule.action_value; break;
-                        case 'badge': effectToApply.badge = rule.action_value; break;
-                        case 'priority': effectToApply.priority = rule.action_value; break;
-                        case 'sort':
-                        case 'show_section':
-                            logger.log('ConditionalEffectsEngine', `Action type '${rule.action}' requires specific handling not yet implemented.`, { rule });
-                            break;
-                        default: logger.warn('ConditionalEffectsEngine', `Unknown action type: ${rule.action}`, { rule });
-                    }
+                if (processedCond.effects && Array.isArray(processedCond.effects)) {
+                    for (const effectDef of processedCond.effects) {
+                        // console.log(`[TEMP LOG CEE] Processing effectDef:`, JSON.parse(JSON.stringify(effectDef)));
+                        let effectToApply: Partial<VisualEffect> = {};
+                        let currentTargetPartPks: number[] = [];
 
-                    if (Object.keys(effectToApply).length > 0) {
-                        mergeEffect(pk, effectToApply);
-                    } else {
-                         logger.warn('[ConditionalEffectsEngine]', 'effectToApply is empty, no effect merged.', {
-                            level: 'debug',
-                            conditionId: processedCond.id, action: rule.action, actionValue: rule.action_value, targetPartPks
-                        });
+                        // Log the effectDef being processed
+                        // logger.log('CEE_EFFECT_DEBUG', 'Processing effectDef:', { data: effectDef });
+
+                        // Determine target part PKs for this specific effect
+                        if (effectDef.targetPartPks) {
+                            if (typeof effectDef.targetPartPks === 'string') {
+                                if (effectDef.targetPartPks.toLowerCase() === 'all_loaded') {
+                                    currentTargetPartPks = targetPartPks;
+                                } else {
+                                    // Assuming comma-separated string of PKs
+                                    currentTargetPartPks = effectDef.targetPartPks.split(',').map(pk => parseInt(pk.trim(), 10)).filter(pk => !isNaN(pk));
+                                }
+                            } else if (Array.isArray(effectDef.targetPartPks)) {
+                                currentTargetPartPks = effectDef.targetPartPks;
+                            }
+                        } else if (targetPartPks && targetPartPks.length > 0) {
+                            // Fallback to rule-level targetPartPks if effect-specific one is not defined
+                            currentTargetPartPks = targetPartPks;
+                        } else if (processedCond.partId !== undefined) { // Check if partId is defined
+                            // Fallback to the partId from the condition if it's a part-specific condition
+                            currentTargetPartPks = [processedCond.partId];
+                        }
+
+                        // Log resolved currentTargetPartPks
+                        // logger.log('CEE_EFFECT_DEBUG', 'Resolved currentTargetPartPks:', { data: currentTargetPartPks });
+
+                        if (currentTargetPartPks.length === 0 && (effectDef.type === 'set_style' || effectDef.type === 'set_visibility')) {
+                            logger.warn('CEE', `No target part PKs resolved for effect type '${effectDef.type}' and no fallback. Effect for rule '${rule.name || processedCond.id}' might not apply as expected. Effect ID: ${effectDef.id}`);
+                        }
+
+                        switch (effectDef.type) {
+                            case 'set_visibility':
+                                if (typeof effectDef.isVisible === 'boolean') {
+                                    effectToApply.isVisible = effectDef.isVisible;
+                                }
+                                break;
+                            case 'set_style':
+                                if (effectDef.styleProperty && effectDef.styleValue !== undefined) {
+                                    // Map editor-friendly styleProperty to VisualEffect keys
+                                    const visualEffectKey = mapStylePropertyToVisualEffectKey(effectDef.styleProperty); // Removed cast
+                                    if (visualEffectKey) {
+                                        // Special handling for opacity as it needs to be a number
+                                        if (visualEffectKey === 'opacity') {
+                                            const opacityVal = parseFloat(effectDef.styleValue);
+                                            if (!isNaN(opacityVal)) {
+                                                (effectToApply as any)[visualEffectKey] = opacityVal;
+                                            } else {
+                                                logger.warn('CEE', `Invalid opacity value: ${effectDef.styleValue} for effect ID: ${effectDef.id}. Must be a number.`);
+                                            }
+                                        } else {
+                                            (effectToApply as any)[visualEffectKey] = effectDef.styleValue;
+                                        }
+                                    } else {
+                                        logger.warn('CEE', `Unknown styleProperty: ${effectDef.styleProperty} in effect ID: ${effectDef.id}`);
+                                    }
+                                }
+                                break;
+                            default:
+                                logger.warn('ConditionalEffectsEngine', `Unknown effect type: ${effectDef.type}`, { effectDef });
+                        }
+
+                        // console.log(`[TEMP LOG CEE] Constructed effectToApply:`, JSON.parse(JSON.stringify(effectToApply)), `for targetPartPks:`, targetPartPks);
+                        if (Object.keys(effectToApply).length > 0 && currentTargetPartPks.length > 0) {
+                            // Log effectToApply and currentTargetPartPks before mergeEffect
+                            // logger.log('CEE_EFFECT_DEBUG', 'Applying effect:', { data: { effectToApply, pks: currentTargetPartPks } });
+                            for (const pk of currentTargetPartPks) {
+                                mergeEffect(pk, effectToApply);
+                            }
+                        } else {
+                            logger.warn('[ConditionalEffectsEngine]', 'effectToApply was empty for an effectDef, no effect merged.', {
+                                level: 'debug',
+                                conditionId: processedCond.id,
+                                effectDef,
+                                targetPartPks
+                            });
+                        }
                     }
+                } else {
+                     logger.warn('[ConditionalEffectsEngine]', 'Condition met, but processedCond.effects is missing or not an array.', {
+                        level: 'debug',
+                        conditionId: processedCond.id,
+                        originalRule: rule
+                    });
                 }
             } else {
                  logger.log('ConditionalEffectsEngine', 'Condition NOT MET', {
@@ -185,8 +358,11 @@ export class ConditionalEffectsEngine {
             }
         }
 
-        logger.log('[ConditionalEffectsEngine]', 'Final newEffects before dispatching setConditionalPartEffectsBatch', {level: 'debug', newEffects });
-        this.dispatch(setConditionalPartEffectsBatch(newEffects));
+        // TEMP LOG 6: Log final newEffects
+        // console.log('[TEMP LOG CEE] Final newEffects before dispatch:', JSON.parse(JSON.stringify(newEffects)));
+
+        logger.log('[ConditionalEffectsEngine]', 'Final newEffects before dispatching setVisualEffectsBatch', {level: 'debug', newEffects: newEffects });
+        this.dispatch(setVisualEffectsBatch(newEffects));
         logger.log('ConditionalEffectsEngine', 'Finished evaluating conditions and dispatched effects batch.', { newEffectsCount: Object.keys(newEffects).length });
     }
 }

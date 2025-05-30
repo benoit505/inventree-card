@@ -1,10 +1,15 @@
 import * as React from 'react';
 import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, ConditionalPartEffect } from '../../types';
+import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail } from '../../types';
+import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { RootState } from '../../store';
-import { selectConditionalEffectForPart } from '../../store/slices/parametersSlice';
+import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
 import { Logger } from '../../utils/logger';
+
+import { useGetPartParametersQuery, useUpdatePartParameterMutation } from '../../store/apis/inventreeApi';
+import { SerializedError } from '@reduxjs/toolkit';
+import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 
 import PartThumbnail from '../part/PartThumbnail';
 import PartButtons from '../part/PartButtons';
@@ -13,16 +18,14 @@ interface ListItemProps {
   part: InventreeItem;
   config: InventreeCardConfig;
   hass?: HomeAssistant;
-  // Add any interaction handlers if they are passed down, e.g., for locate or parameter actions
+  parametersDisplayEnabled: boolean;
   onLocate?: (partId: number) => void;
-  onParameterAction?: (partId: number, action: ParameterAction) => void;
-  // If parameter actions are globally defined or fetched by ListLayout, they can be passed too
   parameterActions?: ParameterAction[]; 
 }
 
 const logger = Logger.getInstance();
 
-const getListItemContainerStyle = (modifiers?: ConditionalPartEffect, isLocating?: boolean): React.CSSProperties => {
+const getListItemContainerStyle = (modifiers?: VisualEffect, isLocating?: boolean): React.CSSProperties => {
   const styles: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -44,16 +47,14 @@ const getListItemContainerStyle = (modifiers?: ConditionalPartEffect, isLocating
     styles.backgroundColor = modifiers.highlight;
   }
   if (modifiers?.border) {
-    // Example: border: "2px solid red"
-    // Ensure the border string is valid CSS
     styles.border = modifiers.border; 
   }
+  if (typeof modifiers?.opacity === 'number') styles.opacity = modifiers.opacity;
   
-  // Potentially more specific styling based on list item needs
   return styles;
 };
 
-const getListItemTextStyle = (modifiers?: ConditionalPartEffect): React.CSSProperties => {
+const getListItemTextStyle = (modifiers?: VisualEffect): React.CSSProperties => {
   const styles: React.CSSProperties = {
     color: 'var(--primary-text-color, black)',
   };
@@ -67,45 +68,70 @@ const ListItem: React.FC<ListItemProps> = ({
   part,
   config,
   hass,
+  parametersDisplayEnabled,
   onLocate,
-  onParameterAction,
-  parameterActions = [], // Default to empty array
+  parameterActions = [],
 }) => {
   const partId = part.pk;
-  // Fetch conditional effects for this specific part
-  const conditionalEffect = useSelector((state: RootState) => selectConditionalEffectForPart(state, partId));
-  const locatingPartId = useSelector((state: RootState) => state.parts.locatingPartId); // Assuming this state exists
+  const conditionalEffect = useSelector((state: RootState) => selectVisualEffectForPart(state, partId));
+  const locatingPartId = useSelector((state: RootState) => state.parts.locatingPartId);
 
   const displayConfig = config.display || {};
   const isCurrentlyLocating = locatingPartId === partId;
+  const actualModifiers = conditionalEffect || {} as VisualEffect;
 
-  // If the part is explicitly set to not visible by conditional logic, don't render it.
-  if (conditionalEffect?.isVisible === false) {
+  const {
+    data: parametersData,
+    isLoading: isLoadingParameters,
+    isError: isParametersError,
+    error: parametersFetchError,
+  } = useGetPartParametersQuery(partId, { skip: !parametersDisplayEnabled });
+
+  const [updatePartParameterMutation, { isLoading: isUpdatingParameter, error: updateParameterError }] = useUpdatePartParameterMutation();
+
+  if (actualModifiers.isVisible === false) {
     logger.log('ListItem', `Part ${partId} is not visible due to conditional effect.`, { level: 'debug', partId, conditionalEffect });
     return null;
   }
 
-  const itemContainerStyle = getListItemContainerStyle(conditionalEffect, isCurrentlyLocating);
-  const itemTextStyle = getListItemTextStyle(conditionalEffect);
+  const itemContainerStyle = getListItemContainerStyle(actualModifiers, isCurrentlyLocating);
+  const itemTextStyle = getListItemTextStyle(actualModifiers);
 
   const itemClasses = [
     'list-item',
     isCurrentlyLocating ? 'locating' : '',
-    conditionalEffect?.priority ? `priority-${conditionalEffect.priority}` : '',
-    // Add any other dynamic classes based on conditionalEffect or part state
+    actualModifiers?.priority ? `priority-${actualModifiers.priority}` : '',
+    ...(actualModifiers?.customClasses || [])
   ].filter(Boolean).join(' ');
 
   const handleItemClick = () => {
     if (onLocate) {
       onLocate(partId);
     }
-    // Potentially other click actions if defined in config
   };
   
-  const handleActionClick = (e: React.MouseEvent, action: ParameterAction) => {
-    e.stopPropagation(); // Prevent item click when clicking a button
-    if (onParameterAction) {
-      onParameterAction(partId, action);
+  const handleActionClick = async (e: React.MouseEvent, action: ParameterAction) => {
+    e.stopPropagation();
+    logger.log('ListItem', `Parameter action "${action.label}" for part ${partId}`, { action });
+
+    let parameterPkToUpdate: number | undefined = undefined;
+    if (parametersData) {
+      const paramDetail = parametersData.find(p => p.template_detail?.name === action.parameter);
+      if (paramDetail) {
+        parameterPkToUpdate = paramDetail.pk;
+      }
+    }
+
+    if (parameterPkToUpdate === undefined) {
+      logger.error('ListItem', `Could not find parameter PK for ${action.parameter} on part ${partId}. Cannot update.`);
+      return;
+    }
+
+    try {
+      await updatePartParameterMutation({ partId, parameterPk: parameterPkToUpdate, value: action.value }).unwrap();
+      logger.log('ListItem', `Successfully updated parameter ${action.parameter} (PK: ${parameterPkToUpdate}) for part ${partId}.`);
+    } catch (err) {
+      logger.error('ListItem', `Failed to update parameter ${action.parameter} for part ${partId}:`, { error: err });
     }
   };
 
@@ -123,9 +149,9 @@ const ListItem: React.FC<ListItemProps> = ({
           <PartThumbnail
             partData={part}
             config={config}
-            layout="list" // Explicitly set layout type
-            icon={conditionalEffect?.icon}
-            badge={conditionalEffect?.badge}
+            layout="list"
+            icon={actualModifiers?.icon}
+            badge={actualModifiers?.badge}
           />
         </div>
       )}
@@ -146,9 +172,45 @@ const ListItem: React.FC<ListItemProps> = ({
             {part.description}
           </p>
         )}
+
+        {/* Parameter Display Section */}
+        {parametersDisplayEnabled && (
+          <div className="list-item-parameters" style={{ fontSize: '0.8em', marginTop: '6px' }}>
+            {isLoadingParameters && <p><i>Loading parameters...</i></p>}
+            {isParametersError && (
+              <p style={{ color: 'red' }}>
+                <i>Error parameters: {
+                  (() => {
+                    if (parametersFetchError) {
+                      if ('status' in parametersFetchError) { 
+                        const fetchError = parametersFetchError as FetchBaseQueryError;
+                        if (typeof fetchError.data === 'string') return fetchError.data;
+                        if (typeof fetchError.data === 'object' && fetchError.data && 'message' in fetchError.data) return (fetchError.data as any).message;
+                        return fetchError.status?.toString() || 'API error';
+                      } else { 
+                        return (parametersFetchError as SerializedError).message || 'Unknown client error';
+                      }
+                    }
+                    return 'Unknown error';
+                  })()
+                }</i>
+              </p>
+            )}
+            {parametersData && parametersData.length > 0 && (
+              <ul style={{ listStyle: 'none', paddingLeft: '10px', margin: '2px 0' }}>
+                {parametersData.map((param: ParameterDetail) => (
+                  <li key={param.pk}><strong>{param.template_detail?.name}:</strong> {param.data} {param.template_detail?.units || ''}</li>
+                ))}
+              </ul>
+            )}
+            {parametersData && parametersData.length === 0 && !isLoadingParameters && !isParametersError && (
+                <p style={{fontSize: '0.8em', opacity: 0.7}}><i>No parameters for this part.</i></p>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Actions Footer - includes standard buttons and parameter actions */}
+      {/* Actions Footer */}
       {(displayConfig.show_buttons || parameterActions.length > 0) && hass && (
         <div className="list-item-actions-footer" style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
           {displayConfig.show_buttons && config && (
@@ -160,11 +222,12 @@ const ListItem: React.FC<ListItemProps> = ({
             <div className="parameter-action-buttons" style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
               {parameterActions.map((action) => (
                 <button
-                  key={`${partId}-${action.id || action.label}`} // Use action.id if available
+                  key={`${partId}-${action.id || action.label}`}
                   className="param-action-button"
                   onClick={(e) => handleActionClick(e, action)}
                   title={action.label}
                   style={{ fontSize: '0.75em', padding: '3px 6px', cursor: 'pointer' }}
+                  disabled={isUpdatingParameter}
                 >
                   {action.icon ? <ha-icon icon={action.icon}></ha-icon> : action.label}
                 </button>

@@ -1,15 +1,15 @@
-import { createSlice, createAsyncThunk, PayloadAction, ActionReducerMapBuilder } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, PayloadAction, ActionReducerMapBuilder, UnknownAction, ThunkDispatch } from '@reduxjs/toolkit';
 import { InventreeItem, WLEDConfig, EnhancedStockItemEventData, ParameterDetail } from '../../types';
+import { HomeAssistant } from 'custom-card-helpers';
 import { RootState } from '../index';
 import { WLEDService } from '../../services/wled-service';
-import { HomeAssistant } from 'custom-card-helpers';
 import { createSelector } from 'reselect';
 import { Logger } from '../../utils/logger';
 import { inventreeApiService } from '../../services/inventree-api-service';
 
 const logger = Logger.getInstance();
 
-interface PartsState {
+export interface PartsState {
   partsById: Record<number, InventreeItem>;
   partsByEntity: Record<string, number[]>;
   loading: boolean;
@@ -31,23 +31,20 @@ const initialState: PartsState = {
 
 // Async thunk for fetching a single part's details
 export const fetchPartDetails = createAsyncThunk<
-  InventreeItem, // Return type
-  number, // Argument type (partId)
-  { rejectValue: string } // Thunk config
+  InventreeItem,
+  number,
+  { state: RootState, rejectValue: string }
 >(
   'parts/fetchPartDetails',
   async (partId, { rejectWithValue, getState }) => {
     logger.info('partsSlice', `Fetching details for part ${partId}...`);
     try {
-      const { api } = (getState() as RootState); // Access api state for URL and key
-      if (!api.directApiConfig?.url || !api.directApiConfig.apiKey) {
+      const { api } = (getState() as RootState);
+      if (!api.url || !api.apiKey) {
         logger.warn('partsSlice', 'Direct API URL or API Key not configured. Cannot fetch part details.');
         return rejectWithValue('Direct API not configured.');
       }
-      // Temporarily use the placeholder service
-      
       const partData = await inventreeApiService.getPart(partId);
-
       if (!partData) {
         logger.warn('partsSlice', `No data returned for part ${partId} from API.`);
         return rejectWithValue(`Part ${partId} not found or API error.`);
@@ -63,30 +60,26 @@ export const fetchPartDetails = createAsyncThunk<
 
 // Async thunk for locating a part (e.g., with WLED)
 export const locatePartById = createAsyncThunk<
-  void, // Return type (void as it's a side effect)
-  number, // Argument type (partId)
-  { state: RootState, rejectValue: string } // Thunk config
+  void,
+  { partId: number; hass: HomeAssistant },
+  { state: RootState, rejectValue: string }
 >(
   'parts/locatePartById',
-  async (partId, { getState, dispatch, rejectWithValue }) => {
+  async ({ partId, hass }, { getState, dispatch, rejectWithValue }) => {
     const state = getState();
     const part = state.parts.partsById[partId];
-    // Get WLED config from the resolvedCardConfig in configSlice
     const wledConfigFromState = state.config.resolvedConfig?.services?.wled;
 
     if (!part) {
       logger.warn('partsSlice', `Part with ID ${partId} not found for location.`);
       return rejectWithValue(`Part with ID ${partId} not found.`);
     }
-    // Use the wledConfigFromState directly for checks and passing to the service
     if (!wledConfigFromState || !wledConfigFromState.enabled || !wledConfigFromState.entity_id || !wledConfigFromState.parameter_name) {
       logger.warn('partsSlice', `WLED service not configured or enabled for part ${partId}.`);
       return rejectWithValue('WLED service not configured or enabled.');
     }
 
-    // Correct WLEDService instantiation
-    const wledService = new WLEDService(state.hass.hass!); 
-    // Explicitly type 'p' using ParameterDetail from '../../types'
+    const wledService = new WLEDService(hass);
     const locationParameter = part.parameters?.find((p: ParameterDetail) => p.template_detail?.name === wledConfigFromState.parameter_name);
 
     if (!locationParameter || !locationParameter.data) {
@@ -95,13 +88,11 @@ export const locatePartById = createAsyncThunk<
     }
 
     try {
-      // Call the correct method 'locatePart' and pass the part and WLED config from state
       await wledService.locatePart(part, wledConfigFromState);
       logger.log('partsSlice', `Successfully triggered WLED location for part ${partId} at segment ${locationParameter.data}.`);
-      // Optionally dispatch an action to clear locatingPartId after a delay
       setTimeout(() => {
         dispatch(partsSlice.actions.setLocatingPartId(null));
-      }, 5000); // Clear after 5 seconds
+      }, 5000);
     } catch (error: any) {
       logger.error('partsSlice', `Error locating part ${partId} via WLED:`, error);
       return rejectWithValue(error.message || `Failed to locate part ${partId}.`);
@@ -111,37 +102,25 @@ export const locatePartById = createAsyncThunk<
 
 // Async thunk for adjusting part stock
 export const adjustPartStock = createAsyncThunk<
-  { partId: number, newTotalStock: number | undefined }, // Return type matches fulfilled reducer
-  { partId: number, amount: number, locationId?: number, notes?: string, hass?: HomeAssistant }, // Argument type
-  { state: RootState, rejectValue: string } // Thunk config
+  { partId: number, newTotalStock: number | undefined },
+  { partId: number, amount: number, locationId?: number, notes?: string, hass?: HomeAssistant },
+  { state: RootState, rejectValue: string }
 >(
   'parts/adjustPartStock',
-  // Remove getState from args if apiState check is removed
   async ({ partId, amount, locationId, notes }, { rejectWithValue }) => { 
     logger.info('partsSlice', `Adjusting stock for part ${partId} by ${amount}. Location: ${locationId}, Notes: \"${notes}\"`);
     
-    // REMOVED: API state check (service handles config)
-    // const apiState = (getState() as RootState).api;
-    // if (!apiState.url || !apiState.apiKey) { ... }
-
     try {
-      // REMOVED: setConfig call
-      // inventreeApiService.setConfig(apiState.url, apiState.apiKey);
-      
-      // Call the service method (which now gets config from store)
       const adjustmentResult = await inventreeApiService.adjustStock(partId, amount, locationId, notes);
 
-      // Check the result format from the service
-      if (!adjustmentResult || typeof adjustmentResult.newTotalStock !== 'number') { // Check type explicitly
+      if (!adjustmentResult || typeof adjustmentResult.newTotalStock !== 'number') {
         logger.error('partsSlice', `Stock adjustment for part ${partId} failed or did not return expected result format.`, adjustmentResult);
-        // Provide more specific error based on result
         const reason = !adjustmentResult ? 'API call failed' : 'API response missing newTotalStock';
         return rejectWithValue(`Stock adjustment failed: ${reason}.`);
       }
 
       logger.log('partsSlice', `Stock for part ${partId} adjusted successfully via API. New total stock: ${adjustmentResult.newTotalStock}.`);
       
-      // Ensure returned object matches the thunk's fulfilled payload type
       return { partId: adjustmentResult.pk, newTotalStock: adjustmentResult.newTotalStock }; 
     } catch (error: any) {
       logger.error('partsSlice', `Error calling inventreeApiService.adjustStock for part ${partId}:`, error);
@@ -161,8 +140,8 @@ const partsSlice = createSlice({
       const partIds: number[] = [];
       parts.forEach(part => {
         state.partsById[part.pk] = {
-          ...state.partsById[part.pk], // Preserve existing state if any (e.g., client-side flags)
-          ...part, // Overwrite with new data
+          ...state.partsById[part.pk],
+          ...part,
         };
         partIds.push(part.pk);
       });
@@ -174,16 +153,14 @@ const partsSlice = createSlice({
       newParts.forEach(part => {
         if (!part.pk) {
           logger.warn('partsSlice', 'Attempted to add a part without a PK.', { partData: part });
-          return; // Skip parts without PK
+          return;
         }
         state.partsById[part.pk] = {
-          ...state.partsById[part.pk], // Preserve existing client-side state if any
+          ...state.partsById[part.pk],
           ...part,
-          source: state.partsById[part.pk]?.source || 'api:direct_pk', // Mark source if not already set
+          source: state.partsById[part.pk]?.source || 'api:direct_pk',
         };
         logger.log('partsSlice', `Added/Updated part ${part.pk} from direct PK fetch.`, { level: 'debug' });
-        // Note: We are not adding to partsByEntity here, as these are fetched by PK, not by a HASS entity.
-        // If a part fetched by PK was ALSO from a HASS entity, its partsByEntity mapping would already exist.
       });
     },
     updatePart(state: PartsState, action: PayloadAction<InventreeItem>) {
@@ -195,7 +172,6 @@ const partsSlice = createSlice({
         };
         logger.log('partsSlice', `Updated part ${part.pk} in partsById.`, { level: 'debug' });
       } else {
-        // If part doesn't exist, add it (e.g., from a direct API fetch not tied to an entity)
         state.partsById[part.pk] = part;
         logger.log('partsSlice', `Added new part ${part.pk} to partsById.`, { level: 'debug' });
       }
@@ -228,14 +204,11 @@ const partsSlice = createSlice({
       if (part) {
         logger.log('partsSlice', `Processing WebSocket stock update for part ${partId}. Current stock: ${part.in_stock}, New quantity from WS: ${quantity}`);
         if (quantity !== undefined) {
-          part.in_stock = parseFloat(quantity as any); // Ensure it's a number
+          part.in_stock = parseFloat(quantity as any);
         }
-        // Optionally update other fields from otherStockData if needed
-        // For example: part.last_updated = otherStockData.last_updated;
         logger.log('partsSlice', `Part ${partId} stock updated to ${part.in_stock} via WebSocket.`, { level: 'debug', otherStockData });
       } else {
         logger.warn('partsSlice', `Received WebSocket stock update for unknown part ${partId}. Triggering fetch.`);
-        // If part isn't in store, the fetchPartDetails thunk (dispatched by middleware) should add it.
       }
     },
     setLocatingPartId(state: PartsState, action: PayloadAction<number | null>) {
@@ -245,23 +218,19 @@ const partsSlice = createSlice({
   extraReducers: (builder: ActionReducerMapBuilder<PartsState>) => {
     builder
       .addCase(locatePartById.pending, (state: PartsState, action) => {
-        state.locatingPartId = action.meta.arg; // partId is the argument
+        state.locatingPartId = action.meta.arg.partId;
       })
       .addCase(locatePartById.rejected, (state: PartsState, action) => {
-        if (state.locatingPartId === action.meta.arg) {
+        if (state.locatingPartId === action.meta.arg.partId) {
           state.locatingPartId = null;
         }
-        // Optionally handle error display here if needed
       })
       .addCase(locatePartById.fulfilled, (state: PartsState, action) => {
-        // The timeout to clear locatingPartId is handled in the thunk itself.
-        // No state change needed here for fulfilled, unless an error occurred before timeout.
       })
       .addCase(adjustPartStock.pending, (state: PartsState, action) => {
         const { partId, amount } = action.meta.arg;
         state.adjustingStockPartId = partId;
         state.adjustmentError = null;
-        // Optimistically update stock
         const partToUpdate = state.partsById[partId];
         if (partToUpdate) {
            const originalStock = partToUpdate.in_stock;
@@ -275,7 +244,7 @@ const partsSlice = createSlice({
         const { partId, newTotalStock } = action.payload;
         const part = state.partsById[partId];
         if (part) {
-          part.in_stock = newTotalStock; // Ensure final stock is accurate from API response
+          part.in_stock = newTotalStock;
         }
         if (state.adjustingStockPartId === partId) {
           state.adjustingStockPartId = null;
@@ -301,8 +270,7 @@ const partsSlice = createSlice({
       .addCase(fetchPartDetails.pending, (state: PartsState, action) => {
         const partId = action.meta.arg;
         logger.info('partsSlice', `Fetching details for part ${partId} (pending)...`);
-        state.loading = true; // General loading, or use per-part loading:
-        // if (state.partsById[partId]) state.partsById[partId].isLoadingDetails = true;
+        state.loading = true;
       })
       .addCase(fetchPartDetails.fulfilled, (state: PartsState, action: PayloadAction<InventreeItem>) => {
         const fetchedPart = action.payload;
@@ -405,7 +373,7 @@ export const selectPartsByEntity = createSelector(
     (state: RootState) => state.parts.partsByEntity,
     (_: RootState, entityId: string | null | undefined) => entityId,
   ],
-  (partsById, partsByEntity, entityId): InventreeItem[] => {
+  (partsById, partsByEntity, entityId: string | null | undefined): InventreeItem[] => {
     if (!entityId) {
       return [];
     }
@@ -440,7 +408,7 @@ export const selectCombinedParts = createSelector(
         }
     }
 
-    additionalEntityIds.forEach(entityId => {
+    additionalEntityIds.forEach((entityId: string) => {
       const additionalPartIds = partsByEntity[entityId];
       if (additionalPartIds) {
         additionalPartIds.forEach((id: number) => combinedPartIds.add(id));

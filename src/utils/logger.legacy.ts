@@ -69,7 +69,7 @@ export class Logger {
         debounce: false     // Keeping for backward compatibility
       }
     },
-    cache: { 
+    cache: { // This category might be less relevant now or removed
       enabled: false, 
       subsystems: { 
         hits: false, 
@@ -104,21 +104,10 @@ export class Logger {
   private _recentLogs: Map<string, number> = new Map();
   private _dedupeTimeWindow: number = 2000; // 2 seconds
   private _maxDuplicatesPerWindow: number = 1; // Only show a duplicate message once per time window
-  private _cache: any; // Will be initialized lazily
+  // private _cache: any; // Removed CacheService dependency
 
   private constructor() {
-    // Lazy load the cache service to avoid circular dependencies
-    setTimeout(() => {
-      try {
-        // Now it's safe to dynamically import the CacheService
-        import("../services/cache").then(module => {
-          this._cache = module.CacheService.getInstance();
-          console.info('Logger: Successfully initialized CacheService after delay');
-        });
-      } catch (e) {
-        console.warn('Logger: Could not initialize CacheService, using built-in deduplication');
-      }
-    }, 100);
+    // Lazy loading of CacheService removed
   }
 
   public static getInstance(): Logger {

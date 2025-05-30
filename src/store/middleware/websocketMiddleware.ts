@@ -2,149 +2,105 @@
  * Redux Middleware for managing the WebSocketPlugin connection 
  * based on the card configuration state.
  */
-import { Middleware } from '@reduxjs/toolkit';
-import { MiddlewareAPI, Dispatch, UnknownAction } from 'redux';
-import { RootState } from '../index';
-import { setWebSocketStatus, webSocketMessageReceived } from '../slices/websocketSlice'; // Corrected path
-import { updateValue as updateParameterValueInStore } from '../slices/parametersSlice';
-import { WebSocketPlugin } from '../../services/websocket-plugin';
+import { Middleware, MiddlewareAPI, UnknownAction, PayloadAction, Action, AnyAction } from '@reduxjs/toolkit';
+import { RootState, AppDispatch } from '../index';
+import { webSocketMessageReceived } from '../slices/websocketSlice';
 import { Logger } from '../../utils/logger';
-import { setParts, partStockUpdateFromWebSocket, fetchPartDetails } from '../slices/partsSlice'; // Added partStockUpdateFromWebSocket and fetchPartDetails
-import { WebSocketEventMessage, EnhancedStockItemEventData, EnhancedParameterEventData } from '../../types'; // Import new types
-import { evaluateAndApplyEffectsThunk } from '../thunks/conditionalLogicThunks'; // NEW IMPORT
+import { WebSocketEventMessage, EnhancedStockItemEventData, EnhancedParameterEventData, ParameterDetail, InventreeItem } from '../../types';
+import { evaluateAndApplyEffectsThunk } from '../thunks/conditionalLogicThunks';
+import throttle from 'lodash-es/throttle';
+import { inventreeApi } from '../apis/inventreeApi';
 
 const logger = Logger.getInstance();
-// let isWebSocketInitialized = false; // This flag is not currently used in the provided snippet, commented out to avoid lint error
+let throttledEvaluateEffects: (() => void) | null = null;
 
-// Module-scoped variables for throttling condition evaluation
-let lastEvalDispatchTime = 0;
-let evalScheduledTimeoutId: ReturnType<typeof setTimeout> | null = null;
+const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootState>) => {
+  const state = storeAPI.getState();
+  const conditionEvalFrequency = state.config.values?.performance?.parameters?.conditionEvalFrequency ?? 1000;
+  
+  logger.log('WebSocketMiddleware', `Initializing/Re-initializing throttledEvaluateEffects with frequency: ${conditionEvalFrequency}ms`);
 
-export const websocketMiddleware: Middleware = (storeAPI: MiddlewareAPI<Dispatch<UnknownAction>, RootState>) => (next: Dispatch<UnknownAction>) => (action: UnknownAction) => {
-    const result = next(action);
+  throttledEvaluateEffects = throttle(() => {
+    logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (throttled).`);
+    storeAPI.dispatch(evaluateAndApplyEffectsThunk());
+  }, conditionEvalFrequency, { leading: false, trailing: true });
+};
 
-    if (webSocketMessageReceived.match(action)) {
-        // Cast the payload to our specific WebSocketEventMessage type
-        const message = action.payload as WebSocketEventMessage;
+export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> = 
+  (storeAPI: MiddlewareAPI<AppDispatch, RootState>) => {
+  
+  initializeThrottledEvaluator(storeAPI);
 
-        // Basic validation of the overall message structure
-        if (typeof message === 'object' && message !== null && 
-            message.type === 'event' && 
-            typeof message.event === 'string' && 
-            typeof message.data === 'object' && message.data !== null) {
+  return (next: AppDispatch) => (action: unknown): any => {
+    const result = next(action as AnyAction);
+    const actionWithType = action as { type?: string; payload?: any };
+
+    if (actionWithType.type === 'config/setConfigAction') {
+      logger.log('WebSocketMiddleware', 'Config changed, re-initializing throttled evaluator.');
+      initializeThrottledEvaluator(storeAPI);
+    }
+
+    if (webSocketMessageReceived.match(actionWithType as Action)) {
+      const message = actionWithType.payload;
+
+      if (typeof message === 'object' && message !== null && 
+          message.type === 'event' && 
+          typeof message.event === 'string' && 
+          typeof message.data === 'object' && message.data !== null) {
             
             const eventName = message.event;
-            const eventData = message.data; // This is now typed as a union or Record<string,any>
+            const eventData = message.data;
 
             logger.log('WebSocketMiddleware', `Processing event: ${eventName}`, { eventData, level: 'info' });
 
-            // Handle Parameter Updates
             if (eventName.includes('part_partparameter.saved') || eventName.includes('part_partparameter.created')) {
-                // Type cast eventData for parameter events
                 const paramData = eventData as EnhancedParameterEventData;
-                logger.log('WebSocketMiddleware', 'Parameter event data:', { data: paramData, level: 'debug' });
-                
-                const partId = paramData.part_pk ?? paramData.parent_id; 
-                const paramName = paramData.parameter_name;
+                const partId = paramData.part_pk; 
+                const parameterInstancePk = paramData.id;
                 const paramValue = paramData.parameter_value;
                 
-                if (partId !== undefined && paramName !== undefined && paramValue !== undefined) {
-                    logger.log('WebSocketMiddleware', `Dispatching parameters/updateValue (direct action) for Part ${partId}, Param ${paramName} to value ${paramValue}`, { level: 'info' });
-                    // Dispatch the synchronous action from parametersSlice directly
-                    storeAPI.dispatch(updateParameterValueInStore({ 
-                        partId: Number(partId),
-                        paramName: String(paramName),
-                        value: String(paramValue),
-                        source: 'websocket' // Add source for clarity in logs
-                    }));
-
-                    // TEMPORARY TEST: Introduce a small delay to ensure store update has settled
-                    setTimeout(() => {
-                        // After updating the parameter value, re-evaluate conditions, but throttled.
-                        const state = storeAPI.getState();
-                        // Assuming InventreeCardConfig is stored in state.parameters.config based on parametersSlice.setConfig
-                        // If your main card config is stored elsewhere (e.g., a root config slice), adjust this path.
-                        const cardConfig = state.parameters.config; 
-                        const conditionEvalFrequency = cardConfig?.performance?.parameters?.conditionEvalFrequency ?? 1000;
-                        const now = Date.now();
-
-                        if (evalScheduledTimeoutId) {
-                            clearTimeout(evalScheduledTimeoutId);
-                            evalScheduledTimeoutId = null;
-                            logger.log('WebSocketMiddleware', 'Cleared pending (trailing) evaluateAndApplyEffectsThunk call due to new trigger.', { level: 'silly' });
-                        }
-
-                        if (now - lastEvalDispatchTime > conditionEvalFrequency) {
-                            logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (direct). Interval: ${conditionEvalFrequency}ms. lastEval: ${lastEvalDispatchTime}, now: ${now}`, { level: 'info' });
-                            storeAPI.dispatch(evaluateAndApplyEffectsThunk() as any); // MODIFIED
-                            lastEvalDispatchTime = now;
-                        } else {
-                            const delay = Math.max(0, conditionEvalFrequency - (now - lastEvalDispatchTime));
-                            logger.log('WebSocketMiddleware', `Throttling evaluateAndApplyEffectsThunk. Scheduling trailing call. Delay: ${delay}ms. lastEval: ${lastEvalDispatchTime}, now: ${now}`, { level: 'info' });
-                            evalScheduledTimeoutId = setTimeout(() => {
-                                logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (trailing call). Interval: ${conditionEvalFrequency}ms.`, { level: 'info' });
-                                storeAPI.dispatch(evaluateAndApplyEffectsThunk() as any); // MODIFIED
-                                lastEvalDispatchTime = Date.now();
-                                evalScheduledTimeoutId = null;
-                            }, delay);
-                        }
-                    }, 0); // 0ms delay, effectively pushing to next tick
-                } else {
-                    logger.warn('WebSocketMiddleware', 'Received parameter update, but missing key data fields.', { paramData });
+                if (partId !== undefined && parameterInstancePk !== undefined && paramValue !== undefined) {
+                    storeAPI.dispatch(
+                        inventreeApi.util.updateQueryData('getPartParameters', Number(partId), (draftParameters: ParameterDetail[]) => {
+                            const paramIndex = draftParameters.findIndex(p => p.pk === parameterInstancePk);
+                            if (paramIndex !== -1) {
+                                draftParameters[paramIndex].data = paramValue;
+                            }
+                        })
+                    );
+                    if (throttledEvaluateEffects) throttledEvaluateEffects();
                 }
             } 
-            // Handle Stock Updates
             else if (eventName.includes('stock_stockitem.saved') || eventName.includes('stock_stockitem.created')) {
-                // Type cast eventData for stock events
                 const stockData = eventData as EnhancedStockItemEventData;
                 const partId = stockData.part_id;
                 
                 if (partId !== undefined) {
-                    logger.log('WebSocketMiddleware', `Dispatching partStockUpdateFromWebSocket for Part ${partId}`);
-                    storeAPI.dispatch(partStockUpdateFromWebSocket({
-                        partId: Number(partId),
-                        quantity: stockData.quantity,
-                        batch: stockData.batch,
-                        serial: stockData.serial,
-                        status_label: stockData.status_label,
-                        status_value: stockData.status_value,
-                        last_updated: stockData.last_updated,
-                        part_name: stockData.part_name,
-                        part_ipn: stockData.part_ipn,
-                        part_thumbnail: stockData.part_thumbnail,
-                        location_id: stockData.location_id,
-                        location_name: stockData.location_name,
-                        location_pathstring: stockData.location_pathstring,
-                        stockItemId: stockData.id 
-                    }));
-                    
-                    logger.log('WebSocketMiddleware', `Dispatching fetchPartDetails for Part ${partId} due to stock event.`);
-                    storeAPI.dispatch(fetchPartDetails(Number(partId)));
-
-                } else {
-                    logger.warn('WebSocketMiddleware', 'Received stock update, but missing part_id.', { stockData });
+                    storeAPI.dispatch(
+                        inventreeApi.util.updateQueryData('getPart', Number(partId), (draftPart: InventreeItem) => {
+                            if (typeof draftPart.in_stock === 'number' || draftPart.in_stock === undefined) {
+                                const newStock = parseFloat(stockData.quantity);
+                                if (!isNaN(newStock)) {
+                                    draftPart.in_stock = newStock;
+                                }
+                            }
+                        })
+                    );
+                    if (throttledEvaluateEffects) throttledEvaluateEffects();
                 }
             }
             else {
                  logger.log('WebSocketMiddleware', `Received unhandled event type: ${eventName}`, { eventData });
             }
         } else {
-            logger.warn('WebSocketMiddleware', 'Received webSocketMessageReceived action, but payload was not a valid WebSocketEventMessage structure', { payload: action.payload });
+            logger.warn('WebSocketMiddleware', 'Received webSocketMessageReceived action, but payload was not a valid WebSocketEventMessage structure', { payload: message });
         }
-    }
-
-    // Handle explicit connect/disconnect actions if needed later
-    // For now, assuming connection is managed by WebSocketManager/Plugin directly
-    // or via actions dispatched from the UI layer that this middleware could listen to.
-    if (action.type === 'websocket/connect') {
+    } else if (actionWithType.type === 'websocket/connect') {
         logger.log('WebSocket Middleware', 'Explicit connect action received (currently informational)');
-        // const wsPlugin = WebSocketPlugin.getInstance();
-        // wsPlugin.connect(); // Ensure plugin is configured before connecting
-    } else if (action.type === 'websocket/disconnect') {
+    } else if (actionWithType.type === 'websocket/disconnect') {
         logger.log('WebSocket Middleware', 'Explicit disconnect action received (currently informational)');
-        // const wsPlugin = WebSocketPlugin.getInstance();
-        // wsPlugin.disconnect();
     }
 
     return result;
+  };
 }; 

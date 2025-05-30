@@ -1,6 +1,6 @@
-import { Middleware } from '@reduxjs/toolkit';
+import { Middleware, AnyAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
-import { CacheService } from '../../services/cache';
+// import { CacheService } from '../../services/cache'; // Removing CacheService
 import { Logger } from '../../utils/logger';
 import { store } from '../index';
 import { updateParameterValue } from '../thunks/parameterThunks';
@@ -18,37 +18,38 @@ const logger = Logger.getInstance();
 export const servicesMiddleware: Middleware = 
   (api) => 
   (next) => 
-  (action) => {
-  logger.log('Redux', `Action dispatched: ${action.type}`, { 
+  (action: unknown) => {
+  const typedAction = action as AnyAction;
+  logger.log('Redux', `Action dispatched: ${typedAction.type}`, { 
     category: 'redux', 
     subsystem: 'middleware' 
   });
 
   // Process actions that need to interact with existing services
-  if (action.type === 'parts/fetchParts/fulfilled') {
-    const { entityId, data } = action.payload;
+  if (typedAction.type === 'parts/fetchParts/fulfilled') {
+    const { entityId, data } = typedAction.payload;
     
-    // Keep Cache update logic (maybe refine later)
-    const cache = CacheService.getInstance();
-    const cacheKey = `entity-data:${entityId}`;
-    cache.set(cacheKey, data);
+    // Cache update logic removed as RTK Query will handle API data caching
+    // const cache = CacheService.getInstance(); // Removed
+    // const cacheKey = `entity-data:${entityId}`; // Removed
+    // cache.set(cacheKey, data); // Removed
     
-    logger.log('Redux', `Updated service data for entity ${entityId}`, { 
+    logger.log('Redux', `Updated service data for entity ${entityId} (cache.set removed)`, { 
       category: 'redux', 
       subsystem: 'sync' 
     });
   }
   
   // For parameter updates
-  if (action.type === 'parameters/updateValue') {
-    const { partId: updatePartId, parameterName: updateParamName, value: updateValue } = action.payload;
-    store.dispatch(updateParameterValue({ partId: updatePartId, parameterName: updateParamName, value: updateValue }));
+  if (typedAction.type === 'parameters/updateValue') {
+    const { partId: updatePartId, paramName: updateParamName, value: updateValue } = typedAction.payload;
+    store.dispatch(updateParameterValue({ partId: updatePartId, paramName: updateParamName, value: updateValue }) as any);
     logger.log('Redux', `Dispatched updateParameterValue thunk for ${updateParamName}`, { /* ... */ });
   }
   
   // For parameter condition checks
-  if (action.type === 'parameters/checkCondition') {
-    const { part, condition } = action.payload;
+  if (typedAction.type === 'parameters/checkCondition') {
+    const { part, condition } = typedAction.payload;
     
     logger.log('Redux', `Checking condition for part ${part?.pk}`, { 
       category: 'redux', 
@@ -60,7 +61,7 @@ export const servicesMiddleware: Middleware =
   }
   
   // For condition cache clearing
-  if (action.type === 'parameters/clearConditionCache' || action.type === 'parameters/clearCache') {
+  if (typedAction.type === 'parameters/clearConditionCache' || typedAction.type === 'parameters/clearCache') {
     logger.log('Redux', `Clearing parameter cache`, { 
       category: 'redux', 
       subsystem: 'parameters' 
@@ -77,5 +78,5 @@ export const servicesMiddleware: Middleware =
   }
   
   // Continue the action through the middleware chain
-  return next(action);
+  return next(typedAction);
 }; 

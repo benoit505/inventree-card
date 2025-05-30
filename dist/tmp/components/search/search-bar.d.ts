@@ -9,9 +9,9 @@ export declare class InvenTreeSearchBar extends ReduxLitElement {
     private _debouncedPerformSearch;
     constructor();
     stateMap(state: RootState): {
-        _query: string;
-        _loading: "idle" | "succeeded" | "failed" | "pending";
-        _error: string | null;
+        _query: any;
+        _loading: any;
+        _error: any;
     };
     dispatchMap(): {
         setQuery: (query: string) => any;

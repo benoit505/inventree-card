@@ -5,7 +5,7 @@ import { RootState } from '../index';
  * Metrics slice for Redux store to track migration progress and usage statistics
  */
 
-interface MetricsState {
+export interface MetricsState {
   usage: {
     redux: Record<string, number>;
     legacy: Record<string, number>;

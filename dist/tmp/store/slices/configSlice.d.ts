@@ -1,9 +1,9 @@
 import { RootState } from '../index';
 import { InventreeCardConfig, PerformanceConfig, DirectApiConfig, DataSourceConfig, DisplayConfig, InventreeParameterFetchConfig, ConditionRuleDefinition, ConditionalLogicItem } from '../../types';
-interface ConfigState extends InventreeCardConfig {
+export interface ConfigState extends InventreeCardConfig {
     _configLastUpdated?: number;
 }
-export declare const setConfigAction: any;
+export declare const setConfigAction: import("@reduxjs/toolkit").ActionCreatorWithPayload<InventreeCardConfig, "config/setConfigAction">;
 export declare const selectFullConfig: (state: RootState) => ConfigState;
 export declare const selectPresentationConfig: (state: RootState) => InventreeCardConfig["presentation"];
 export declare const selectApiConfigFromCardConfig: (state: RootState) => DirectApiConfig | undefined;
@@ -20,5 +20,5 @@ export declare const selectAllDataSources: (state: RootState) => DataSourceConfi
 export declare const selectPrimaryEntityId: (state: RootState) => string | undefined | null;
 export declare const selectDirectApiEnabled: (state: RootState) => boolean;
 export declare const selectConfig: (state: RootState) => InventreeCardConfig;
-declare const _default: any;
+declare const _default: import("redux").Reducer<ConfigState>;
 export default _default;

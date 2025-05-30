@@ -3,13 +3,14 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig, InventreeItem, ParameterDetail, ParameterAction, VisualModifiers, ParameterCondition, ConditionRuleDefinition, CustomAction } from '../../types';
 import { useSelector, useDispatch } from 'react-redux';
-import { RootState } from '../../store';
+import { RootState } from '../../store/index';
 import { ThunkDispatch } from 'redux-thunk';
 import { AnyAction } from 'redux';
 import { Logger } from '../../utils/logger';
 
 import { selectLocatingPartId, locatePartById } from '../../store/slices/partsSlice';
-import { updateParameterValue, fetchParametersForReferencedParts } from '../../store/thunks/parameterThunks';
+import { fetchParametersForReferencedParts } from '../../store/thunks/parameterThunks';
+import { useUpdatePartParameterMutation } from '../../store/apis/inventreeApi';
 
 import PartButtons from '../part/PartButtons';
 import PartThumbnail from '../part/PartThumbnail';
@@ -27,15 +28,13 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts }) => {
   const logger = Logger.getInstance();
   const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
 
-  const parameterValuesFromStore = useSelector((state: RootState) => state.parameters.parameterValues);
-  React.useEffect(() => {
-  }, [parameterValuesFromStore]);
+  const [updatePartParameterMutation, { isLoading: isUpdatingParameter, error: updateParameterError }] = useUpdatePartParameterMutation();
 
   const parametersDisplayEnabled = useMemo(() => {
-    const displayConfig = config?.presentation?.display ?? {};
+    const displayConfig = config?.display ?? {};
     const parametersConfig = config?.parameters ?? {};
-    return displayConfig.show_parameters ?? parametersConfig.show_section ?? false;
-  }, [config?.presentation?.display, config?.parameters]);
+    return displayConfig.show_parameters === undefined ? (parametersConfig.show_section ?? false) : (displayConfig.show_parameters ?? false);
+  }, [config?.display, config?.parameters]);
 
   const locatingPartId = useSelector((state: RootState) => selectLocatingPartId(state));
   const allLoadingStatuses = useSelector((state: RootState) => state.parameters.parameterLoadingStatus || {});
@@ -135,13 +134,26 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts }) => {
   }, [parts]);
 
   const handleLocateGridItem = useCallback((partId: number) => {
-    dispatch(locatePartById(partId));
-  }, [dispatch]);
+    if (hass) {
+      dispatch(locatePartById({ partId, hass }));
+    }
+  }, [dispatch, hass]);
 
-  const handleParameterActionClick = useCallback((currentPartId: number, action: ParameterAction) => {
-    logger.log('GridLayout', 'handleParameterActionClick', { partId: currentPartId, action, level:'debug' });
-    dispatch(updateParameterValue({ partId: currentPartId, paramName: action.parameter, value: action.value }));
-  }, [dispatch, logger]);
+  const handleParameterActionClick = useCallback(async (currentPartId: number, action: ParameterAction, parameterPk?: number) => {
+    logger.log('GridLayout', 'handleParameterActionClick (RTK)', { partId: currentPartId, action, parameterPk, level:'debug' });
+    
+    if (parameterPk === undefined) {
+        logger.error('GridLayout', `Parameter PK not provided for action '${action.parameter}' on part ${currentPartId}. Cannot update.`);
+        return;
+    }
+
+    try {
+      await updatePartParameterMutation({ partId: currentPartId, parameterPk: parameterPk, value: action.value }).unwrap();
+      logger.log('GridLayout', `Successfully updated parameter ${action.parameter} (PK: ${parameterPk}) for part ${currentPartId} via RTK Mutation.`);
+    } catch (err) {
+      logger.error('GridLayout', `Failed to update parameter ${action.parameter} (PK: ${parameterPk}) for part ${currentPartId} via RTK Mutation:`, { error: err });
+    }
+  }, [dispatch, logger, updatePartParameterMutation]);
 
   if (!config) {
     return <div className="grid-layout loading"><p>Loading config...</p></div>;
@@ -159,8 +171,8 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts }) => {
      return <div className="grid-layout no-parts"><p>No parts to display.</p></div>;
   }
 
-  const displayConfig = config.presentation?.display || {};
-  const layoutOptions = config.presentation?.layout || {};
+  const displayConfig = config.display || {};
+  const layoutOptions = config.layout_options || {};
   const columns = layoutOptions.columns || 3;
   const gridSpacing = layoutOptions.grid_spacing || 8;
   const gridStyles: React.CSSProperties = {
@@ -188,6 +200,7 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts }) => {
             hass={hass}
             isCurrentlyLocating={isCurrentlyLocating}
             parameterActions={parameterActions} 
+            parametersDisplayEnabled={parametersDisplayEnabled}
             handleLocateGridItem={handleLocateGridItem}
             handleParameterActionClick={handleParameterActionClick}
           />

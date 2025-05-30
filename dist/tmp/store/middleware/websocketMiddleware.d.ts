@@ -3,4 +3,5 @@
  * based on the card configuration state.
  */
 import { Middleware } from '@reduxjs/toolkit';
-export declare const websocketMiddleware: Middleware;
+import { RootState, AppDispatch } from '../index';
+export declare const websocketMiddleware: Middleware<{}, RootState, AppDispatch>;

@@ -1,6 +1,6 @@
 import { TypedUseSelectorHook } from 'react-redux';
-import type { RootState } from './index';
-export declare const useAppDispatch: () => any;
+import type { RootState, AppDispatch } from './index';
+export declare const useAppDispatch: () => AppDispatch;
 export declare const useAppSelector: TypedUseSelectorHook<RootState>;
 /**
  * Selector hooks for specific state slices
@@ -13,5 +13,8 @@ export declare const useActions: () => any[];
 export declare const useDebugMode: () => boolean;
 export declare const useLayoutType: () => string;
 export declare const useSelectedEntityId: () => string | null;
-export declare const useActiveView: () => any;
-export declare const useDebugPanel: () => any;
+export declare const useActiveView: () => string;
+export declare const useDebugPanel: () => {
+    showDebugPanel: boolean;
+    activeTab: string;
+};

@@ -5,8 +5,8 @@ interface ListItemProps {
     part: InventreeItem;
     config: InventreeCardConfig;
     hass?: HomeAssistant;
+    parametersDisplayEnabled: boolean;
     onLocate?: (partId: number) => void;
-    onParameterAction?: (partId: number, action: ParameterAction) => void;
     parameterActions?: ParameterAction[];
 }
 declare const ListItem: React.FC<ListItemProps>;

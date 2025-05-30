@@ -22,7 +22,6 @@ export declare class WebSocketPlugin {
     private _isConnected;
     private _messageCallbacks;
     private _logger;
-    private cache;
     private _errorCount;
     private _url;
     private _debug;
@@ -45,8 +44,8 @@ export declare class WebSocketPlugin {
     private _lastMessageTime;
     private _processingMessages;
     private _messageDebounceTime;
-    private _messageDebounceQueue;
     private _dispatch;
+    private _debouncedProcessors;
     /**
      * Get the singleton instance
      */
@@ -81,10 +80,10 @@ export declare class WebSocketPlugin {
      */
     private _onConnectionMessage;
     /**
-     * Debounce processing of messages to avoid flooding the system.
-     * Uses the instance member this._messageDebounceTime for the delay.
+     * Gets or creates a debounced version of _processMessage for a given messageId,
+     * then calls it.
      */
-    private _debouncedProcessMessage;
+    private _handleDebouncedMessageProcessing;
     /**
      * Notify all message callbacks
      */

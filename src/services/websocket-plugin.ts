@@ -1,12 +1,12 @@
 import { Logger } from "../utils/logger";
-import { CacheService, DEFAULT_TTL, CacheCategory } from "./cache";
+// import { CacheService, DEFAULT_TTL, CacheCategory } from "./cache"; // Removed
 import { HomeAssistant } from "custom-card-helpers";
-import { safeSetTimeout, safeClearTimeout, safeSetInterval, safeClearInterval, cleanupAllTimers } from "../utils/safe-timer";
 import { store } from "../store";
 import { webSocketMessageReceived, setWebSocketStatus } from '../store/slices/websocketSlice';
 import { webSocketUpdateReceived as webSocketUpdateReceivedAction } from '../store/slices/parametersSlice';
 import { WebSocketEventMessage, DirectApiConfig } from '../types';
 import { Dispatch, UnknownAction } from '@reduxjs/toolkit';
+import debounce from 'lodash-es/debounce'; // Import debounce
 
 /**
  * Connection states for the WebSocket
@@ -32,7 +32,7 @@ export class WebSocketPlugin {
   private _isConnected: boolean = false;
   private _messageCallbacks: ((message: any) => void)[] = [];
   private _logger: Logger;
-  private cache: CacheService = CacheService.getInstance();
+  // private cache: CacheService = CacheService.getInstance(); // Removed
   private _errorCount: number = 0;
   private _url: string = '';
   private _debug: boolean = false;
@@ -55,8 +55,10 @@ export class WebSocketPlugin {
   private _lastMessageTime: number = 0;
   private _processingMessages: Set<string> = new Set();
   private _messageDebounceTime: number = 50; // Default, will be overridden by config
-  private _messageDebounceQueue: Map<string, {message: any, timerId: number}> = new Map();
   private _dispatch: Dispatch<UnknownAction> | null = null;
+
+  // Map to store debounced _processMessage functions, keyed by messageId
+  private _debouncedProcessors: Map<string, (message: any) => void> = new Map();
 
   /**
    * Get the singleton instance
@@ -75,7 +77,7 @@ export class WebSocketPlugin {
     this._logger = Logger.getInstance();
     this._lastServerMessageTime = 0; // Initialize
     if (!this._timersInitialized) {
-      // safeSetTimeout(() => this._initializeTimers(), 0, 'init-timers'); // Defer timer init if causing issues
+      // window.setTimeout(() => this._initializeTimers(), 0); // Defer timer init if causing issues
       this._timersInitialized = true;
     }
     this._logger.log('WebSocketPlugin', 'Instance created.', {
@@ -209,11 +211,15 @@ export class WebSocketPlugin {
    * Clear all active timers
    */
   private _clearAllTimers(): void {
-    this._logger.log('WebSocketPlugin', 'Clearing all timers', { category: 'websocket', subsystem: 'timers' });
-    if (this._serverInactivityTimerId) {
-      safeClearTimeout(this._serverInactivityTimerId);
-      this._serverInactivityTimerId = null;
-    }
+    // This method might become largely obsolete if each timer is managed locally
+    // For now, ensure any specific timers used by this class are cleared
+    this._clearServerInactivityTimer();
+    // If other direct timers were used by this class and tracked, clear them here.
+    this._logger.log('WebSocket', 'Cleared specific timers in WebSocketPlugin.', {
+      category: 'websocket',
+      subsystem: 'timers'
+    });
+    // The old cleanupAllTimers() was global; we are moving away from that.
   }
   
   /**
@@ -247,9 +253,9 @@ export class WebSocketPlugin {
       });
       
       // Schedule a connection attempt after the cooldown using safe timer utilities
-      safeSetTimeout(() => {
+      window.setTimeout(() => {
         this.connect();
-      }, this._cooldownPeriod - timeSinceLastAttempt, 'connection-cooldown');
+      }, this._cooldownPeriod - timeSinceLastAttempt);
       
       return;
     }
@@ -271,7 +277,7 @@ export class WebSocketPlugin {
       this._connection = new WebSocket(this._url);
       
       // Add connection timeout (10 seconds) using safe timer utilities
-      safeSetTimeout(() => {
+      window.setTimeout(() => {
         if (this._connectionState === ConnectionState.CONNECTING) {
           this._logger.warn('WebSocket', 'Connection attempt timed out after 10 seconds', {
             category: 'websocket',
@@ -284,7 +290,7 @@ export class WebSocketPlugin {
           // Set state to failed
           this._setConnectionState(ConnectionState.FAILED);
         }
-      }, 10000, 'connection-timeout');
+      }, 10000);
       
       // Set up event handlers
       this._connection.onopen = this._onConnectionOpen.bind(this);
@@ -335,64 +341,79 @@ export class WebSocketPlugin {
     this._lastMessageTime = Date.now();
     this._messageCount++;
     this._lastServerMessageTime = Date.now(); // Update on any server message
-    this._resetServerInactivityTimer();      // Reset inactivity timer
+    this._resetServerInactivityTimer();
 
-    let messageData;
+    let message;
     try {
-      messageData = JSON.parse(event.data as string);
+      message = JSON.parse(event.data as string);
     } catch (error) {
-      this._logger.error('WebSocket', 'Failed to parse incoming JSON message', { 
+      this._logger.error('WebSocket', `Failed to parse message: ${error}`, {
         category: 'websocket',
-        subsystem: 'message',
-        error: error,
-        rawData: event.data 
+        subsystem: 'messages',
+        data: event.data
       });
       return;
     }
 
-    // Use a unique identifier for debouncing if available, otherwise use raw message string (less ideal)
-    // Example: use message.event or message.type if consistent, or hash of message content.
-    // For simplicity, let's assume a message.type or message.event exists for grouping.
-    const messageId = messageData.event || messageData.type || JSON.stringify(messageData); 
-
-    // --- BEGIN Temporary Direct Console Log for Raw Message ---
-    console.log('RAW WEBSOCKET MESSAGE (messageData):', JSON.stringify(messageData, null, 2));
-    // --- END Temporary Direct Console Log ---
-
-    this._logger.log('WebSocket', 'Raw message received (stringified)', {
+    this._logger.log('WebSocket', 'Raw message received:', {
       category: 'websocket',
-      subsystem: 'message',
-      data: JSON.stringify(messageData, null, 2),
-      level: 'info'
+      subsystem: 'messages',
+      data: message
     });
-    
-    // Debounce message processing based on messageId
-    // This will use this._messageDebounceTime which is set by configure()
-    this._debouncedProcessMessage(messageData, messageId);
+
+    // Use a more robust messageId, e.g., from message.id if available, or hash the content
+    const messageIdSource = message.id || message.event; // Prefer message.id or message.event
+    let messageId: string;
+    if (messageIdSource) {
+        messageId = String(messageIdSource);
+    } else {
+        // Fallback for messages without a clear ID source - could be improved with hashing
+        messageId = `msg:${JSON.stringify(message.data || message).substring(0, 50)}-${Date.now() % 10000}`;
+    }
+
+    let debouncedProcessor = this._debouncedProcessors.get(messageId);
+    if (!debouncedProcessor) {
+      debouncedProcessor = debounce((msgToProcess) => {
+        this._handleDebouncedMessageProcessing(msgToProcess, messageId);
+      }, this._messageDebounceTime, { leading: true, trailing: false });
+      this._debouncedProcessors.set(messageId, debouncedProcessor);
+    }
+    debouncedProcessor(message);
   }
   
   /**
-   * Debounce processing of messages to avoid flooding the system.
-   * Uses the instance member this._messageDebounceTime for the delay.
+   * Gets or creates a debounced version of _processMessage for a given messageId,
+   * then calls it.
    */
-  private _debouncedProcessMessage(message: any, messageId: string): void {
-    // If a timer already exists for this messageId, clear it
-    if (this._messageDebounceQueue.has(messageId)) {
-      const existingEntry = this._messageDebounceQueue.get(messageId)!;
-      safeClearTimeout(existingEntry.timerId);
-      this._logger.log('WebSocket', `Debounce: Cleared existing timer for messageId: ${messageId}`, { level: 'silly' });
+  private _handleDebouncedMessageProcessing(message: any, messageId: string): void {
+    if (this._processingMessages.has(messageId)) {
+      this._logger.log('WebSocket', `Still processing message ${messageId}, skipping duplicate call.`, {
+        category: 'websocket',
+        subsystem: 'dedupe'
+      });
+      return;
     }
-    
-    // Set a new timer to process this message after the debounce period
-    const timerId = safeSetTimeout(() => {
-      this._messageDebounceQueue.delete(messageId); // Remove from queue before processing
-      this._logger.log('WebSocket', `Debounce: Executing for messageId: ${messageId}`, { data: message, level: 'silly' });
-      this._processMessage(message); // Process the actual message
-    }, this._messageDebounceTime); // Use the configured debounce time
-    
-    // Store the new timerId in the queue
-    this._messageDebounceQueue.set(messageId, { message, timerId });
-    this._logger.log('WebSocket', `Debounce: Set new timer for messageId: ${messageId}, delay: ${this._messageDebounceTime}ms`, { level: 'silly' });
+
+    this._processingMessages.add(messageId);
+    this._logger.log('WebSocket', `Processing message (debounced): ${messageId}`, {
+      category: 'websocket',
+      subsystem: 'messages',
+      data: message
+    });
+
+    try {
+      this._processMessage(message);
+    } catch (error) {
+      this._logger.error('WebSocket', `Error processing message ${messageId}: ${error}`, {
+        category: 'websocket',
+        subsystem: 'errors',
+        data: message
+      });
+    } finally {
+      this._processingMessages.delete(messageId);
+      // Optional: Consider cleaning up _debouncedProcessors if messageIds are very dynamic
+      // For event names (like 'part_partparameter.saved'), they are reused, so keeping them is fine.
+    }
   }
   
   /**
@@ -493,7 +514,7 @@ export class WebSocketPlugin {
 
     if (this._connectionState === ConnectionState.CONNECTED) { // Only run if connected
       this._logger.log('WebSocketPlugin', `Starting server inactivity timer for ${this._serverInactivityTimeoutDuration}ms.`, { category: 'websocket', subsystem: 'heartbeat' });
-      this._serverInactivityTimerId = safeSetTimeout(
+      this._serverInactivityTimerId = window.setTimeout(
         () => {
           this._handleServerInactivity();
         }, 
@@ -504,7 +525,7 @@ export class WebSocketPlugin {
 
   private _clearServerInactivityTimer(): void {
     if (this._serverInactivityTimerId) {
-      safeClearTimeout(this._serverInactivityTimerId);
+      window.clearTimeout(this._serverInactivityTimerId);
       this._serverInactivityTimerId = null;
     }
   }
@@ -557,35 +578,48 @@ export class WebSocketPlugin {
   /**
    * Handle parameter update message
    */
-  private _handleParameterUpdate(messageData: any): void { // Changed parameter name to messageData for clarity
-    this._logger.log('WebSocketPlugin', `Handling parameter update: ${JSON.stringify(messageData)}`, {
-      category: 'websocket',
-      subsystem: 'parameters',
-      level: 'info'
-    });
-    
-    // Extract from messageData directly (which was the nested 'data' object from the raw message)
-    const partId = messageData.part_pk; 
-    const paramName = messageData.parameter_name;
-    const paramValue = messageData.parameter_value;
-      
-    if (!partId || !paramName) {
-      this._logger.warn('WebSocketPlugin', 'Missing partId or parameter name in update messageData', { data: messageData });
-      return;
-    }
-    
-    this._logger.log('WebSocketPlugin', 'Dispatching action from webSocketUpdateReceivedAction for parameter update.', { 
-        level: 'info', 
-        subsystem: 'dispatch', 
-        data: { partId, parameterName: paramName, value: paramValue }
+  private _handleParameterUpdate(messageData: any): void {
+    this._logger.log('WebSocket', 'Processing parameter update', { 
+        category: 'websocket', 
+        subsystem: 'parameters', 
+        data: messageData 
     });
 
-    store.dispatch(webSocketUpdateReceivedAction({
-        partId: Number(partId),
-        parameterName: String(paramName),
-        value: paramValue, 
-        source: 'websocket-plugin'
-    }));
+    const partId = messageData.part_pk ?? messageData.parent_id;
+    const paramName = messageData.parameter_name;
+    const paramValue = messageData.parameter_value;
+
+    if (partId !== undefined && paramName !== undefined && paramValue !== undefined) {
+        // PARAMETER caching logic removed
+        // const paramCacheKey = `parameter:${partId}:${paramName}`;
+        // this.cache.set(paramCacheKey, paramValue, DEFAULT_TTL.PARAMETER, CacheCategory.PARAMETER);
+
+        this._logger.log('WebSocket', `Dispatching parameters/webSocketUpdateReceived for Part ${partId}, Param ${paramName} to value ${paramValue}`, { 
+            category: 'websocket', 
+            subsystem: 'parameters', 
+            level: 'info' 
+        });
+        
+        if (this._dispatch) { // Ensure _dispatch is initialized
+            this._dispatch(webSocketUpdateReceivedAction({ 
+                partId: Number(partId), 
+                parameterName: String(paramName), 
+                value: String(paramValue),
+                source: 'websocket'
+            }));
+        } else {
+            this._logger.warn('WebSocket', 'Dispatch function not available in _handleParameterUpdate.', { 
+                category: 'websocket', 
+                subsystem: 'errors' 
+            });
+        }
+    } else {
+        this._logger.warn('WebSocket', 'Parameter update received, but missing part_pk/parent_id, parameter_name, or parameter_value.', {
+            category: 'websocket',
+            subsystem: 'parameters',
+            data: messageData
+        });
+    }
   }
   
   /**
@@ -639,7 +673,7 @@ export class WebSocketPlugin {
     this._connectionAttempts = 0;
     
     // Wait a moment before reconnecting
-    safeSetTimeout(() => {
+    window.setTimeout(() => {
       if (this._config?.enabled) {
         this.connect();
       }
@@ -652,7 +686,7 @@ export class WebSocketPlugin {
   public getTimerStats(): any {
     return {
       isInitialized: this._timersInitialized,
-      messageQueueSize: this._messageDebounceQueue.size
+      activeDebouncers: this._debouncedProcessors.size 
     };
   }
 
@@ -735,7 +769,7 @@ export class WebSocketPlugin {
         count: this._messageCount,
         lastReceivedTime: this._lastMessageTime ? new Date(this._lastMessageTime).toISOString() : 'N/A',
         timeSinceLastMessageMs: this._lastMessageTime ? (now - this._lastMessageTime) : 'N/A',
-        debounceQueueSize: this._messageDebounceQueue.size,
+        activeDebouncerCount: this._debouncedProcessors.size,
         processingMessagesCount: this._processingMessages.size,
       },
       serverInactivity: {
@@ -766,10 +800,10 @@ export class WebSocketPlugin {
     // Set state to reconnecting
     this._setConnectionState(ConnectionState.RECONNECTING);
     
-    // Connect immediately
-    safeSetTimeout(() => {
+    // Connect immediately with a small delay
+    setTimeout(() => {
       this.connect();
-    }, 100, 'force-reconnect');
+    }, 100); // REPLACED safeSetTimeout, removed 'force-reconnect' label
   }
 
   /**
@@ -786,10 +820,10 @@ export class WebSocketPlugin {
     this._closeConnection();
     
     // Update state after a brief delay to allow close event to process
-    safeSetTimeout(() => {
+    setTimeout(() => {
       this._disconnecting = false;
       this._setConnectionState(ConnectionState.DISCONNECTED);
-    }, 100, 'disconnect-complete');
+    }, 100); // REPLACED safeSetTimeout, removed 'disconnect-complete' label
   }
 
   private _scheduleReconnect(forceImmediate: boolean = false): void {
@@ -816,21 +850,19 @@ export class WebSocketPlugin {
     // Simple fixed interval based on _reconnectInterval for now
     // Exponential backoff could be added later if needed, respecting _minReconnectDelay and _maxReconnectDelay
     const delay = forceImmediate ? 0 : this._reconnectInterval; 
-
-    this._logger.log('WebSocket', `Scheduling reconnect in ${delay}ms (attempt ${this._connectionAttempts + 1})`, {
-      category: 'websocket',
-      subsystem: 'reconnect'
-    });
     
-    // Clear existing reconnect timer before setting a new one
-    // This requires storing the timer ID if we want to clear it specifically.
-    // For simplicity, ensure connect() is only called if state is RECONNECTING.
-    safeSetTimeout(() => {
-      if (this._connectionState === ConnectionState.RECONNECTING) { // Check state before attempting
+    setTimeout(() => {
+      if (this._connectionState === ConnectionState.RECONNECTING && !this._disconnecting) {
+        this._logger.log('WebSocket', 'Attempting scheduled reconnect...', { category: 'websocket', subsystem: 'reconnect' });
         this.connect();
       } else {
-        this._logger.log('WebSocketPlugin', `Reconnect was scheduled but current state is ${this._connectionState}, aborting connect attempt.`, { category: 'websocket', subsystem: 'reconnect' });
+        this._logger.log('WebSocket', 'Skipping scheduled reconnect due to state change or intentional disconnect.', { 
+            category: 'websocket', 
+            subsystem: 'reconnect', 
+            currentState: this._connectionState, 
+            isDisconnecting: this._disconnecting 
+        });
       }
-    }, delay, `reconnect-${this._connectionId || 'global'}`);
+    }, delay); // REPLACED safeSetTimeout, removed debug label
   }
 }

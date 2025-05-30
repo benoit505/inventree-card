@@ -4,7 +4,7 @@ import { Logger } from '../../utils/logger';
 
 const logger = Logger.getInstance();
 
-interface ApiState {
+export interface ApiState {
   url: string | null;
   apiKey: string | null;
   initialized: boolean;

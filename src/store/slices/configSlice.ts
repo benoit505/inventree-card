@@ -45,7 +45,7 @@ const isObject = (item: any): boolean => {
   return (item && typeof item === 'object' && !Array.isArray(item));
 };
 
-interface ConfigState extends InventreeCardConfig {
+export interface ConfigState extends InventreeCardConfig {
   _configLastUpdated?: number;
 }
 

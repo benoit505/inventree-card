@@ -1,13 +1,11 @@
 import { createSlice, PayloadAction, ActionReducerMapBuilder, current } from '@reduxjs/toolkit';
-import { ParameterAction, InventreeCardConfig, InventreeItem, ParameterDetail, ParameterConfig, ParameterOperator, ParameterActionType, ConditionalPartEffect, ParameterCondition } from '../../types';
+import { ParameterAction, InventreeCardConfig, InventreeItem, ParameterDetail, ParameterConfig, ParameterOperator, ParameterActionType, ParameterCondition } from '../../types';
 import { RootState } from '../index';
-import { fetchParametersForPart, updateParameterValue, fetchParametersForReferencedParts } from '../thunks/parameterThunks';
 import { Logger } from '../../utils/logger';
 
 const logger = Logger.getInstance();
 
-interface ParametersState {
-  conditionalPartEffects: Record<number, ConditionalPartEffect>;
+export interface ParametersState {
   actions: Record<string, ParameterAction[]>;
   parameterValues: Record<number, Record<string, ParameterDetail>>;
   parameterLoadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
@@ -23,7 +21,6 @@ interface ParametersState {
 }
 
 const initialState: ParametersState = {
-  conditionalPartEffects: {},
   actions: {},
   parameterValues: {},
   parameterLoadingStatus: {},
@@ -42,14 +39,6 @@ const parametersSlice = createSlice({
   name: 'parameters',
   initialState,
   reducers: {
-    setConditionalPartEffectsBatch(state: ParametersState, action: PayloadAction<Record<number, ConditionalPartEffect>>) {
-      state.conditionalPartEffects = action.payload;
-      logger.log('parametersSlice', 'Conditional part effects batch updated.', { count: Object.keys(action.payload).length, level: 'debug' });
-    },
-    clearConditionalPartEffects(state: ParametersState) {
-      state.conditionalPartEffects = {};
-      logger.log('parametersSlice', 'Conditional part effects cleared.', { level: 'debug' });
-    },
     setActions(state: ParametersState, action: PayloadAction<{ entityId: string, actions: ParameterAction[] }>) {
       const { entityId, actions } = action.payload;
       state.actions[entityId] = actions;
@@ -212,148 +201,9 @@ const parametersSlice = createSlice({
       }
     },
   },
-  extraReducers: (builder: ActionReducerMapBuilder<ParametersState>) => {
-    builder
-      .addCase(fetchParametersForPart.pending, (state: ParametersState, action) => {
-        const partId = action.meta.arg;
-        state.parameterLoadingStatus[partId] = 'loading';
-        state.parameterError[partId] = null;
-        logger.log('parametersSlice', `Fetching parameters for part ${partId}...`, { level: 'debug' });
-      })
-      .addCase(fetchParametersForPart.fulfilled, (state: ParametersState, action: PayloadAction<{ partId: number, parameters: ParameterDetail[] }>) => {
-        const { partId, parameters } = action.payload;
-        
-        state.parameterLoadingStatus[partId] = 'succeeded';
-        state.parameterError[partId] = null;
-        
-        if (!state.parameterValues[partId]) {
-          state.parameterValues[partId] = {};
-        }
-
-        if (parameters.length > 0) {
-          parameters.forEach(param => {
-            const paramName = param.template_detail?.name;
-            if (paramName) {
-                state.parameterValues[partId][paramName] = param;
-            } else {
-                 logger.warn('parametersSlice', `Fetched parameter for part ${partId} is missing template_detail.name`, param);
-            }
-          });
-           logger.log('parametersSlice', `Successfully fetched ${parameters.length} parameters for part ${partId}.`, { level: 'debug' });
-        } else {
-           logger.log('parametersSlice', `Fetched parameters for part ${partId}, but received an empty array. Marking as succeeded.`, { level: 'debug' });
-        }
-      })
-      .addCase(fetchParametersForPart.rejected, (state: ParametersState, action) => {
-        const partId = action.meta.arg;
-        state.parameterLoadingStatus[partId] = 'failed';
-        state.parameterError[partId] = action.payload as string ?? 'Failed to fetch parameters';
-        logger.error('parametersSlice', `Failed to fetch parameters for part ${partId}: ${state.parameterError[partId]}`);
-      })
-      .addCase(fetchParametersForReferencedParts.pending, (state: ParametersState, action) => {
-        logger.log('parametersSlice', 'Handling fetchParametersForReferencedParts.pending', { level: 'debug', subsystem: 'thunkStatus'});
-        const partIdsFromThunkArg = action.meta.arg as number[];
-        logger.log('parametersSlice', `- Pending for partIds from thunk argument: ${partIdsFromThunkArg.join(', ')}`, { level: 'debug', subsystem: 'thunkStatus', data: partIdsFromThunkArg });
-        
-        partIdsFromThunkArg.forEach((partId: number) => { 
-          // Only set to 'loading' if currently 'idle' or 'failed'
-          // This prevents this pending action from immediately blocking its own thunk
-          // if the thunk's internal filter also checks for 'loading'.
-          const currentStatusInState = state.parameterLoadingStatus[partId] ?? 'idle';
-          if (currentStatusInState === 'idle' || currentStatusInState === 'failed') {
-            state.parameterLoadingStatus[partId] = 'loading';
-            state.parameterError[partId] = null;
-            logger.log('parametersSlice', `Set part ${partId} to loading (was ${currentStatusInState})`, {level: 'silly'});
-          } else {
-            logger.log('parametersSlice', `Part ${partId} already ${currentStatusInState}, not changing to loading in pending reducer.`, {level: 'silly'});
-          }
-        });
-      })
-      .addCase(fetchParametersForReferencedParts.fulfilled, (state: ParametersState, action: PayloadAction<Record<number, { data: ParameterDetail[]; error?: string }>>) => {
-        const parametersByPartId = action.payload;
-        logger.log('parametersSlice', 'Handling fetchParametersForReferencedParts.fulfilled', { level: 'debug', subsystem: 'thunkStatus', data: parametersByPartId });
-        
-        Object.entries(parametersByPartId).forEach(([partIdStr, result]) => {
-          const partId = parseInt(partIdStr, 10);
-          if (result.error) {
-            state.parameterLoadingStatus[partId] = 'failed';
-            state.parameterError[partId] = result.error;
-            if (!state.parameterValues[partId]) {
-              state.parameterValues[partId] = {}; 
-            }
-            logger.warn('parametersSlice', `fetchParametersForReferencedParts fulfilled but part ${partId} failed: ${result.error}`);
-          } else {
-            state.parameterLoadingStatus[partId] = 'succeeded';
-            state.parameterError[partId] = null;
-            
-            if (!state.parameterValues[partId]) {
-              state.parameterValues[partId] = {};
-            }
-
-            const paramsForPartMap: Record<string, ParameterDetail> = {};
-            if (result.data.length > 0) {
-              result.data.forEach(param => {
-                const paramName = param.template_detail?.name;
-                if (paramName) {
-                    paramsForPartMap[paramName] = param;
-                } else {
-                     logger.warn('parametersSlice', `Fetched parameter for part ${partId} is missing template_detail.name`, { paramData: param });
-                }
-              });
-            }
-            state.parameterValues[partId] = paramsForPartMap;
-            logger.log('parametersSlice', `Updated parameters for part ${partId}. Count: ${result.data.length}.`, { level: 'debug' });
-          }
-        });
-      })
-      .addCase(fetchParametersForReferencedParts.rejected, (state: ParametersState, action) => {
-        logger.error('parametersSlice', `Handling fetchParametersForReferencedParts.rejected: ${action.payload || action.error.message}`, { subsystem: 'thunkStatus', error: action.payload || action.error });
-        const partIdsAttempted = action.meta.arg;
-        if (partIdsAttempted && Array.isArray(partIdsAttempted)) {
-          partIdsAttempted.forEach(partId => {
-            if (state.parameterLoadingStatus[partId] === 'loading') {
-              state.parameterLoadingStatus[partId] = 'failed';
-              state.parameterError[partId] = action.payload as string || action.error.message || 'Thunk rejected';
-            }
-          });
-        }
-      })
-      .addCase(updateParameterValue.pending, (state: ParametersState, action) => {
-        const { partId, paramName } = action.meta.arg;
-         logger.log('parametersSlice', `Updating parameter ${paramName} for part ${partId}...`, { level: 'debug' });
-      })
-      .addCase(updateParameterValue.fulfilled, (state: ParametersState, action: PayloadAction<{ partId: number; paramName: string; value: string }>) => {
-        const { partId, paramName, value } = action.payload;
-        const key = `${partId}:${paramName}`;
-        
-        if (state.parameterValues[partId] && state.parameterValues[partId][paramName]) {
-          state.parameterValues[partId][paramName].data = value;
-           logger.log('parametersSlice', `Successfully updated parameter ${key} to '${value}' via API.`, { level: 'debug' });
-        } else {
-           logger.warn('parametersSlice', `Parameter ${key} not found in state during updateParameterValue.fulfilled. Value set by API might not be reflected unless fetched.`);
-        }
-        
-        state.parameterLoadingStatus[partId] = 'succeeded';
-        state.parameterError[partId] = null;
-
-        if (!state.recentlyChanged.includes(key)) {
-          state.recentlyChanged.push(key);
-           if (state.recentlyChanged.length > 100) {
-            state.recentlyChanged = state.recentlyChanged.slice(-100);
-          }
-        }
-      })
-      .addCase(updateParameterValue.rejected, (state: ParametersState, action) => {
-        const { partId, paramName } = action.meta.arg;
-        const key = `${partId}:${paramName}`;
-        logger.error('parametersSlice', `Failed to update parameter ${key} via API: ${action.payload}`);
-      });
-  }
 });
 
 export const { 
-  setConditionalPartEffectsBatch,
-  clearConditionalPartEffects,
   setActions, 
   setConfig,
   setStrictWebSocketMode,
@@ -393,8 +243,5 @@ export const selectParameterValue = (state: RootState, partId: number, paramName
     const partParams = state.parameters.parameterValues[partId];
     return partParams?.[paramName]?.data ?? null;
 };
-
-export const selectConditionalPartEffects = (state: RootState): Record<number, ConditionalPartEffect> => state.parameters.conditionalPartEffects;
-export const selectConditionalEffectForPart = (state: RootState, partId: number): ConditionalPartEffect | undefined => state.parameters.conditionalPartEffects[partId];
 
 export default parametersSlice.reducer; 

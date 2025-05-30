@@ -1,46 +1,5 @@
 // Declaration file to fix missing module errors
 
-declare module '@reduxjs/toolkit' {
-  export function configureStore(options: any): any;
-  export function createSlice(options: any): any;
-  export function createAsyncThunk<ReturnType, ArgType, ThunkConfig = {}>(
-    typePrefix: string, 
-    payloadCreator: (arg: ArgType, thunkAPI: {
-      dispatch: any;
-      getState: any;
-      extra: any;
-      requestId: string;
-      signal: AbortSignal;
-      rejectWithValue: (value: any) => any;
-      fulfillWithValue: (value: any) => any;
-    }) => Promise<ReturnType> | ReturnType
-  ): any;
-  
-  export interface PayloadAction<P> {
-    payload: P;
-    type: string;
-  }
-  
-  export interface ActionReducerMapBuilder<State> {
-    addCase: <PT>(
-      actionCreator: { type: string; match: (action: any) => action is any },
-      reducer: (state: State, action: any) => State | void
-    ) => ActionReducerMapBuilder<State>;
-    addMatcher: <A extends any>(
-      matcher: (action: any) => action is A,
-      reducer: (state: State, action: A) => State | void
-    ) => ActionReducerMapBuilder<State>;
-    addDefaultCase: (
-      reducer: (state: State, action: any) => State | void
-    ) => ActionReducerMapBuilder<State>;
-  }
-  
-  export type Middleware = (store: any) => (next: any) => (action: any) => any;
-  
-  // Add type for GetDefaultMiddleware
-  export type GetDefaultMiddleware = () => any[];
-}
-
 // --- Types Moved from core/types.ts ---
 
 // Helper Interfaces
@@ -409,6 +368,9 @@ export interface ProcessedCondition {
   entityId?: string;      // For sourceType 'ha_entity_state' or 'ha_entity_attribute'
   haAttributeName?: string; // For sourceType 'ha_entity_attribute'
 
+  // Effects to apply if this specific condition (or the group it belongs to) is met
+  effects?: EffectDefinition[];
+
   // Fields from originalRule (operator, value, action, action_value, targetPartIds) are directly accessible via originalRule
   // or can be duplicated here if preferred for direct access by the engine.
   // For simplicity, let's assume the engine accesses them via originalRule for now.
@@ -417,24 +379,12 @@ export interface ProcessedCondition {
   // lastResult?: boolean;
 }
 
-// --- Conditional Part Effect (Moved from parametersSlice.ts for wider use) ---
-export interface ConditionalPartEffect {
-  isVisible?: boolean;
-  highlight?: string; 
-  textColor?: string; 
-  border?: string; 
-  icon?: string; 
-  badge?: string; 
-  priority?: 'high' | 'medium' | 'low' | string;
-  // Other properties like sort, priority, filter can be added if they directly influence a single part's visual state via this object
-  // For now, keeping it aligned with what GridItem directly uses or implies.
-}
-
 // --- Conditional Logic Structures ---
 export interface EffectDefinition {
   id: string; // Unique ID for this specific effect
   type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action';
   targetElement?: string; // CSS selector or predefined element key (e.g., 'part_image', 'part_name_text')
+  targetPartPks?: number[] | string; // NEW: Which parts this specific effect applies to (e.g., [1,2], "all_loaded", "1,2,3")
   // For set_visibility
   isVisible?: boolean;
   // For set_style

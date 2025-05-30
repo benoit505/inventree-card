@@ -17,6 +17,7 @@ export interface VisualEffect {
   // Effects that might influence layout or other non-CSS properties
   isExpanded?: boolean; // For expandable sections within a part display
   customClasses?: string[]; // Array of CSS class names to apply
+  priority?: 'high' | 'medium' | 'low' | string;
 }
 
 // Interface for the state of this slice

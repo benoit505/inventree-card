@@ -9,7 +9,6 @@ export declare class Logger {
     private _recentLogs;
     private _dedupeTimeWindow;
     private _maxDuplicatesPerWindow;
-    private _cache;
     private constructor();
     static getInstance(): Logger;
     /**

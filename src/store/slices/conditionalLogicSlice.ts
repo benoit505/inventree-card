@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ConditionRuleDefinition, ProcessedCondition } from '../../types'; // MODIFIED: Import ProcessedCondition from ../../types
-import { RootState } from '../index';
+import { RootState } from '../index'; // Changed import path back
+import { ConditionalLogicItem, ProcessedCondition, ConditionRuleDefinition, EffectDefinition } from '../../types';
 import { Logger } from '../../utils/logger';
 
 const logger = Logger.getInstance();

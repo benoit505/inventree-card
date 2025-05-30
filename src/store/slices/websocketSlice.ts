@@ -1,12 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
 import { Logger } from '../../utils/logger';
+import { WebSocketEventMessage } from '../../types';
 
 const logger = Logger.getInstance();
 
 type WebSocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'disabled';
 
-interface WebSocketState {
+export interface WebSocketState {
     status: WebSocketStatus;
     lastMessage: any | null; // Store the last received message for debugging?
     lastError: string | null;

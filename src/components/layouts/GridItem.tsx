@@ -1,9 +1,14 @@
 import * as React from 'react';
 import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, VisualModifiers, ConditionalPartEffect } from '../../types';
-import { RootState } from '../../store';
-import { selectConditionalEffectForPart } from '../../store/slices/parametersSlice';
+import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail } from '../../types';
+import { VisualEffect } from '../../store/slices/visualEffectsSlice';
+import { RootState } from '../../store/index';
+import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
+import { useGetPartParametersQuery } from '../../store/apis/inventreeApi';
+import { Logger } from '../../utils/logger';
+import { SerializedError } from '@reduxjs/toolkit';
+import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 
 import PartButtons from '../part/PartButtons';
 import PartThumbnail from '../part/PartThumbnail';
@@ -14,12 +19,13 @@ interface GridItemProps {
   hass?: HomeAssistant;
   isCurrentlyLocating: boolean;
   parameterActions: ParameterAction[];
+  parametersDisplayEnabled: boolean;
   handleLocateGridItem: (partId: number) => void;
-  handleParameterActionClick: (partId: number, action: ParameterAction) => void;
+  handleParameterActionClick: (partId: number, action: ParameterAction, parameterPk?: number) => void;
 }
 
 // Helper functions (can be co-located or imported if used elsewhere)
-const getGridItemContainerStyle = (modifiers?: VisualModifiers, config?: InventreeCardConfig): React.CSSProperties => {
+const getGridItemContainerStyle = (modifiers?: VisualEffect, config?: InventreeCardConfig): React.CSSProperties => {
   const styles: React.CSSProperties = {
     border: '1px solid #eee', // Default border
     padding: '8px',
@@ -31,13 +37,15 @@ const getGridItemContainerStyle = (modifiers?: VisualModifiers, config?: Inventr
     justifyContent: 'space-between',
   };
   if (modifiers?.highlight) styles.backgroundColor = modifiers.highlight;
-  if (modifiers?.border) styles.border = modifiers.border; // Directly use the border string
+  if (modifiers?.border) styles.border = modifiers.border;
+  if (typeof modifiers?.opacity === 'number') styles.opacity = modifiers.opacity;
   return styles;
 };
 
-const getGridItemTextStyle = (modifiers?: VisualModifiers): React.CSSProperties => {
-  if (!modifiers || !modifiers.textColor) return {};
-  return { color: modifiers.textColor };
+const getGridItemTextStyle = (modifiers?: VisualEffect): React.CSSProperties => {
+  const styles: React.CSSProperties = {};
+  if (modifiers?.textColor) styles.color = modifiers.textColor;
+  return styles;
 };
 
 const GridItem: React.FC<GridItemProps> = ({
@@ -46,14 +54,23 @@ const GridItem: React.FC<GridItemProps> = ({
   hass,
   isCurrentlyLocating,
   parameterActions,
+  parametersDisplayEnabled,
   handleLocateGridItem,
   handleParameterActionClick,
 }) => {
+  const logger = Logger.getInstance();
   const partId = part.pk;
-  const visualModifiers = useSelector((state: RootState) => selectConditionalEffectForPart(state, partId)) as VisualModifiers | undefined;
+  const visualModifiers = useSelector((state: RootState) => selectVisualEffectForPart(state, partId));
   const displayConfig = config.display || {};
 
-  const actualModifiers = visualModifiers || {};
+  const {
+    data: parametersData,
+    isLoading: isLoadingParameters,
+    isError,
+    error,
+  } = useGetPartParametersQuery(partId, { skip: !parametersDisplayEnabled });
+
+  const actualModifiers = visualModifiers || {} as VisualEffect;
 
   const itemContainerStyle = getGridItemContainerStyle(actualModifiers, config);
   const itemTextStyle = getGridItemTextStyle(actualModifiers);
@@ -61,7 +78,8 @@ const GridItem: React.FC<GridItemProps> = ({
   const itemClasses = [
     'part-container',
     isCurrentlyLocating ? 'locating' : '',
-    actualModifiers?.priority ? `priority-${actualModifiers.priority}` : ''
+    actualModifiers?.priority ? `priority-${actualModifiers.priority}` : '',
+    ...(actualModifiers?.customClasses || [])
   ].filter(Boolean).join(' ');
 
   if (actualModifiers.isVisible === false) {
@@ -118,6 +136,40 @@ const GridItem: React.FC<GridItemProps> = ({
         )}
       </div>
       {isCurrentlyLocating && <div className="locating-indicator">Locating...</div>}
+      {parametersDisplayEnabled && (
+        <div className="part-parameters" style={{ fontSize: '0.75em', textAlign: 'left', marginTop: '8px' }}>
+          {isLoadingParameters && <p>Loading parameters...</p>}
+          {isError && (
+            <p style={{color: 'red'}}>
+              Error loading parameters: {
+                (() => {
+                  if (error) {
+                    if ('status' in error) {
+                      const customError = error as { status?: number | 'CUSTOM_ERROR'; data?: any; message?: string };
+                      if (customError.data && typeof customError.data === 'object' && customError.data.message) {
+                        return customError.data.message;
+                      } else if (typeof customError.data === 'string') {
+                        return customError.data;
+                      }
+                      return customError.message || customError.status?.toString() || 'API error';
+                    } else {
+                      return (error as SerializedError).message || 'Unknown client error';
+                    }
+                  }
+                  return 'Unknown error';
+                })()
+              }
+            </p>
+          )}
+          {parametersData && parametersData.length > 0 && (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {parametersData.map((parameter: ParameterDetail) => (
+                <li key={parameter.pk}>{parameter.template_detail?.name}: {parameter.data}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 };

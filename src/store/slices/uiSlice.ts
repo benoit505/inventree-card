@@ -1,6 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { RootState } from '../index';
 
-interface UiState {
+export type ViewType = 'grid' | 'list' | 'detail' | 'settings' | 'debug';
+
+export interface UiState {
   activeView: string;
   selectedPartId: number | null;
   debug: {

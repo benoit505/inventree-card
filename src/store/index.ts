@@ -1,4 +1,4 @@
-import { configureStore, combineReducers } from '@reduxjs/toolkit';
+import { configureStore, combineReducers, Middleware, ThunkAction, Action, ThunkDispatch } from '@reduxjs/toolkit';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
 
 // Import individual reducers
@@ -11,23 +11,21 @@ import genericHaStatesReducer from './slices/genericHaStateSlice';
 import metricsReducer from './slices/metricsSlice';
 import parametersReducer from './slices/parametersSlice';
 import partsReducer from './slices/partsSlice';
-import searchReducer from './slices/searchSlice';
-import timerReducer from './slices/timerSlice';
 import uiReducer from './slices/uiSlice';
 import visualEffectsReducer from './slices/visualEffectsSlice';
 import websocketReducer from './slices/websocketSlice';
 
+// Import the API slice we created
+import { inventreeApi } from './apis/inventreeApi';
+
 // Import Middleware
-// Note: Paths are now relative to src/store/ not src/
 import { loggingMiddleware } from './middleware/logging-middleware';
 import { servicesMiddleware } from './middleware/services-middleware';
-import { timerMiddleware } from './middleware/timer-middleware';
 import { websocketMiddleware } from './middleware/websocketMiddleware';
-import { debounceMiddleware } from './middleware/debounceMiddleware';
 import metricsMiddleware from './middleware/metricsMiddleware';
-import { Middleware } from '@reduxjs/toolkit'; // Import Middleware type
 
-const rootReducer = combineReducers({
+// Export rootReducer for store/types.ts
+export const rootReducer = combineReducers({
   api: apiReducer,
   components: componentReducer,
   conditionalLogic: conditionalLogicReducer,
@@ -37,33 +35,43 @@ const rootReducer = combineReducers({
   metrics: metricsReducer,
   parameters: parametersReducer,
   parts: partsReducer,
-  search: searchReducer,
-  timers: timerReducer,
   ui: uiReducer,
   visualEffects: visualEffectsReducer,
   websocket: websocketReducer,
+  // Add the generated reducer as a specific top-level slice for RTK Query
+  [inventreeApi.reducerPath]: inventreeApi.reducer,
 });
+
+// Define RootState first
+export type RootState = ReturnType<typeof rootReducer>;
+
+// Define AppDispatch explicitly
+export type AppDispatch = ThunkDispatch<RootState, unknown, Action<string>>;
+
+// A generic AppThunk type for creating thunks
+export type AppThunk<ReturnType = void> = ThunkAction<
+  ReturnType,
+  RootState,
+  unknown, 
+  Action<string>
+>;
 
 export const store = configureStore({
   reducer: rootReducer,
-  middleware: (getDefaultMiddleware: (options?: { serializableCheck?: boolean | Record<string, any> }) => Middleware[]) =>
+  middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: false,
-    }).concat(
+    }).concat([
       loggingMiddleware,
       servicesMiddleware,
-      timerMiddleware,
       websocketMiddleware,
-      debounceMiddleware,
-      metricsMiddleware
-    ),
+      metricsMiddleware,
+      inventreeApi.middleware,
+    ]),
 });
 
-export type RootState = ReturnType<typeof store.getState>;
-export type AppDispatch = typeof store.dispatch;
-
 // Typed hooks
-export const useAppDispatch: () => AppDispatch = useDispatch;
+export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
 

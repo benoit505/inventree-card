@@ -1,9 +1,6 @@
 import * as React from 'react';
-import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig } from '../../types';
-import { selectPartsLoading } from '../../store/slices/partsSlice';
-import { selectAnyParameterLoading } from '../../store/selectors/parameterSelectors';
 import { Logger } from '../../utils/logger';
 
 // Import the PartView component
@@ -17,9 +14,6 @@ interface DetailLayoutProps {
 
 const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartId }) => {
   const logger = React.useMemo(() => Logger.getInstance(), []);
-
-  const isLoadingParts = useSelector(selectPartsLoading);
-  const isLoadingParameters = useSelector(selectAnyParameterLoading);
 
   React.useEffect(() => {
     logger.log('DetailLayout', 'Props update', { hasHass: !!hass, hasConfig: !!config, selectedPartId });
@@ -42,14 +36,8 @@ const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartI
         <PartView partId={selectedPartId} config={config} hass={hass} />
       ) : (
         <div>
-          {isLoadingParts || isLoadingParameters ? (
-            "Loading initial data..."
-          ) : (
-            <>
-              <div>No part selected or available for the configured entities.</div>
-              <div>Please check your card configuration and ensure entities have associated parts.</div>
-            </>
-          )}
+          <div>No part selected or available for the configured entities.</div>
+          <div>Please check your card configuration and ensure entities have associated parts.</div>
         </div>
       )}
     </div>

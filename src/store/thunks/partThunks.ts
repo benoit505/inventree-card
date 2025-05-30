@@ -5,6 +5,7 @@ import { selectApiInitialized } from '../slices/apiSlice';
 import { addParts } from '../slices/partsSlice'; // Assuming addParts can take an array
 import { Logger } from '../../utils/logger';
 import { inventreeApiService } from '../../services/inventree-api-service';
+import { inventreeApi } from '../apis/inventreeApi'; // Added import for RTK Query API
 
 const logger = Logger.getInstance();
 
@@ -29,12 +30,12 @@ export const fetchPartsByPks = createAsyncThunk<
       return []; // Return empty array if no PKs
     }
 
-    logger.log('fetchPartsByPks Thunk', `Fetching ${partPks.length} parts by PKs: ${partPks.join(', ')}`);
+    logger.log('fetchPartsByPks Thunk', `Fetching ${partPks.length} parts by PKs via RTK Query: ${partPks.join(', ')}`);
 
     try {
-      // Fetch each part individually using Promise.allSettled
+      // Dispatch getPart query for each part PK using Promise.allSettled
       const settledPromises = await Promise.allSettled(
-        partPks.map(pk => inventreeApiService.getPart(pk))
+        partPks.map(pk => dispatch(inventreeApi.endpoints.getPart.initiate(pk)).unwrap())
       );
 
       const fetchedParts: InventreeItem[] = [];
@@ -42,27 +43,27 @@ export const fetchPartsByPks = createAsyncThunk<
         const pk = partPks[index];
         if (result.status === 'fulfilled' && result.value) {
           // Add a source to the part before adding to the list
-          fetchedParts.push({ ...result.value, source: 'api:direct_pk' });
+          // The result.value should be the InventreeItem directly from the unwrap()
+          fetchedParts.push({ ...result.value, source: 'api:direct_pk_rtk' }); 
         } else if (result.status === 'rejected') {
-          logger.error('fetchPartsByPks Thunk', `Failed to fetch part PK ${pk}:`, result.reason);
-          // Optionally, you could collect errors or decide if one failure should reject the whole thunk
+          logger.error('fetchPartsByPks Thunk', `Failed to fetch part PK ${pk} via RTK Query:`, { reason: result.reason });
+          // Optionally, collect errors or decide if one failure should reject the whole thunk
         }
       });
 
       if (fetchedParts.length > 0) {
-        logger.log('fetchPartsByPks Thunk', `Successfully fetched ${fetchedParts.length}/${partPks.length} parts. Dispatching addParts.`);
-        // The addParts reducer expects an array of InventreeItem
-        // dispatch(addParts(fetchedParts)); // Dispatching happens where the thunk is called, not within another thunk usually
-        // This thunk should return the data for the calling code to dispatch
+        logger.log('fetchPartsByPks Thunk', `Successfully fetched ${fetchedParts.length}/${partPks.length} parts via RTK Query.`);
       } else if (partPks.length > 0) {
-        logger.warn('fetchPartsByPks Thunk', 'No parts were successfully fetched.');
+        logger.warn('fetchPartsByPks Thunk', 'No parts were successfully fetched via RTK Query.');
       }
       
       return fetchedParts; // Return the array of fetched parts
 
     } catch (error: any) {
-      const errorMsg = `Generic error in fetchPartsByPks: ${error.message || error}`;
-      logger.error('fetchPartsByPks Thunk', errorMsg);
+      // This catch block might be less likely to be hit if errors are handled per-promise by allSettled and unwrap
+      // However, it's good for unexpected issues during the mapping or dispatching phase itself.
+      const errorMsg = `Generic error in fetchPartsByPks (RTK Query): ${error.message || error}`;
+      logger.error('fetchPartsByPks Thunk', errorMsg, { errorData: error });
       return rejectWithValue(errorMsg);
     }
   }

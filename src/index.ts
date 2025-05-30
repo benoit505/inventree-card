@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && !window.process) {
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Logger } from './utils/logger';
-import { CacheService } from './services/cache';
+// import { CacheService } from './services/cache';
 import { safelyRegisterElement } from './utils/custom-element-registry';
 
 // Import constants

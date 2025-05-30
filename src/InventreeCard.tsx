@@ -10,7 +10,8 @@ import {
     RuleGroupType, 
     RuleType, 
     ParameterOperator, 
-    ParameterActionType 
+    ParameterActionType,
+    ConditionalLogicItem
 } from './types';
 import { Logger } from './utils/logger';
 // import { apiInitializationError } from './store/slices/apiSlice'; // Removed unused import
@@ -38,6 +39,9 @@ import { setConfigAction } from './store/slices/configSlice';
 // Import clearCache from parametersSlice
 import { clearCache } from './store/slices/parametersSlice';
 
+// Import debounce from lodash-es
+import debounce from 'lodash-es/debounce';
+
 import { fetchPartsByPks } from './store/thunks/partThunks';
 import { RootState, AppDispatch } from './store'; // Import AppDispatch
 import { 
@@ -59,22 +63,6 @@ interface InventreeCardProps {
 }
 
 const logger = Logger.getInstance();
-
-// Simple debounce utility function
-function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  return (...args: Parameters<F>): Promise<ReturnType<F>> =>
-    new Promise((resolve) => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      timeoutId = setTimeout(() => {
-        timeoutId = null; // Clear the timeoutId after execution
-        resolve(func(...args));
-      }, waitFor);
-    });
-}
 
 // Temporary Transformer: RuleGroupType to ParameterCondition[]
 // This is a simplified transformation. A more robust solution would handle nested groups
@@ -180,7 +168,7 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   }, [config]);
 
   // Debounced version of the initialization logic
-  const debouncedInitializationEffect = useCallback(debounce(async (currentHass, currentConfig, currentDispatch) => {
+  const debouncedInitializationEffect = useCallback(debounce(async (currentHass: HomeAssistant | undefined, currentConfig: InventreeCardConfig | undefined, currentDispatch: AppDispatch) => {
     // ADD TEMP LOG
     // console.log('[TEMP LOG - InventreeCard.tsx:172]', 'debouncedInitializationEffect triggered. HASS available:', !!currentHass, 'Config available:', !!currentConfig);
     if (currentHass && currentConfig) {
@@ -287,57 +275,78 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
       }
 
       // Conditional Logic Initialization
-      let conditionsToInitialize: ConditionRuleDefinition[] = [];
-      if (currentConfig.conditional_logic && currentConfig.conditional_logic.rules && currentConfig.conditional_logic.rules.length > 0) {
-        // Check if currentConfig.conditional_logic.rules is RuleGroupType or already ConditionRuleDefinition[]
-        // For now, assuming it might be RuleGroupType due to transformRuleGroupToParameterConditions existing.
-        // If conditional_logic.rules is ALREADY ConditionRuleDefinition[], this transform is not needed here.
-        if (Array.isArray(currentConfig.conditional_logic.rules)) {
-            // This path suggests rules are already ConditionRuleDefinition[]
-            // However, the roadmap refers to rules from QueryBuilder which is RuleGroupType
-            // Let's assume for now the config might hold ConditionRuleDefinition[] directly from an advanced editor state
-            // OR it holds a RuleGroupType that needs transformation.
-            // The current check `currentConfig.conditional_logic.rules.rules.length > 0` implies RuleGroupType.
-            
-            // IF the config structure for `conditional_logic.rules` is intended to be `RuleGroupType`:
-            // conditionsToInitialize = transformRuleGroupToParameterConditions(currentConfig.conditional_logic.rules as RuleGroupType);
-            
-            // IF the config structure for `conditional_logic.rules` is `ConditionRuleDefinition[]` (as per our recent types.d.ts change):
-            // Then the transformer is misnamed or misplaced. It should be used by the EDITOR to produce this format.
-            // For the card runtime, we would directly use the ConditionRuleDefinition[] from config.
-
-            // RESOLUTION based on types.d.ts: config.conditional_logic.rules IS ConditionRuleDefinition[]
-            // So, the transformer is not needed here if the config is already in the correct format.
-            // However, the old code had it for `currentConfig.conditional_logic.rules` (which was RuleGroupType)
-            // Let's adapt to the NEW config structure for `conditional_logic.rules` which IS `ConditionRuleDefinition[]`
-            
-            // If `currentConfig.conditional_logic.rules` is ALREADY ConditionRuleDefinition[]:
-            if ((currentConfig.conditional_logic.rules as ConditionRuleDefinition[]).every((r: ConditionRuleDefinition) => typeof r.parameter === 'string' && typeof r.operator === 'string')) {
-                 logger.log('InventreeCard.tsx', 'Debounced Effect: Using conditional_logic.rules (ConditionRuleDefinition[]) directly.');
-                 conditionsToInitialize = currentConfig.conditional_logic.rules as ConditionRuleDefinition[];
-            } else {
-                 // This case implies that currentConfig.conditional_logic.rules is still RuleGroupType from an older config or editor save
-                 logger.log('InventreeCard.tsx', 'Debounced Effect: Attempting to transform conditional_logic.rules (assumed RuleGroupType).');
-                 conditionsToInitialize = transformRuleGroupToParameterConditions(currentConfig.conditional_logic.rules as any as RuleGroupType); // Cast needed if it's RuleGroupType
-            }
-
-        } else if (typeof currentConfig.conditional_logic.rules === 'object' && 'rules' in currentConfig.conditional_logic.rules) {
-            // This is definitely a RuleGroupType that needs transformation
-            logger.log('InventreeCard.tsx', 'Debounced Effect: Using new conditional_logic.rules (RuleGroupType) for initialization, transforming...');
-            conditionsToInitialize = transformRuleGroupToParameterConditions(currentConfig.conditional_logic.rules as RuleGroupType);
+      let logicItemsToInitialize: ConditionalLogicItem[] = [];
+      if (currentConfig.conditional_logic && currentConfig.conditional_logic.definedLogics && currentConfig.conditional_logic.definedLogics.length > 0) {
+        logger.log('InventreeCard.tsx', 'Debounced Effect: Using conditional_logic.definedLogics (ConditionalLogicItem[]).');
+        logicItemsToInitialize = currentConfig.conditional_logic.definedLogics;
+      } else if (currentConfig.conditional_logic && currentConfig.conditional_logic.rules && currentConfig.conditional_logic.rules.length > 0) {
+        // This section is for backward compatibility or if 'rules' (ConditionRuleDefinition[]) is still populated by some means.
+        // It needs to be transformed into ConditionalLogicItem[] if we want to use the new thunk.
+        // For now, let's log a warning and potentially skip, or attempt a basic transformation.
+        logger.warn('InventreeCard.tsx', 'Debounced Effect: Found legacy conditional_logic.rules. These should be migrated to definedLogics (ConditionalLogicItem[]).');
+        // Basic transformation (assuming each ConditionRuleDefinition becomes a ConditionalLogicItem with a single rule and effect):
+        // This is a very simplified transformation and might not be what users expect if they manually crafted rules.
+        // Better to encourage migration to the new editor structure.
+        logicItemsToInitialize = (currentConfig.conditional_logic.rules as ConditionRuleDefinition[]).map((ruleDef, index) => ({
+            id: `legacy-item-${index}`,
+            name: ruleDef.name || `Legacy Item ${index}`,
+            conditionRules: { // Create a RuleGroupType with a single rule
+                id: `legacy-group-${index}`,
+                combinator: 'and',
+                rules: [{
+                    id: `legacy-rule-${index}`,
+                    field: ruleDef.parameter,
+                    operator: ruleDef.operator,
+                    value: ruleDef.value
+                }]
+            },
+            effects: [ // Create a single EffectDefinition based on old action/action_value
+                {
+                    id: `legacy-effect-${index}`,
+                    type: 'set_style', // This is a guess, map old actions to new types
+                    styleProperty: ruleDef.action, // e.g., 'highlight', 'textColor'
+                    styleValue: ruleDef.action_value,
+                    // isVisible might be derived from action='filter' and action_value='show'/'hide'
+                }
+            ]
+        }));
+        if (logicItemsToInitialize.length > 0) {
+            logger.log('InventreeCard.tsx', `Transformed ${currentConfig.conditional_logic.rules.length} legacy rules into ${logicItemsToInitialize.length} ConditionalLogicItems for initialization.`);
         }
-
       } else if (currentConfig.parameters?.conditions && currentConfig.parameters.conditions.length > 0) {
-        logger.log('InventreeCard.tsx', 'Debounced Effect: Falling back to legacy parameters.conditions for initialization.');
-        conditionsToInitialize = currentConfig.parameters.conditions;
+        // Similar legacy handling for parameters.conditions
+        logger.warn('InventreeCard.tsx', 'Debounced Effect: Falling back to very legacy parameters.conditions. These should be migrated.');
+        logicItemsToInitialize = (currentConfig.parameters.conditions as ConditionRuleDefinition[]).map((ruleDef, index) => ({
+            id: `legacy-param-item-${index}`,
+            name: ruleDef.name || `Legacy Param Item ${index}`,
+            conditionRules: {
+                id: `legacy-param-group-${index}`,
+                combinator: 'and',
+                rules: [{
+                    id: `legacy-param-rule-${index}`,
+                    field: ruleDef.parameter,
+                    operator: ruleDef.operator,
+                    value: ruleDef.value
+                }]
+            },
+            effects: [{
+                id: `legacy-param-effect-${index}`,
+                type: 'set_style', 
+                styleProperty: ruleDef.action,
+                styleValue: ruleDef.action_value
+            }]
+        }));
+        if (logicItemsToInitialize.length > 0) {
+            logger.log('InventreeCard.tsx', `Transformed ${currentConfig.parameters.conditions.length} very legacy parameter conditions into ${logicItemsToInitialize.length} ConditionalLogicItems.`);
+        }
       } else {
-        logger.log('InventreeCard.tsx', 'Debounced Effect: No conditions found in new or legacy config for initialization.');
+        logger.log('InventreeCard.tsx', 'Debounced Effect: No conditions/logic items found in new or legacy config for initialization.');
       }
 
-      // Dispatch initializeRuleDefinitionsThunk (NEW)
+      // Dispatch initializeRuleDefinitionsThunk with ConditionalLogicItem[]
       if (currentConfig.direct_api?.enabled && (currentConfig.parameters?.enabled || currentConfig.conditional_logic)) {
-        logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching initializeRuleDefinitionsThunk...', { numConditions: conditionsToInitialize.length });
-        currentDispatch(initializeRuleDefinitionsThunk(conditionsToInitialize));
+        logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching initializeRuleDefinitionsThunk...', { numLogicItems: logicItemsToInitialize.length });
+        currentDispatch(initializeRuleDefinitionsThunk(logicItemsToInitialize));
       } else {
         logger.log('InventreeCard.tsx', 'Debounced Effect: Skipping rule definitions initialization (Direct API or Parameters/ConditionalLogic disabled).');
         currentDispatch(initializeRuleDefinitionsThunk([])); // Clear any old state in conditionalLogicSlice

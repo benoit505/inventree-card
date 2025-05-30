@@ -7,8 +7,9 @@ interface GridItemProps {
     hass?: HomeAssistant;
     isCurrentlyLocating: boolean;
     parameterActions: ParameterAction[];
+    parametersDisplayEnabled: boolean;
     handleLocateGridItem: (partId: number) => void;
-    handleParameterActionClick: (partId: number, action: ParameterAction) => void;
+    handleParameterActionClick: (partId: number, action: ParameterAction, parameterPk?: number) => void;
 }
 declare const GridItem: React.FC<GridItemProps>;
 export default GridItem;

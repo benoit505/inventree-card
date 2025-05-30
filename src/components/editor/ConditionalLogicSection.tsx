@@ -14,6 +14,7 @@ import {
 import { Logger } from '../../utils/logger';
 import { HomeAssistant } from 'custom-card-helpers';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
+import EffectsConfiguration from './EffectsConfiguration'; // ADDED IMPORT
 
 const logger = Logger.getInstance();
 
@@ -191,13 +192,58 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     logger.log('ConditionalLogicSection', 'Removed logic block', { id });
   };
 
-  // TODO: UI for defining effects for each logic block
+  // --- Effect Handlers ---
+  const handleAddEffect = (logicBlockId: string) => {
+    const newEffect: EffectDefinition = {
+      id: uuidv4(),
+      type: 'set_visibility', // Default type
+      isVisible: true, // Default for visibility
+      // Initialize other fields as needed based on default type
+    };
+    const newDefinedLogics = definedLogics.map(item => {
+      if (item.id === logicBlockId) {
+        return { ...item, effects: [...item.effects, newEffect] };
+      }
+      return item;
+    });
+    setDefinedLogics(newDefinedLogics);
+    onConfigChanged({ definedLogics: newDefinedLogics });
+    logger.log('ConditionalLogicSection', 'Added new effect to logic block', { logicBlockId, newEffect });
+  };
+
+  const handleUpdateEffect = (logicBlockId: string, updatedEffect: EffectDefinition) => {
+    const newDefinedLogics = definedLogics.map(item => {
+      if (item.id === logicBlockId) {
+        const updatedEffects = item.effects.map(eff => 
+          eff.id === updatedEffect.id ? updatedEffect : eff
+        );
+        return { ...item, effects: updatedEffects };
+      }
+      return item;
+    });
+    setDefinedLogics(newDefinedLogics);
+    onConfigChanged({ definedLogics: newDefinedLogics });
+    logger.log('ConditionalLogicSection', 'Updated effect in logic block', { logicBlockId, updatedEffect });
+  };
+
+  const handleRemoveEffect = (logicBlockId: string, effectId: string) => {
+    const newDefinedLogics = definedLogics.map(item => {
+      if (item.id === logicBlockId) {
+        const filteredEffects = item.effects.filter(eff => eff.id !== effectId);
+        return { ...item, effects: filteredEffects };
+      }
+      return item;
+    });
+    setDefinedLogics(newDefinedLogics);
+    onConfigChanged({ definedLogics: newDefinedLogics });
+    logger.log('ConditionalLogicSection', 'Removed effect from logic block', { logicBlockId, effectId });
+  };
 
   return (
     <div className="conditional-logic-section">
       <h4>Conditional Logic Blocks</h4>
       <p style={{ fontSize: '0.9em', color: 'gray', marginBottom: '15px' }}>
-        Define sets of conditions (logic blocks). Each block can have its own rules and associated effects (effects UI coming soon).
+        Define sets of conditions (logic blocks). Each block can have its own rules and associated effects.
       </p>
       <button onClick={handleAddLogicBlock} style={{ marginBottom: '15px' }}>
         + Add New Logic Block
@@ -232,6 +278,14 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
               <em>UI for defining effects (e.g., show/hide, change style, call service) for this block will be here. Currently, {logicItem.effects.length} effects defined.</em>
             </p>
           </div>
+
+          <EffectsConfiguration
+            effects={logicItem.effects}
+            logicBlockId={logicItem.id}
+            onAddEffect={handleAddEffect}
+            onUpdateEffect={handleUpdateEffect}
+            onRemoveEffect={handleRemoveEffect}
+          />
 
           <details style={{ marginTop: '10px' }}>
             <summary>Debug: Logic Item JSON</summary>
