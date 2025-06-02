@@ -2,7 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 
-A highly flexible custom card for Home Assistant that displays, manages, and interacts with InvenTree inventory items and other Home Assistant entities. This card leverages React and Redux for a modern, dynamic, and powerful user experience, moving towards a "reality mapping system" where objects with states interact with other objects with states.
+A highly flexible custom card for Home Assistant that displays, manages, and interacts with InvenTree inventory items and other Home Assistant entities. This card leverages React and Redux for a modern, dynamic, and powerful user experience.
 
 ## Key Features
 
