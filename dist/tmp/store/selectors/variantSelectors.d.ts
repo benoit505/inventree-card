@@ -13,6 +13,7 @@ export declare const selectProcessedVariants: ((state: {
     ui: import("../slices/uiSlice").UiState;
     visualEffects: import("../slices/visualEffectsSlice").VisualEffectsState;
     websocket: import("../slices/websocketSlice").WebSocketState;
+    actions: import("../slices/actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -94,6 +95,7 @@ export declare const selectVariantGroups: ((state: {
     ui: import("../slices/uiSlice").UiState;
     visualEffects: import("../slices/visualEffectsSlice").VisualEffectsState;
     websocket: import("../slices/websocketSlice").WebSocketState;
+    actions: import("../slices/actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -178,6 +180,7 @@ export declare const selectVariantGroups: ((state: {
         ui: import("../slices/uiSlice").UiState;
         visualEffects: import("../slices/visualEffectsSlice").VisualEffectsState;
         websocket: import("../slices/websocketSlice").WebSocketState;
+        actions: import("../slices/actionsSlice").ActionsState;
         inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
             getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
                 status?: number | "CUSTOM_ERROR";

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeItem, InventreeCardConfig, ParameterDetail } from '../../types';
+import { InventreeItem, InventreeCardConfig, ParameterDetail, ActionDefinition, ActionExecutionContext } from '../../types';
 import { Logger } from '../../utils/logger';
 
 // ADDED: RTK Query hooks
@@ -10,6 +10,7 @@ import { useGetPartQuery, useGetPartParametersQuery } from '../../store/apis/inv
 import { VisualEffect, selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
+import { actionEngine } from '../../services/ActionEngine';
 
 // Import child React components
 import PartThumbnail from './PartThumbnail';
@@ -176,6 +177,27 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
 
   // logger.log('PartView React', 'Rendering PartView for:', { partId: partData.pk, name: partData.name });
 
+  const handleThumbnailClick = React.useMemo(() => {
+    if (!config?.actions || !partData) return undefined;
+
+    const thumbnailClickAction = config.actions.find(
+      (action: ActionDefinition) => action.trigger.type === 'ui_thumbnail_click'
+    );
+
+    if (thumbnailClickAction) {
+      return (event: React.MouseEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+        logger.log('PartView', `Thumbnail clicked for part ${partData.pk}, executing action: ${thumbnailClickAction.name}`);
+        const executionContext: ActionExecutionContext = {
+          part: partData,
+          hassStates: hass?.states,
+        };
+        actionEngine.executeAction(thumbnailClickAction.id, { ...executionContext, hass });
+      };
+    }
+    return undefined;
+  }, [config?.actions, partData, hass, logger]);
+
   return (
     <div style={partContainerStyle} className={itemClasses}>
       {display.show_header !== false && (
@@ -193,7 +215,13 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
         {display.show_image !== false && partData.thumbnail && (
           <div className="part-thumbnail-wrapper" style={{ width: '100px', height: '100px' /* Example size */ }}>
             {/* Pass visualEffect down to PartThumbnail */}
-            <PartThumbnail partData={partData} config={config} layout="detail" visualEffect={visualEffect} />
+            <PartThumbnail 
+              partData={partData} 
+              config={config} 
+              layout="detail" 
+              visualEffect={visualEffect} 
+              onClick={handleThumbnailClick}
+            />
           </div>
         )}
 

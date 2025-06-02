@@ -35,7 +35,7 @@ import { selectAllPartIds, selectAllParts } from '../slices/partsSlice';
 // Remove the placeholder/import for selectPrimaryPartId
 // const selectPrimaryPartId = (state: RootState): number | null => { ... };
 
-import { selectInventreeParametersToFetch } from '../slices/configSlice'; // Assuming this selector exists or will be created
+// REMOVED: import { selectInventreeParametersToFetch } from '../slices/configSlice'; // No longer selecting from configSlice here
 // REMOVED: import { ConditionalEffectsEngine } from '../../core/ConditionalEffectsEngine';
 
 // Import the API slice for dispatching RTK Query actions
@@ -80,6 +80,7 @@ export const fetchParametersForReferencedParts = createAsyncThunk<
             return true;
         });
 
+
         if (validPartIdsToFetch.length === 0) {
             logger.log('fetchParametersForReferencedParts Thunk', 'No valid part IDs to fetch after filtering. Skipping API calls.');
             return; 
@@ -104,7 +105,11 @@ export const fetchParametersForReferencedParts = createAsyncThunk<
                         // We can choose to await promise.unwrap() if we need the result/error immediately
                         // or just let RTK Query handle it in the background.
                         // For this thunk, we primarily want to trigger the fetches.
-                        promise.then(() => successCount++).catch(() => failureCount++); 
+                        promise.then(() => {
+                            successCount++;
+                        }).catch((err) => {
+                            failureCount++;
+                        }); 
                         // If not awaiting, apply delay immediately for the next call in the batch
                         if (batchPartIds.indexOf(partId) < batchPartIds.length - 1) { // If not last in batch
                             await new Promise(resolve => setTimeout(resolve, INTER_CALL_DELAY_MS));
@@ -183,41 +188,26 @@ export const updateParameterValue = createAsyncThunk<
     }
 );
 
-// NEW Thunk: Fetches parameters based on declarative configuration in configSlice
+// NEW Thunk: Fetches parameters based on declarative configuration passed as argument
 export const fetchConfiguredParameters = createAsyncThunk<
   void, // Return type
-  void, // Argument type (none for this thunk)
+  InventreeParameterFetchConfig[], // Argument type: the configuration itself
   { state: RootState; rejectValue: string }
 >(
   'parameters/fetchConfigured',
-  async (_, { dispatch, getState, rejectWithValue }) => {
-    // ADD TEMP LOG
-    // console.log('[TEMP LOG - parameterThunks.ts:284] fetchConfiguredParameters THUNK START');
+  async (parametersToFetchConfig, { dispatch, getState, rejectWithValue }) => { // Changed first arg
     logger.log('ParameterThunk', 'Fetching parameters based on config.dataSources.inventreeParametersToFetch...');
     const state = getState();
     const apiInitialized = selectApiInitialized(state);
-    // ADD TEMP LOG
-    // console.log(`[TEMP LOG - parameterThunks.ts:289] fetchConfiguredParameters: API Initialized: ${apiInitialized}`);
     if (!apiInitialized) {
-      // ADD TEMP LOG
-      // console.warn('[TEMP LOG - parameterThunks.ts:292] fetchConfiguredParameters: API not initialized. Returning early.');
       logger.warn('ParameterThunk', 'API not initialized. Cannot fetch configured parameters.');
       return;
     }
 
-    // ADD TEMP LOG
-    // console.log('[TEMP LOG - parameterThunks.ts:298] fetchConfiguredParameters: Calling selectInventreeParametersToFetch(state)');
-    const parametersToFetchConfig = selectInventreeParametersToFetch(state);
-    // ADD TEMP LOG
-    // console.log('[TEMP LOG - parameterThunks.ts:301] fetchConfiguredParameters: selectInventreeParametersToFetch returned:', JSON.parse(JSON.stringify(parametersToFetchConfig || [])));
     const allLoadedPartsMap = state.parts.partsById; 
     const allLoadedPartIds = Object.keys(allLoadedPartsMap).map(pk => parseInt(pk, 10));
-    // ADD TEMP LOG
-    // console.log('[TEMP LOG - parameterThunks.ts:305] fetchConfiguredParameters: All loaded part IDs:', JSON.parse(JSON.stringify(allLoadedPartIds)));
 
     if (!parametersToFetchConfig || parametersToFetchConfig.length === 0) {
-      // ADD TEMP LOG
-      // console.log('[TEMP LOG - parameterThunks.ts:309] fetchConfiguredParameters: No inventreeParametersToFetch configured. Returning early.');
       logger.log('ParameterThunk', 'No inventreeParametersToFetch configured. Skipping proactive parameter fetch.');
       return;
     }
@@ -225,15 +215,9 @@ export const fetchConfiguredParameters = createAsyncThunk<
     const partIdsToFetchSet = new Set<number>();
 
     parametersToFetchConfig.forEach((configEntry: InventreeParameterFetchConfig) => { 
-      // ADD TEMP LOG
-      // console.log('[TEMP LOG - parameterThunks.ts:318] fetchConfiguredParameters: Processing configEntry:', JSON.parse(JSON.stringify(configEntry)));
       if (configEntry.targetPartIds === 'all_loaded') {
-        // ADD TEMP LOG
-        // console.log('[TEMP LOG - parameterThunks.ts:321] fetchConfiguredParameters: targetPartIds is \'all_loaded\'. Adding all loaded part IDs to set.');
         allLoadedPartIds.forEach(id => partIdsToFetchSet.add(id));
       } else if (Array.isArray(configEntry.targetPartIds)) {
-        // ADD TEMP LOG
-        // console.log('[TEMP LOG - parameterThunks.ts:325] fetchConfiguredParameters: targetPartIds is an array. Adding to set:', JSON.parse(JSON.stringify(configEntry.targetPartIds)));
         configEntry.targetPartIds.forEach(id => {
           if (typeof id === 'number' && !isNaN(id)) {
             partIdsToFetchSet.add(id);
@@ -246,31 +230,17 @@ export const fetchConfiguredParameters = createAsyncThunk<
     });
 
     const uniquePartIdsArray = Array.from(partIdsToFetchSet);
-    // ADD TEMP LOG
-    // console.log('[TEMP LOG - parameterThunks.ts:336] fetchConfiguredParameters: Unique part IDs to fetch:', JSON.parse(JSON.stringify(uniquePartIdsArray)));
 
     if (uniquePartIdsArray.length > 0) {
       logger.log('ParameterThunk', `Dispatching fetchParametersForReferencedParts for configured part IDs: ${uniquePartIdsArray.join(', ')}`);
-      // ADD TEMP LOG
-      // console.log(`[TEMP LOG - parameterThunks.ts:341] fetchConfiguredParameters: Dispatching fetchParametersForReferencedParts with IDs: ${uniquePartIdsArray.join(', ')}`);
       try {
-        // ADD TEMP LOG
-        // console.log('[TEMP LOG - parameterThunks.ts:344] fetchConfiguredParameters: AWAITING dispatch(fetchParametersForReferencedParts(...)).unwrap()');
         await dispatch(fetchParametersForReferencedParts(uniquePartIdsArray)).unwrap();
-        // ADD TEMP LOG
-        // console.log('[TEMP LOG - parameterThunks.ts:347] fetchConfiguredParameters: fetchParametersForReferencedParts dispatch UNWRAPPED successfully.');
         logger.log('ParameterThunk', `Successfully initiated fetch for configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`);
       } catch (error) {
-        // ADD TEMP LOG
-        // console.error('[TEMP LOG - parameterThunks.ts:351] fetchConfiguredParameters: ERROR during fetchParametersForReferencedParts dispatch/unwrap:', error);
         logger.error('ParameterThunk', `Failed to fetch some configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`, { error });
       }
     } else {
-      // ADD TEMP LOG
-      // console.log('[TEMP LOG - parameterThunkscard/src/store/thunks/parameterThunks.ts:356] fetchConfiguredParameters: No unique part IDs derived. SKIPPING dispatch of fetchParametersForReferencedParts.');
       logger.log('ParameterThunk', 'No specific part IDs derived from inventreeParametersToFetch configuration.');
     }
-    // ADD TEMP LOG
-    // console.log('[TEMP LOG - parameterThunks.ts:360] fetchConfiguredParameters THUNK END');
   }
 );

@@ -13,6 +13,7 @@ export declare const rootReducer: import("redux").Reducer<{
     ui: import("./slices/uiSlice").UiState;
     visualEffects: import("./slices/visualEffectsSlice").VisualEffectsState;
     websocket: import("./slices/websocketSlice").WebSocketState;
+    actions: import("./slices/actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("./apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -73,6 +74,7 @@ export declare const rootReducer: import("redux").Reducer<{
     ui: import("./slices/uiSlice").UiState | undefined;
     visualEffects: import("./slices/visualEffectsSlice").VisualEffectsState | undefined;
     websocket: import("./slices/websocketSlice").WebSocketState | undefined;
+    actions: import("./slices/actionsSlice").ActionsState | undefined;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("./apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -137,6 +139,7 @@ export declare const store: import("@reduxjs/toolkit").EnhancedStore<{
     ui: import("./slices/uiSlice").UiState;
     visualEffects: import("./slices/visualEffectsSlice").VisualEffectsState;
     websocket: import("./slices/websocketSlice").WebSocketState;
+    actions: import("./slices/actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("./apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -198,6 +201,7 @@ export declare const store: import("@reduxjs/toolkit").EnhancedStore<{
         ui: import("./slices/uiSlice").UiState;
         visualEffects: import("./slices/visualEffectsSlice").VisualEffectsState;
         websocket: import("./slices/websocketSlice").WebSocketState;
+        actions: import("./slices/actionsSlice").ActionsState;
         inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
             getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("./apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
                 status?: number | "CUSTOM_ERROR";

@@ -18,6 +18,9 @@ import websocketReducer from './slices/websocketSlice';
 // Import the API slice we created
 import { inventreeApi } from './apis/inventreeApi';
 
+// Import the new actions slice reducer
+import actionsReducer from './slices/actionsSlice';
+
 // Import Middleware
 import { loggingMiddleware } from './middleware/logging-middleware';
 import { servicesMiddleware } from './middleware/services-middleware';
@@ -38,6 +41,7 @@ export const rootReducer = combineReducers({
   ui: uiReducer,
   visualEffects: visualEffectsReducer,
   websocket: websocketReducer,
+  actions: actionsReducer,
   // Add the generated reducer as a specific top-level slice for RTK Query
   [inventreeApi.reducerPath]: inventreeApi.reducer,
 });

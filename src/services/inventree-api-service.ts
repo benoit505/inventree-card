@@ -29,34 +29,35 @@ class InventreeApiService {
       if ((config.method?.toLowerCase() === 'post' || config.method?.toLowerCase() === 'patch' || config.method?.toLowerCase() === 'put')) {
         (config.headers as AxiosHeaders).set('Content-Type', 'application/json');
       }
-      logger.log('InventreeApiService', `Axios Request: ${config.method?.toUpperCase()} ${config.url}`, { data: config.data, level: 'debug' });
+      // console.log('[TEMP LOG - inventree-api-service.ts: request interceptor]', `Axios Request: ${config.method?.toUpperCase()} ${config.url}`, { data: config.data }); // Reduced verbosity
       return config;
     }, (error: AxiosError) => {
-      logger.error('InventreeApiService', 'Axios Request Error Interceptor', { data: error });
+      // console.error('[TEMP LOG - inventree-api-service.ts: request interceptor error]', 'Axios Request Error Interceptor', { data: error }); // Reduced verbosity
       return Promise.reject(error);
     });
 
     this.axiosInstance.interceptors.response.use((response: AxiosResponse) => {
-      logger.log('InventreeApiService', `Axios Response: ${response.status} from ${response.config.url}`, { level: 'debug' });
+      // console.log('[TEMP LOG - inventree-api-service.ts: response interceptor]', `Axios Response: ${response.status} from ${response.config.url}`); // Reduced verbosity
       this.lastApiFailureTimestamp = 0;
       return response;
     }, (error: AxiosError) => {
-      logger.error('InventreeApiService', `Axios Response Error Interceptor: ${error.message}`, { 
+      /* console.error('[TEMP LOG - inventree-api-service.ts: response interceptor error]', `Axios Response Error Interceptor: ${error.message}`, { 
         data: {
           url: error.config?.url,
           status: error.response?.status,
           responseData: error.response?.data
         }
-      });
+      }); */ // Reduced verbosity
       this.lastApiFailureTimestamp = Date.now();
       return Promise.reject(error);
     });
   }
 
   private async request<T>(endpoint: string, options: AxiosRequestConfig = {}): Promise<T> {
+    // REMOVE TEMP LOG for entry into request method
     const state = store.getState();
     const apiSliceConfig = selectApiConfig(state);
-    // console.log(`[TEMP LOG - inventree-api-service.ts:57] request: Endpoint: ${endpoint}, Options:`, JSON.parse(JSON.stringify(options)), 'ApiSliceConfig:', JSON.parse(JSON.stringify(apiSliceConfig)));
+    // REMOVE TEMP LOG
     
     const baseUrl = apiSliceConfig.url;
     const throttleDelayMs = apiSliceConfig.throttleDelayMs;
@@ -64,6 +65,8 @@ class InventreeApiService {
 
     if (!baseUrl) {
       const errorMsg = 'API base URL is not configured in Redux store (apiSlice).';
+      // REMOVE TEMP LOG for missing baseUrl
+      // console.error(`[TEMP LOG - inventree-api-service.ts: request] Error: ${errorMsg}`);
       logger.error('InventreeApiService', errorMsg);
       this.lastApiFailureTimestamp = Date.now();
       throw new Error(errorMsg);
@@ -71,11 +74,14 @@ class InventreeApiService {
 
     const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     const requestUrl = `${cleanBaseUrl}/${endpoint.startsWith('/') ? endpoint.substring(1) : endpoint}`;
+    // REMOVE TEMP LOG for constructed requestUrl
     
     if (this.lastApiFailureTimestamp > 0) {
       const timeSinceLastFailure = Date.now() - this.lastApiFailureTimestamp;
       if (timeSinceLastFailure < failedRequestRetryDelayMs) {
         const failureDelayNeeded = failedRequestRetryDelayMs - timeSinceLastFailure;
+        // REMOVE TEMP LOG for failure delay
+        // console.warn(`[TEMP LOG - inventree-api-service.ts: request] Recent API Failure. Delaying by ${failureDelayNeeded}ms.`);
         logger.warn('InventreeApiService', `Recent API Failure: Delaying next request by ${failureDelayNeeded}ms.`);
         await new Promise(resolve => setTimeout(resolve, failureDelayNeeded));
       }
@@ -86,6 +92,8 @@ class InventreeApiService {
       const timeSinceLastAttempt = currentTimeForThrottle - this.lastApiCallTimestamp;
       if (timeSinceLastAttempt < throttleDelayMs) {
         const generalDelayNeeded = throttleDelayMs - timeSinceLastAttempt;
+        // REMOVE TEMP LOG for throttle delay
+        // console.log(`[TEMP LOG - inventree-api-service.ts: request] Throttling. Delaying by ${generalDelayNeeded}ms.`);
         logger.log('InventreeApiService', `General Throttling: Delaying by ${generalDelayNeeded}ms.`, { level: 'debug' });
         await new Promise(resolve => setTimeout(resolve, generalDelayNeeded));
         this.lastApiCallTimestamp = Date.now();
@@ -106,14 +114,22 @@ class InventreeApiService {
         timeout: 15000,
         ...options,
       };
+      // REMOVE Verbose Log
       // console.log(`[TEMP LOG - inventree-api-service.ts:102] request: Making Axios request with finalOptions:`, JSON.parse(JSON.stringify(finalOptions)));
 
       let response: AxiosResponse<T>;
       try {
+        // REMOVE Verbose Log
         // console.log(`[TEMP LOG - inventree-api-service.ts N1] PRE-AWAIT for ${finalOptions.url}`);
+        // REMOVE TEMP LOG before actual Axios call
+        // console.log(`[TEMP LOG - inventree-api-service.ts: request] Making Axios request to ${finalOptions.url} with method ${finalOptions.method}`);
         response = await this.axiosInstance.request<T>(finalOptions);
+        // REMOVE Verbose Log
         // console.log(`[TEMP LOG - inventree-api-service.ts N2] POST-AWAIT for ${finalOptions.url}. Response status: ${response?.status}`);
+        // REMOVE TEMP LOG for Axios success
+        // console.log(`[TEMP LOG - inventree-api-service.ts: request] Axios success from ${finalOptions.url}. Status: ${response?.status}, Data:`, JSON.parse(JSON.stringify(response?.data === undefined ? 'undefined' : response.data)));
       } catch (axiosCallError: any) {
+        // REMOVE Verbose Log Block
         /* console.error(`[TEMP LOG - inventree-api-service.ts N3] INNER CATCH for ${finalOptions.url}. Axios call FAILED. Error Details:`, {
             message: axiosCallError.message,
             code: axiosCallError.code,
@@ -125,29 +141,41 @@ class InventreeApiService {
         }); */
         // For a more raw view of the error object if the above misses something
         // console.error(`[TEMP LOG - inventree-api-service.ts N3-RAW] Raw error object:`, JSON.parse(JSON.stringify(axiosCallError, Object.getOwnPropertyNames(axiosCallError))));
+        // REMOVE TEMP LOG for Axios failure (inner catch)
+        // console.error(`[TEMP LOG - inventree-api-service.ts: request] Axios FAILED (inner catch) for ${finalOptions.url}. Error:`, axiosCallError);
         throw axiosCallError; // Re-throw to be caught by the outer catch
       }
 
+      // REMOVE Verbose Log
       // console.log(`[TEMP LOG - inventree-api-service.ts:107] request: Axios response for ${requestUrl}: Status ${response.status}, Data:`, JSON.parse(JSON.stringify(response.data || null)));
 
       if (response.status === 204) {
+        // REMOVE TEMP LOG for 204 No Content
+        // console.log(`[TEMP LOG - inventree-api-service.ts: request] Received 204 No Content for ${requestUrl}. Returning null.`);
         return null as T;
       }
+      // REMOVE TEMP LOG before returning data from request method
+      // console.log(`[TEMP LOG - inventree-api-service.ts: request] Returning data from request method for ${requestUrl}.`);
       return response.data;
 
     } catch (error) {
+      // REMOVE Verbose Log
       // console.error(`[TEMP LOG - inventree-api-service.ts:117] request: Axios request to ${requestUrl} FAILED (OUTER CATCH). Error:`, error);
+      // REMOVE TEMP LOG for outer catch in request method
+      // console.error(`[TEMP LOG - inventree-api-service.ts: request] FAILED (outer catch) for ${requestUrl}. Error:`, error);
       logger.error('InventreeApiService', `Axios request to ${requestUrl} failed in main try-catch.`, { data: error });
       throw error;
     }
   }
 
   async getPart(partId: number): Promise<InventreeItem | null> {
+    // REMOVE Verbose Log
     // console.log(`[TEMP LOG - inventree-api-service.ts:125] getPart called with partId: ${partId}`);
     logger.log('InventreeApiService', `Fetching part ${partId}...`);
     try {
       return await this.request<InventreeItem>(`part/${partId}/`);
     } catch (error) {
+      // REMOVE Verbose Log
       // console.error(`[TEMP LOG - inventree-api-service.ts:131] getPart FAILED for partId ${partId}. Error:`, error);
       logger.error('InventreeApiService', `Failed to get part ${partId}:`, { data: error });
       return null;
@@ -155,11 +183,13 @@ class InventreeApiService {
   }
 
   async getParts(params: Record<string, any> = {}): Promise<InventreeItem[]> {
+    // REMOVE Verbose Log
     // console.log(`[TEMP LOG - inventree-api-service.ts:139] getParts called with params:`, JSON.parse(JSON.stringify(params)));
     logger.log('InventreeApiService', 'Fetching parts with params:', { data: params });
     try {
       return await this.request<InventreeItem[]>('part/', { params: params });
     } catch (error) {
+      // REMOVE Verbose Log
       // console.error(`[TEMP LOG - inventree-api-service.ts:145] getParts FAILED. Params:`, JSON.parse(JSON.stringify(params)), 'Error:', error);
       logger.error('InventreeApiService', 'Failed to get parts:', { data: { params, error } });
       return [];
@@ -225,18 +255,30 @@ class InventreeApiService {
   }
   
   async getPartParameters(partId: number): Promise<ParameterDetail[] | null> {
+    // REMOVE Verbose Log
     // console.log(`[TEMP LOG - inventree-api-service.ts:191] getPartParameters called with partId: ${partId}`);
+    // REMOVE TEMP LOG for entry into getPartParameters
+    // console.log(`[TEMP LOG - inventree-api-service.ts: getPartParameters] Entry. PartId: ${partId}`);
     logger.log('InventreeApiService', `Fetching parameters for part ${partId}...`);
     try {
-      return await this.request<ParameterDetail[]>('part/parameter/', { params: { part: partId } });
+      // REMOVE TEMP LOG before calling this.request
+      // console.log(`[TEMP LOG - inventree-api-service.ts: getPartParameters] Calling this.request for part/parameter/ with partId: ${partId}`);
+      const parameters = await this.request<ParameterDetail[]>('part/parameter/', { params: { part: partId } });
+      // REMOVE TEMP LOG for result from this.request
+      // console.log(`[TEMP LOG - inventree-api-service.ts: getPartParameters] Result from this.request for partId ${partId}:`, JSON.parse(JSON.stringify(parameters === undefined ? 'undefined' : parameters)));
+      return parameters;
     } catch (error) {
+      // REMOVE Verbose Log
       // console.error(`[TEMP LOG - inventree-api-service.ts:197] getPartParameters FAILED for partId ${partId}. Error:`, error);
+      // REMOVE TEMP LOG for error in getPartParameters
+      // console.error(`[TEMP LOG - inventree-api-service.ts: getPartParameters] FAILED for partId ${partId}. Error:`, error);
       logger.error('InventreeApiService', `Failed to get parameters for part ${partId}:`, { data: error });
       return null;
     }
   }
 
   async updatePartParameter(parameterInstancePk: number, newValue: string): Promise<ParameterDetail | null> {
+    // REMOVE Verbose Log
     // console.log(`[TEMP LOG - inventree-api-service.ts:205] updatePartParameter called with PK: ${parameterInstancePk}, Value: "${newValue}"`);
     logger.log('InventreeApiService', `Updating parameter ${parameterInstancePk} to value: "${newValue}"...`);
     try {

@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux'; // Added useSelector
 import { HomeAssistant } from 'custom-card-helpers';
 import { Provider } from 'react-redux';
@@ -38,6 +38,8 @@ import { evaluateAndApplyEffectsThunk } from './store/thunks/conditionalLogicThu
 import { setConfigAction } from './store/slices/configSlice';
 // Import clearCache from parametersSlice
 import { clearCache } from './store/slices/parametersSlice';
+// Import setActionDefinitions from actionsSlice
+import { setActionDefinitions } from './store/slices/actionsSlice';
 
 // Import debounce from lodash-es
 import debounce from 'lodash-es/debounce';
@@ -56,6 +58,9 @@ import GridLayout from './components/layouts/GridLayout';
 import ListLayout from './components/layouts/ListLayout';
 import PartsLayout from './components/layouts/PartsLayout';
 import VariantLayout from './components/layouts/VariantLayout';
+
+// Import GlobalActionButtons
+import GlobalActionButtons from './components/global/GlobalActionButtons';
 
 interface InventreeCardProps {
   hass?: HomeAssistant;
@@ -169,27 +174,36 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
 
   // Debounced version of the initialization logic
   const debouncedInitializationEffect = useCallback(debounce(async (currentHass: HomeAssistant | undefined, currentConfig: InventreeCardConfig | undefined, currentDispatch: AppDispatch) => {
-    // ADD TEMP LOG
+    // REMOVE TEMP LOG
     // console.log('[TEMP LOG - InventreeCard.tsx:172]', 'debouncedInitializationEffect triggered. HASS available:', !!currentHass, 'Config available:', !!currentConfig);
     if (currentHass && currentConfig) {
+      // REMOVE TEMP LOG
       // console.log('[TEMP LOG - InventreeCard.tsx:174]', 'debouncedInitializationEffect: Inside if (currentHass && currentConfig). currentConfig:', JSON.parse(JSON.stringify(currentConfig)));
       logger.log('InventreeCard.tsx', 'Debounced Effect: HASS and Config are available. Initializing.', { hass: !!currentHass, config: !!currentConfig });
 
-      // Clear parameter cache first to ensure fresh loading states
       logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching clearCache() from parametersSlice.');
-      // ADD TEMP LOG
+      // REMOVE TEMP LOG
       // console.log('[TEMP LOG - InventreeCard.tsx:181]', 'debouncedInitializationEffect: Dispatching clearCache()');
       currentDispatch(clearCache());
-      // ADD TEMP LOG
+      // REMOVE TEMP LOG
       // console.log('[TEMP LOG - InventreeCard.tsx:184]', 'debouncedInitializationEffect: clearCache() dispatched.');
 
-      // ***** ADD THIS DISPATCH FIRST *****
       logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching setConfigAction with currentConfig.');
-      // ADD TEMP LOG
+      // REMOVE TEMP LOG
       // console.log('[TEMP LOG - InventreeCard.tsx:189]', 'debouncedInitializationEffect: Dispatching setConfigAction with currentConfig:', JSON.parse(JSON.stringify(currentConfig)));
       currentDispatch(setConfigAction(currentConfig));
-      // ADD TEMP LOG
+      // REMOVE TEMP LOG
       // console.log('[TEMP LOG - InventreeCard.tsx:192]', 'debouncedInitializationEffect: setConfigAction dispatched.');
+
+      // After setting the main config, set the action definitions if they exist
+      if (currentConfig.actions && Array.isArray(currentConfig.actions)) {
+        logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching setActionDefinitions.', { count: currentConfig.actions.length });
+        currentDispatch(setActionDefinitions(currentConfig.actions));
+      } else {
+        // If no actions are defined, ensure we dispatch with an empty array to clear any old definitions
+        logger.log('InventreeCard.tsx', 'Debounced Effect: No actions in config, dispatching empty setActionDefinitions to clear.');
+        currentDispatch(setActionDefinitions([]));
+      }
 
       if (currentConfig.direct_api?.enabled) {
         if (!currentConfig.direct_api.url || !currentConfig.direct_api.api_key) {
@@ -354,11 +368,29 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
 
       // Dispatch fetchConfiguredParameters (if API enabled)
       if (currentConfig.direct_api?.enabled) {
+        // Log the specific property before assignment
+        // REMOVE CONSOLE LOG
+        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] Value of currentConfig.data_sources.inventreeParametersToFetch directly:', currentConfig.data_sources?.inventreeParametersToFetch);
+        
+        const paramsToFetch = currentConfig.data_sources?.inventreeParametersToFetch || []; // Ensure it's an array
+        
+        // Log the value of paramsToFetch immediately after assignment
+        // REMOVE CONSOLE LOG
+        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] Value of paramsToFetch after assignment:', paramsToFetch);
+
+        // Existing log (modified for safety)
+        // REMOVE CONSOLE LOG
+        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] Full data_sources from currentConfig:', currentConfig.data_sources || {});
+
+        // Modified for safety
+        // REMOVE CONSOLE LOG
+        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] About to dispatch fetchConfiguredParameters. paramsToFetch value:', paramsToFetch);
+
         logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching fetchConfiguredParameters...', {
           level: 'info',
-          inventreeParametersToFetch: currentConfig.data_sources?.inventreeParametersToFetch || []
+          inventreeParametersToFetch: paramsToFetch // Log the actual variable being passed
         });
-        currentDispatch(fetchConfiguredParameters());
+        currentDispatch(fetchConfiguredParameters(paramsToFetch)); // Pass paramsToFetch directly
       } else {
         logger.log('InventreeCard.tsx', 'Debounced Effect: Skipping fetchConfiguredParameters (Direct API disabled).');
       }
@@ -373,7 +405,7 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   }, debounceTime), [debounceTime, logger]); // logger is stable, debounceTime might change if config reloads
 
   useEffect(() => {
-    // ADD TEMP LOG
+    // REMOVE TEMP LOG
     // console.log('[TEMP LOG - InventreeCard.tsx:330]', 'useEffect for debouncedInitializationEffect triggered. HASS available:', !!hass, 'Config available:', !!config);
     debouncedInitializationEffect(hass, config, dispatch);
   }, [hass, config, dispatch, debouncedInitializationEffect]);
@@ -451,27 +483,24 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   */
 
   if (!config) {
-    // ADD TEMP LOG
+    // REMOVE TEMP LOG
     // console.log('[TEMP LOG - InventreeCard.tsx:417]', 'Render: No config, returning "Loading configuration..."');
     return React.createElement('div', null, 'Loading configuration...');
   }
   
-  // ADD TEMP LOG
+  // REMOVE TEMP LOG
   // console.log('[TEMP LOG - InventreeCard.tsx:422]', 'Render: Config available. view_type:', config.view_type, 'Number of parts:', parts.length, 'Selected Item PK:', selectedItem?.pk);
   
-  const renderLayout = () => {
+  const renderLayout = (): JSX.Element | null => {
     // Prepare common props
     let commonLayoutProps: any = { hass, config };
 
     switch (config.view_type) {
       case 'detail':
-        // DetailLayout specifically needs selectedPartId
         return React.createElement(DetailLayout, { ...commonLayoutProps, selectedPartId: selectedItem?.pk });
       case 'grid':
-        // GridLayout expects all parts and potentially a selected item for a detail panel (if any)
         return React.createElement(GridLayout, { ...commonLayoutProps, parts, item: selectedItem });
       case 'list':
-        // ListLayout expects all parts and potentially a selected item
         return React.createElement(ListLayout, { ...commonLayoutProps, parts, item: selectedItem });
       case 'parts':
         // PartsLayout expects all parts
@@ -486,11 +515,9 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   };
 
   return (
-    <div style={{ padding: '16px', border: '2px solid navy' }}>
-      <h1 style={{ marginTop: 0, marginBottom: '8px' }}>InvenTree Card (React)</h1>
-      <p style={{ fontSize: '12px', color: '#555', marginTop:0, marginBottom: '16px' }}>
-        Config Entity: {config.entity || 'N/A'} | View: {config.view_type || 'N/A'} | Parts in Store for Config: {parts.length} | Selected Item PK: {selectedItem?.pk || 'N/A'}
-      </p>
+    <div style={{ padding: '16px' }}>
+      {/* GlobalActionButtons are rendered before the main layout */}
+      <GlobalActionButtons config={config} hass={hass} />
       {renderLayout()}
     </div>
   );

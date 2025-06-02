@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail } from '../../types';
+import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail, ActionDefinition, ActionExecutionContext } from '../../types';
 import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { RootState } from '../../store/index';
 import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
@@ -9,6 +9,7 @@ import { useGetPartParametersQuery } from '../../store/apis/inventreeApi';
 import { Logger } from '../../utils/logger';
 import { SerializedError } from '@reduxjs/toolkit';
 import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { actionEngine } from '../../services/ActionEngine';
 
 import PartButtons from '../part/PartButtons';
 import PartThumbnail from '../part/PartThumbnail';
@@ -86,6 +87,27 @@ const GridItem: React.FC<GridItemProps> = ({
     return null;
   }
 
+  const handleThumbnailClick = React.useMemo(() => {
+    if (!config.actions || !part) return undefined;
+
+    const thumbnailClickAction = config.actions.find(
+      (action: ActionDefinition) => action.trigger.type === 'ui_thumbnail_click'
+    );
+
+    if (thumbnailClickAction) {
+      return (event: React.MouseEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+        logger.log('GridItem', `Thumbnail clicked for part ${part.pk}, executing action: ${thumbnailClickAction.name}`);
+        const executionContext: ActionExecutionContext = {
+          part: part,
+          hassStates: hass?.states,
+        };
+        actionEngine.executeAction(thumbnailClickAction.id, { ...executionContext, hass });
+      };
+    }
+    return undefined;
+  }, [config.actions, part, hass, logger]);
+
   return (
     <div
       key={partId}
@@ -101,6 +123,7 @@ const GridItem: React.FC<GridItemProps> = ({
             layout="grid"
             icon={actualModifiers?.icon}
             badge={actualModifiers?.badge}
+            onClick={handleThumbnailClick}
           />
         </div>
       )}

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { EffectDefinition } from '../../types'; // Adjust path as needed
-import { VisualEffect } from '../../store/slices/visualEffectsSlice'; // ADDED
+import React, { useState, useEffect, useMemo } from 'react';
+import { EffectDefinition, ActionDefinition } from '../../types'; // Added ActionDefinition
+import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { Logger } from '../../utils/logger';
+import { useSelector } from 'react-redux'; // Added useSelector
+import { RootState } from '../../store'; // Added RootState
 
 const logger = Logger.getInstance();
 
@@ -19,12 +21,21 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const [styleProperty, setStyleProperty] = useState<string | undefined>(effect.styleProperty);
   const [styleValue, setStyleValue] = useState<string | undefined>(effect.styleValue);
   const [targetPartPksInput, setTargetPartPksInput] = useState<string>('');
+  const [customActionId, setCustomActionId] = useState<string | undefined>(effect.customActionId); // Added state for customActionId
+
+  // Fetch available actions from Redux store
+  const allActionDefinitions = useSelector((state: RootState) => state.actions.actionDefinitions);
+  const availableActions = useMemo(() => {
+    return Object.values(allActionDefinitions || {}); // Handle case where it might be undefined initially
+  }, [allActionDefinitions]);
 
   useEffect(() => {
     setEffectType(effect.type);
     setIsVisible(effect.isVisible);
     setStyleProperty(effect.styleProperty);
     setStyleValue(effect.styleValue);
+    setCustomActionId(effect.customActionId); // Set customActionId from prop
+
     // Initialize targetPartPksInput from effect.targetPartPks
     if (typeof effect.targetPartPks === 'string') {
       setTargetPartPksInput(effect.targetPartPks);
@@ -50,7 +61,21 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = e.target.value as EffectDefinition['type'];
     setEffectType(newType);
-    onUpdate({ ...effect, type: newType, targetPartPks: parseTargetPks(targetPartPksInput) });
+    // Reset fields specific to other types when type changes
+    let updatedEffectPayload: Partial<EffectDefinition> = { type: newType };
+    if (newType !== 'set_visibility') {
+      updatedEffectPayload.isVisible = undefined;
+    }
+    if (newType !== 'set_style') {
+      updatedEffectPayload.styleProperty = undefined;
+      updatedEffectPayload.styleValue = undefined;
+    }
+    if (newType !== 'trigger_custom_action') {
+      updatedEffectPayload.customActionId = undefined;
+    }
+    // Preserve existing targetPartPks
+    updatedEffectPayload.targetPartPks = parseTargetPks(targetPartPksInput);
+    onUpdate({ ...effect, ...updatedEffectPayload as EffectDefinition });
   };
 
   const handleIsVisibleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,6 +94,12 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     const newValue = e.target.value;
     setStyleValue(newValue);
     onUpdate({ ...effect, type: 'set_style', styleProperty, styleValue: newValue, targetPartPks: parseTargetPks(targetPartPksInput) });
+  };
+
+  const handleCustomActionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newActionId = e.target.value;
+    setCustomActionId(newActionId);
+    onUpdate({ ...effect, type: 'trigger_custom_action', customActionId: newActionId, targetPartPks: parseTargetPks(targetPartPksInput) });
   };
 
   const handleTargetPartPksChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,6 +130,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
         <select id={`effect-type-${effect.id}`} value={effectType} onChange={handleTypeChange}>
           <option value="set_visibility">Set Visibility</option>
           <option value="set_style">Set Style</option>
+          <option value="trigger_custom_action">Trigger Custom Action</option>
         </select>
       </div>
 
@@ -140,6 +172,25 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
             />
           </div>
         </>
+      )}
+
+      {effectType === 'trigger_custom_action' && (
+        <div>
+          <label htmlFor={`effect-action-id-${effect.id}`} style={{ marginRight: '5px' }}>Action to Trigger:</label>
+          <select 
+            id={`effect-action-id-${effect.id}`} 
+            value={customActionId || ''} 
+            onChange={handleCustomActionChange}
+          >
+            <option value="" disabled>Select an action...</option>
+            {availableActions.map(actDef => (
+              <option key={actDef.id} value={actDef.id}>
+                {actDef.name} (ID: {actDef.id})
+              </option>
+            ))}
+            {availableActions.length === 0 && <option value="" disabled>No actions defined</option>}
+          </select>
+        </div>
       )}
 
       <div>

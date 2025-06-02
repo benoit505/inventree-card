@@ -79,6 +79,7 @@ export declare const selectAllPartIds: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -160,6 +161,7 @@ export declare const selectAllParts: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -241,6 +243,7 @@ export declare const selectPartsForEntities: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -322,6 +325,7 @@ export declare const selectPartsByEntityId: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -403,6 +407,7 @@ export declare const selectPartById: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -489,6 +494,7 @@ export declare const selectFilteredParts: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -561,6 +567,7 @@ export declare const selectFilteredParts: ((state: {
         ui: import("./uiSlice").UiState;
         visualEffects: import("./visualEffectsSlice").VisualEffectsState;
         websocket: import("./websocketSlice").WebSocketState;
+        actions: import("./actionsSlice").ActionsState;
         inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
             getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
                 status?: number | "CUSTOM_ERROR";
@@ -650,6 +657,7 @@ export declare const selectPartsByEntity: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -731,6 +739,7 @@ export declare const selectCombinedParts: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";
@@ -821,6 +830,7 @@ export declare const selectPartsByPks: ((state: {
     ui: import("./uiSlice").UiState;
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
             status?: number | "CUSTOM_ERROR";

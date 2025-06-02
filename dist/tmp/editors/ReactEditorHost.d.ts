@@ -18,4 +18,4 @@ export declare class ReactEditorHost extends LitElement implements LovelaceCardE
     disconnectedCallback(): void;
     render(): import("lit-html").TemplateResult<1>;
 }
-export declare function defineReactEditorHost(): void;
+export declare const defineReactEditorHost: () => void;

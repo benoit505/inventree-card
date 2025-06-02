@@ -24,6 +24,14 @@ export const SETTINGS_SCHEMA = {
         show_actions: true,
         show_stock_indicators: true,
         image_only: true,
+        show_stock_status_border: true,
+        show_stock_status_colors: true,
+        show_related_parts: true,
+        show_part_details_component: true,
+        show_stock_status_border_for_templates: true,
+        show_buttons_for_variants: true,
+        show_part_details_component_for_variants: true,
+        show_image_for_variants: true,
     },
     layout: {
         columns: true,
@@ -141,6 +149,8 @@ export const DEFAULT_CONFIG: Partial<InventreeCardConfig> = {
         ha_entities: [],
         inventree_pks: [],
         inventree_parameters: [],
+        inventree_parameters_to_fetch: [],
+        inventree_pk_thumbnail_overrides: [], // Initialize new field
         // api config is under direct_api
     },
 

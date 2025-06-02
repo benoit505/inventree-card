@@ -1,4 +1,4 @@
-import * as React from 'react';
+import React from 'react';
 import { InventreeItem, InventreeCardConfig } from '../../types';
 import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 interface PartThumbnailProps {
@@ -8,6 +8,7 @@ interface PartThumbnailProps {
     icon?: string;
     badge?: string | number;
     visualEffect?: VisualEffect;
+    onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
 }
 declare const PartThumbnail: React.FC<PartThumbnailProps>;
 export default PartThumbnail;

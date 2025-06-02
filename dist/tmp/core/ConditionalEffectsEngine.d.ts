@@ -4,5 +4,5 @@ export declare class ConditionalEffectsEngine {
     private dispatch;
     private getState;
     constructor(dispatch: AppDispatch, getState: () => RootState);
-    evaluateAndApplyEffects(): void;
+    evaluateAndApplyEffects(): Promise<void>;
 }

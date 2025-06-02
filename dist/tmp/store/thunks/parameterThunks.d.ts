@@ -1,5 +1,5 @@
 import { RootState } from '../index';
-import { ParameterDetail } from '../../types';
+import { ParameterDetail, InventreeParameterFetchConfig } from '../../types';
 export declare const fetchParametersForReferencedParts: import("@reduxjs/toolkit").AsyncThunk<void, number[], {
     state: RootState;
     rejectValue: string;
@@ -24,7 +24,7 @@ export declare const updateParameterValue: import("@reduxjs/toolkit").AsyncThunk
     fulfilledMeta?: unknown;
     rejectedMeta?: unknown;
 }>;
-export declare const fetchConfiguredParameters: import("@reduxjs/toolkit").AsyncThunk<void, void, {
+export declare const fetchConfiguredParameters: import("@reduxjs/toolkit").AsyncThunk<void, InventreeParameterFetchConfig[], {
     state: RootState;
     rejectValue: string;
     dispatch?: import("redux-thunk").ThunkDispatch<unknown, unknown, import("redux").UnknownAction> | undefined;

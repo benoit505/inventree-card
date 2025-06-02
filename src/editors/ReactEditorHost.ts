@@ -34,7 +34,6 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
 
   public setConfig(config: InventreeCardConfig): void {
     this.logger.log('ReactEditorHost', 'setConfig called', { config });
-    console.log('[ReactEditorHost] setConfig received:', JSON.parse(JSON.stringify(config)));
     this._config = config;
     this._renderReactApp(); // Re-render React app when config changes
   }
@@ -60,7 +59,6 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
 
   private _handleReactConfigChange = (newConfig: InventreeCardConfig) => {
     this.logger.log('ReactEditorHost', 'React editor changed config, attempting to fire event.', { newConfig });
-    console.log('[ReactEditorHost] _handleReactConfigChange (from React editor):', JSON.parse(JSON.stringify(newConfig)));
 
     let eventTargetElement: HTMLElement = this; // Default to 'this' (the custom element itself)
 
@@ -88,27 +86,22 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
   private _renderReactApp(): void {
     if (!this._mountPoint) {
       this.logger.warn('ReactEditorHost', 'Attempted to render React app, but mount point is not available. Re-checking...');
-      console.log('[ReactEditorHost] _renderReactApp: Mount point NOT available. Re-checking...');
       if (this.shadowRoot) {
         this._mountPoint = this.shadowRoot.getElementById('react-editor-mount-point') as HTMLDivElement;
         if (this._mountPoint) {
           this.logger.log('ReactEditorHost', 'Mount point re-acquired.');
-          console.log('[ReactEditorHost] _renderReactApp: Mount point re-acquired.');
         } else {
           this.logger.error('ReactEditorHost', 'Mount point still NOT available after re-check. Cannot render.');
-          console.log('[ReactEditorHost] _renderReactAoo: Mount point STILL NOT available after re-check.');
           return;
         }
       } else {
         this.logger.error('ReactEditorHost', 'Shadow DOM not available for mount point re-check. Cannot render.');
-        console.log('[ReactEditorHost] _renderReactApp: Shadow DOM not available for re-check.');
         return;
       }
     }
 
     if (!this.hass || this._config === undefined) {
         this.logger.warn('ReactEditorHost', 'Hass or config is not yet available. Skipping React render.', { hasHass: !!this.hass, hasConfig: this._config !== undefined });
-        console.log('[ReactEditorHost] _renderReactApp: HASS or _config undefined. Skipping.', { hasHass: !!this.hass, hasConfig: this._config !== undefined });
         if(this._reactRoot) {
             this._reactRoot.render(React.createElement('div', null, 'Loading editor resources...'));
         } else if (this._mountPoint) {
@@ -126,7 +119,6 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
         hasConfig: !!this._config,
         config: this._config 
     });
-    console.log('[ReactEditorHost] _renderReactApp: Rendering with props:', { hass: !!this.hass, config: JSON.parse(JSON.stringify(this._config)) });
 
     const reactEditorProps = {
       hass: this.hass,
@@ -160,10 +152,9 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
   }
 }
 
-// Helper function to ensure the element is defined only once
-export function defineReactEditorHost() {
+export const defineReactEditorHost = () => {
   if (!customElements.get(REACT_EDITOR_TAG_NAME)) {
     customElements.define(REACT_EDITOR_TAG_NAME, ReactEditorHost);
     Logger.getInstance().log('ReactEditorHost', `Defined custom element: ${REACT_EDITOR_TAG_NAME}`);
   }
-} 
+}; 

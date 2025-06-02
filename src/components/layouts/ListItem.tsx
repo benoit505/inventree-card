@@ -1,11 +1,12 @@
 import * as React from 'react';
 import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail } from '../../types';
+import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail, VisualModifiers, ActionDefinition, ActionExecutionContext } from '../../types';
 import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { RootState } from '../../store';
 import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
 import { Logger } from '../../utils/logger';
+import { actionEngine } from '../../services/ActionEngine';
 
 import { useGetPartParametersQuery, useUpdatePartParameterMutation } from '../../store/apis/inventreeApi';
 import { SerializedError } from '@reduxjs/toolkit';
@@ -64,7 +65,7 @@ const getListItemTextStyle = (modifiers?: VisualEffect): React.CSSProperties => 
   return styles;
 };
 
-const ListItem: React.FC<ListItemProps> = ({
+const ListItem: React.FC<ListItemProps> = React.memo(({
   part,
   config,
   hass,
@@ -135,6 +136,27 @@ const ListItem: React.FC<ListItemProps> = ({
     }
   };
 
+  const handleThumbnailClick = React.useMemo(() => {
+    if (!config.actions || !part) return undefined;
+
+    const thumbnailClickAction = config.actions.find(
+      (action: ActionDefinition) => action.trigger.type === 'ui_thumbnail_click'
+    );
+
+    if (thumbnailClickAction) {
+      return (event: React.MouseEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+        logger.log('ListItem', `Thumbnail clicked for part ${part.pk}, executing action: ${thumbnailClickAction.name}`);
+        const executionContext: ActionExecutionContext = {
+          part: part,
+          hassStates: hass?.states,
+        };
+        actionEngine.executeAction(thumbnailClickAction.id, { ...executionContext, hass });
+      };
+    }
+    return undefined;
+  }, [config.actions, part, hass, logger]);
+
   return (
     <div
       key={partId}
@@ -150,6 +172,8 @@ const ListItem: React.FC<ListItemProps> = ({
             partData={part}
             config={config}
             layout="list"
+            visualEffect={actualModifiers}
+            onClick={handleThumbnailClick}
             icon={actualModifiers?.icon}
             badge={actualModifiers?.badge}
           />
@@ -238,6 +262,6 @@ const ListItem: React.FC<ListItemProps> = ({
       )}
     </div>
   );
-};
+});
 
 export default ListItem; 

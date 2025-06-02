@@ -4,17 +4,26 @@ import { Logger } from '../../utils/logger'; // Correct path
 
 const logger = Logger.getInstance();
 
+interface ThumbnailOverride {
+  pk: number;
+  path: string;
+}
+
 interface InventreePkSectionProps {
   // hass is not strictly needed for this component but often passed down through editor sections
   hass?: HomeAssistant; 
   selectedPks: number[]; 
   onPksChanged: (newPks: number[]) => void;
+  thumbnailOverrides: ThumbnailOverride[];
+  onThumbnailOverridesChanged: (newOverrides: ThumbnailOverride[]) => void;
 }
 
 const InventreePkSection: React.FC<InventreePkSectionProps> = ({
   hass,
   selectedPks,
   onPksChanged,
+  thumbnailOverrides,
+  onThumbnailOverridesChanged,
 }) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -61,13 +70,39 @@ const InventreePkSection: React.FC<InventreePkSectionProps> = ({
     const newPks = selectedPks.filter(pk => pk !== pkToRemove);
     onPksChanged(newPks);
     logger.log('Editor:InventreePk', `Removed InvenTree PK: ${pkToRemove}`, { newPks });
-  }, [selectedPks, onPksChanged]);
+
+    // Also remove any associated thumbnail override
+    const newOverrides = thumbnailOverrides.filter(ov => ov.pk !== pkToRemove);
+    if (newOverrides.length !== thumbnailOverrides.length) {
+      onThumbnailOverridesChanged(newOverrides);
+    }
+  }, [selectedPks, onPksChanged, thumbnailOverrides, onThumbnailOverridesChanged]);
+
+  const handleThumbnailPathChange = useCallback((pk: number, path: string) => {
+    const newOverrides = [...thumbnailOverrides];
+    const overrideIndex = newOverrides.findIndex(ov => ov.pk === pk);
+    const trimmedPath = path.trim();
+
+    if (trimmedPath === '') {
+      if (overrideIndex !== -1) {
+        newOverrides.splice(overrideIndex, 1);
+      }
+    } else {
+      if (overrideIndex !== -1) {
+        newOverrides[overrideIndex] = { ...newOverrides[overrideIndex], path: trimmedPath };
+      } else {
+        newOverrides.push({ pk, path: trimmedPath });
+      }
+    }
+    onThumbnailOverridesChanged(newOverrides);
+  }, [thumbnailOverrides, onThumbnailOverridesChanged]);
 
   return (
     <div className="sub-section-container">
       <h4 className="sub-section-title">By InvenTree Part PK</h4>
       <div className="helper-text">
         Enter comma-separated InvenTree Part Primary Keys (PKs) to fetch their data directly via API.
+        For each added PK, you can optionally specify a custom local thumbnail path.
       </div>
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
@@ -85,23 +120,35 @@ const InventreePkSection: React.FC<InventreePkSectionProps> = ({
       {selectedPks.length > 0 && (
         <div className="selected-pks-list" style={{ marginTop: '16px' }}>
           <h5>Selected Part PKs:</h5>
-          {selectedPks.map(pk => (
-            <div key={pk} className="selected-pk-item" style={{
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              padding: '4px 0',
-              borderBottom: '1px solid var(--divider-color)'
-            }}>
-              <span>Part PK: {pk}</span>
-              <button 
-                onClick={() => handleRemovePk(pk)} 
-                style={{color: 'var(--error-color)', background: 'none', border: 'none', cursor: 'pointer'}}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+          {selectedPks.map(pk => {
+            const currentOverride = thumbnailOverrides.find((ov: { pk: number; path: string; }) => ov.pk === pk);
+            const currentPath = currentOverride ? currentOverride.path : '';
+
+            return (
+              <div key={pk} className="selected-pk-item" style={{
+                padding: '8px 0',
+                borderBottom: '1px solid var(--divider-color)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span>Part PK: {pk}</span>
+                  <button 
+                    onClick={() => handleRemovePk(pk)} 
+                    style={{color: 'var(--error-color)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px'}}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={currentPath}
+                  onChange={(e) => handleThumbnailPathChange(pk, e.target.value)}
+                  placeholder="Optional: /local/thumbs/part_X.png"
+                  title="Custom local thumbnail path (e.g., inventree_thumbs/my_image.png or /local/inventree_thumbs/my_image.png)"
+                  style={{ width: 'calc(100% - 12px)', padding: '6px', fontSize: '0.9em', border: '1px solid var(--input-border-color, var(--divider-color))' }}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

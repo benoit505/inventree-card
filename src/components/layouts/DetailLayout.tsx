@@ -33,7 +33,11 @@ const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartI
   return (
     <div style={layoutStyle}>
       {selectedPartId ? (
-        <PartView partId={selectedPartId} config={config} hass={hass} />
+        <PartView 
+          partId={selectedPartId} 
+          config={config} 
+          hass={hass} 
+        />
       ) : (
         <div>
           <div>No part selected or available for the configured entities.</div>

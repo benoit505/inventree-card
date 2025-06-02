@@ -204,9 +204,10 @@ export interface DataSourceConfig {
   inventree_hass_sensors?: string[];
   ha_entities?: string[];
   inventree_pks?: number[]; // Changed from string[] to number[]
-  inventree_parameters?: string[]; // Strings like "part:ID:PARAMETER_NAME"
+  inventree_parameters?: string[]; // Strings like "part:ID:PARAMETER_NAME" - This will be phased out for data input
+  inventree_parameters_to_fetch?: InventreeParameterFetchConfig[];
+  inventree_pk_thumbnail_overrides?: Array<{ pk: number; path: string; }>; // NEW FIELD
   // We might add direct_api_config here if its presence implies available fields
-  inventreeParametersToFetch?: InventreeParameterFetchConfig[];
 }
 
 export interface InventreeParameterFetchConfig {
@@ -281,6 +282,7 @@ export interface InventreeCardConfig {
     services?: ServiceConfig;
     buttons?: ButtonConfig;
     interactions?: InteractionsConfig;
+    actions?: ActionDefinition[]; // NEW: For Universal Actions System
     conditional_logic?: ConditionalLogicConfig;
     filters?: FilterConfig[];
     performance?: PerformanceConfig; // Add performance config
@@ -409,6 +411,105 @@ export interface ConditionalLogicConfig {
   // rules: RuleGroupType; // This will be replaced by definedLogics which uses ConditionRuleDefinition
   definedLogics: ConditionalLogicItem[]; // This holds a more structured logic block with effects
   rules?: ConditionRuleDefinition[]; // ADDED: For simpler, direct rule definitions if not using full definedLogics blocks initially
+}
+
+// --- Universal Actions System Structures ---
+export type ActionTriggerUIType = 'ui_button' | 'ui_thumbnail_click';
+export type ActionTriggerEventType = 'conditional_logic' | 'websocket_event' | 'internal_event'; // Example event types
+export type ActionTriggerType = ActionTriggerUIType | ActionTriggerEventType;
+
+export type ActionOperationType = 
+  'call_ha_service' | 
+  'update_inventree_parameter' | 
+  'dispatch_redux_action' | 
+  'set_card_state' | 
+  'trigger_conditional_logic'; // Expandable
+
+export interface ActionUITriggerConfig {
+  labelTemplate?: string;
+  icon?: string;
+  placement: 'part_footer' | 'global_header' | 'custom_layout_element';
+  elementId?: string; // For custom_layout_element
+  partIdContext?: 'current'; // For ui_thumbnail_click or part-specific buttons
+}
+
+export interface ActionTrigger {
+  type: ActionTriggerType;
+  ui?: ActionUITriggerConfig; // Specific config if UI-triggered
+  // eventConfig?: { eventName: string; eventFilter?: Record<string, any> }; // Config if event-triggered
+}
+
+export interface ActionHAStandardTarget {
+  entity_id?: string;
+  device_id?: string;
+  area_id?: string;
+}
+
+// New explicit target types for ActionCallHAServiceOperation
+export interface ActionDirectEntityTarget {
+  type: 'direct_entity';
+  entity_id: string; // Can still be templated
+}
+
+export interface ActionStandardObjectTarget {
+  type: 'standard_object_target'; // Changed from 'standard_target_object' for consistency
+  target_details: ActionHAStandardTarget;
+}
+
+export interface ActionCallHAServiceOperation {
+  service: string; 
+  // Target is now one of these specific structures, or undefined
+  target?: ActionDirectEntityTarget | ActionStandardObjectTarget;
+  dataTemplate?: Record<string, any>; 
+}
+
+export interface ActionUpdateInvenTreeParameterOperation {
+  partIdContext: 'current' | number | string; // 'current' for context part, number for specific PK, string for template evaluation
+  parameterName: string;
+  valueTemplate: string;
+}
+
+export interface ActionDispatchReduxActionOperation {
+  actionType: string;
+  payloadTemplate?: Record<string, any>;
+}
+
+export interface ActionSetCardStateOperation { // For transient, non-Redux UI states if ever needed
+  statePath: string; // Dot-notation path to a state variable within a component or context
+  valueTemplate: any;
+}
+
+export interface ActionTriggerConditionalLogicOperation {
+  logicIdToTrigger: string; // ID of a ConditionalLogicItem
+}
+
+export interface ActionOperation {
+  type: ActionOperationType;
+  callHAService?: ActionCallHAServiceOperation;
+  updateInvenTreeParameter?: ActionUpdateInvenTreeParameterOperation;
+  dispatchReduxAction?: ActionDispatchReduxActionOperation;
+  setCardState?: ActionSetCardStateOperation;
+  triggerConditionalLogic?: ActionTriggerConditionalLogicOperation;
+}
+
+export interface ActionDefinition {
+  id: string; 
+  name: string; 
+  trigger: ActionTrigger;
+  operation: ActionOperation;
+  payloadTemplate?: Record<string, any> | string; // Generic payload, usage depends on operation
+  confirmation?: { textTemplate: string }; 
+  postEvaluationLogicIds?: string[]; 
+  isEnabledExpressionId?: string; 
+}
+
+// Context passed to ActionEngine when executing an action
+export interface ActionExecutionContext {
+  part?: InventreeItem;
+  allParts?: InventreeItem[];
+  hassStates?: any; // Replace with specific type from genericHaStateSlice if possible
+  expressionsContext?: any; // Results from expression engine evaluations
+  // Potentially more context as needed
 }
 
 // --- React Query Builder type re-exports (if not already globally available or to be more explicit) ---
@@ -643,4 +744,16 @@ export interface LayoutConfig { // Added export
   columns?: number;
   grid_spacing?: number; // Added
   item_height?: number;  // Added
+} 
+
+export interface ActionRuntimeState {
+  status: 'idle' | 'pending' | 'success' | 'error';
+  actionName?: string; // Added actionName
+  error?: string;
+  lastRun?: number;
+} 
+
+export interface ThumbnailOverride { // Added export
+    pk: number;
+    path: string;
 } 

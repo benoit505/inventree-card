@@ -22,6 +22,14 @@ export declare const SETTINGS_SCHEMA: {
         readonly show_actions: true;
         readonly show_stock_indicators: true;
         readonly image_only: true;
+        readonly show_stock_status_border: true;
+        readonly show_stock_status_colors: true;
+        readonly show_related_parts: true;
+        readonly show_part_details_component: true;
+        readonly show_stock_status_border_for_templates: true;
+        readonly show_buttons_for_variants: true;
+        readonly show_part_details_component_for_variants: true;
+        readonly show_image_for_variants: true;
     };
     readonly layout: {
         readonly columns: true;

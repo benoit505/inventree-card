@@ -1,10 +1,10 @@
 import React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
-import { CustomAction } from '../../types';
+import { ActionDefinition } from '../../types';
 interface ActionEditorFormProps {
     hass: HomeAssistant;
-    initialAction?: CustomAction;
-    onSave: (action: CustomAction) => void;
+    initialAction?: ActionDefinition;
+    onSave: (action: ActionDefinition) => void;
     onCancel: () => void;
 }
 declare const ActionEditorForm: React.FC<ActionEditorFormProps>;
