@@ -5,9 +5,9 @@ import EffectEditorForm from './EffectEditorForm'; // UNCOMMENTED
 interface EffectsConfigurationProps {
   effects: EffectDefinition[];
   logicBlockId: string; // To ensure unique keys for effects within this block
-  onAddEffect: (logicBlockId: string) => void;
-  onUpdateEffect: (logicBlockId: string, updatedEffect: EffectDefinition) => void;
-  onRemoveEffect: (logicBlockId: string, effectId: string) => void;
+  onAddEffect: () => void;
+  onUpdateEffect: (updatedEffect: EffectDefinition) => void;
+  onRemoveEffect: (effectId: string) => void;
 }
 
 const EffectsConfiguration: React.FC<EffectsConfigurationProps> = ({
@@ -22,14 +22,14 @@ const EffectsConfiguration: React.FC<EffectsConfigurationProps> = ({
       {/* Removed h4 and initial text, assuming parent (ConditionalLogicSection) handles this title */}
       {effects.length === 0 && <p style={{fontSize: '0.9em', color: 'gray'}}>No effects defined for this block yet. Click "+ Add Effect" to create one.</p>}
       {effects.map((effect, index) => (
-        <div key={effect.id || `effect-${index}`} style={{ marginBottom: '15px', padding: '10px', border: '1px dashed #ccc', borderRadius: '4px' }}>
+        <div key={`${logicBlockId}-effect-${effect.id || index}`} style={{ marginBottom: '15px', padding: '10px', border: '1px dashed #ccc', borderRadius: '4px' }}>
           <EffectEditorForm
             effect={effect}
-            onUpdate={(updatedEffect) => onUpdateEffect(logicBlockId, updatedEffect)}
+            onUpdate={(updatedEffect) => onUpdateEffect(updatedEffect)}
             // onRemove is handled by the button below for now, but EffectEditorForm could have its own remove if needed
           />
           <button 
-            onClick={() => onRemoveEffect(logicBlockId, effect.id)} 
+            onClick={() => onRemoveEffect(effect.id)} 
             style={{
               marginTop: '10px', 
               color: 'red', 
@@ -45,7 +45,7 @@ const EffectsConfiguration: React.FC<EffectsConfigurationProps> = ({
         </div>
       ))}
       <button 
-        onClick={() => onAddEffect(logicBlockId)} 
+        onClick={() => onAddEffect()} 
         style={{
           marginTop: '10px', 
           padding: '5px 10px', 

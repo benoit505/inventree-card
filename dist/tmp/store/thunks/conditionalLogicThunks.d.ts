@@ -3,7 +3,6 @@ import { ConditionalLogicItem } from '../../types';
 export declare const evaluateAndApplyEffectsThunk: import("@reduxjs/toolkit").AsyncThunk<void, {
     cardInstanceId?: string;
     forceReevaluation?: boolean;
-    logicItems?: ConditionalLogicItem[];
 }, {
     state: RootState;
     dispatch: AppDispatch;
@@ -16,7 +15,7 @@ export declare const evaluateAndApplyEffectsThunk: import("@reduxjs/toolkit").As
 }>;
 export declare const initializeRuleDefinitionsThunk: import("@reduxjs/toolkit").AsyncThunk<void, ConditionalLogicItem[], {
     dispatch: AppDispatch;
-    state: RootState;
+    state?: unknown;
     extra?: unknown;
     rejectValue?: unknown;
     serializedErrorType?: unknown;

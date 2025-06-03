@@ -282,60 +282,60 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
         logger.log('InventreeCard.tsx', 'Debounced Effect: Using conditional_logic.definedLogics (ConditionalLogicItem[]).');
         logicItemsToInitialize = currentConfig.conditional_logic.definedLogics;
       } else if (currentConfig.conditional_logic && currentConfig.conditional_logic.rules && currentConfig.conditional_logic.rules.length > 0) {
-        // This section is for backward compatibility or if 'rules' (ConditionRuleDefinition[]) is still populated by some means.
-        // It needs to be transformed into ConditionalLogicItem[] if we want to use the new thunk.
-        // For now, let's log a warning and potentially skip, or attempt a basic transformation.
         logger.warn('InventreeCard.tsx', 'Debounced Effect: Found legacy conditional_logic.rules. These should be migrated to definedLogics (ConditionalLogicItem[]).');
-        // Basic transformation (assuming each ConditionRuleDefinition becomes a ConditionalLogicItem with a single rule and effect):
-        // This is a very simplified transformation and might not be what users expect if they manually crafted rules.
-        // Better to encourage migration to the new editor structure.
         logicItemsToInitialize = (currentConfig.conditional_logic.rules as ConditionRuleDefinition[]).map((ruleDef, index) => ({
             id: `legacy-item-${index}`,
             name: ruleDef.name || `Legacy Item ${index}`,
-            conditionRules: { // Create a RuleGroupType with a single rule
-                id: `legacy-group-${index}`,
-                combinator: 'and',
-                rules: [{
-                    id: `legacy-rule-${index}`,
-                    field: ruleDef.parameter,
-                    operator: ruleDef.operator,
-                    value: ruleDef.value
-                }]
-            },
-            effects: [ // Create a single EffectDefinition based on old action/action_value
-                {
+            logicPairs: [{ // Create a logicPairs array with one RuleEffectPair
+                id: `legacy-pair-${index}`,
+                name: 'Default Pair', // Or derive from ruleDef.name if appropriate
+                conditionRules: { 
+                    id: `legacy-group-${index}`,
+                    combinator: 'and',
+                    rules: [{
+                        id: `legacy-rule-${index}`,
+                        field: ruleDef.parameter,
+                        operator: ruleDef.operator as string, // Ensure operator is string
+                        value: ruleDef.value
+                    }]
+                },
+                effects: [{
                     id: `legacy-effect-${index}`,
-                    type: 'set_style', // This is a guess, map old actions to new types
-                    styleProperty: ruleDef.action, // e.g., 'highlight', 'textColor'
+                    type: 'set_style', 
+                    styleProperty: ruleDef.action, 
                     styleValue: ruleDef.action_value,
-                    // isVisible might be derived from action='filter' and action_value='show'/'hide'
-                }
-            ]
+                    targetPartPks: ruleDef.targetPartIds // Pass through targetPartPks
+                }]
+            }]
         }));
         if (logicItemsToInitialize.length > 0) {
             logger.log('InventreeCard.tsx', `Transformed ${currentConfig.conditional_logic.rules.length} legacy rules into ${logicItemsToInitialize.length} ConditionalLogicItems for initialization.`);
         }
       } else if (currentConfig.parameters?.conditions && currentConfig.parameters.conditions.length > 0) {
-        // Similar legacy handling for parameters.conditions
         logger.warn('InventreeCard.tsx', 'Debounced Effect: Falling back to very legacy parameters.conditions. These should be migrated.');
         logicItemsToInitialize = (currentConfig.parameters.conditions as ConditionRuleDefinition[]).map((ruleDef, index) => ({
             id: `legacy-param-item-${index}`,
             name: ruleDef.name || `Legacy Param Item ${index}`,
-            conditionRules: {
-                id: `legacy-param-group-${index}`,
-                combinator: 'and',
-                rules: [{
-                    id: `legacy-param-rule-${index}`,
-                    field: ruleDef.parameter,
-                    operator: ruleDef.operator,
-                    value: ruleDef.value
+            logicPairs: [{ // Create a logicPairs array with one RuleEffectPair
+                id: `legacy-param-pair-${index}`,
+                name: 'Default Pair',
+                conditionRules: {
+                    id: `legacy-param-group-${index}`,
+                    combinator: 'and',
+                    rules: [{
+                        id: `legacy-param-rule-${index}`,
+                        field: ruleDef.parameter,
+                        operator: ruleDef.operator as string, // Ensure operator is string
+                        value: ruleDef.value
+                    }]
+                },
+                effects: [{
+                    id: `legacy-param-effect-${index}`,
+                    type: 'set_style', 
+                    styleProperty: ruleDef.action,
+                    styleValue: ruleDef.action_value,
+                    targetPartPks: ruleDef.targetPartIds // Pass through targetPartPks
                 }]
-            },
-            effects: [{
-                id: `legacy-param-effect-${index}`,
-                type: 'set_style', 
-                styleProperty: ruleDef.action,
-                styleValue: ruleDef.action_value
             }]
         }));
         if (logicItemsToInitialize.length > 0) {
@@ -370,15 +370,13 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
       // After all data fetching and rule initialization, evaluate conditions and apply effects
       if (currentConfig.direct_api?.enabled && (currentConfig.parameters?.enabled || currentConfig.conditional_logic)) {
         currentDispatch(evaluateAndApplyEffectsThunk({ 
-          cardInstanceId: instanceId, 
-          logicItems: logicItemsToInitialize // Pass the determined logic items
+          cardInstanceId: instanceId 
         }));
       } else {
         // If API or conditional logic is not enabled, but we have an instanceId, 
         // still dispatch with empty logicItems to clear any potential stale effects for this card instance.
         currentDispatch(evaluateAndApplyEffectsThunk({ 
-          cardInstanceId: instanceId, 
-          logicItems: [] 
+          cardInstanceId: instanceId
         }));
       }
     }

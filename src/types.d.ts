@@ -399,11 +399,17 @@ export interface EffectDefinition {
   customActionId?: string; // ID of a CustomAction defined in the Interactions section
 }
 
+export interface RuleEffectPair {
+  id: string; // Unique ID for this specific rule-effect pairing
+  name?: string; // Optional user-friendly name for this pair in the UI
+  conditionRules: RuleGroupType; // The "IF" part (from React QueryBuilder) for this pair
+  effects: EffectDefinition[];   // The "THEN" part - an array of effects for this pair
+}
+
 export interface ConditionalLogicItem {
   id: string; // Unique ID for this logic block
   name?: string; // User-friendly name for the logic block in the UI
-  conditionRules: RuleGroupType; // The "IF" part from React QueryBuilder
-  effects: EffectDefinition[]; // The "THEN" part - an array of effects
+  logicPairs: RuleEffectPair[]; // Array of independent "IF condition THEN effects" pairs
 }
 
 // --- Conditional Logic Config (for react-querybuilder integration) ---
@@ -431,6 +437,7 @@ export interface ActionUITriggerConfig {
   placement: 'part_footer' | 'global_header' | 'custom_layout_element';
   elementId?: string; // For custom_layout_element
   partIdContext?: 'current'; // For ui_thumbnail_click or part-specific buttons
+  targetPartPks?: number[] | string; // Array of part PKs or a special string (e.g., 'all_selected')
 }
 
 export interface ActionTrigger {

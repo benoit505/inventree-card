@@ -31,10 +31,23 @@ const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass,
       return [];
     }
     
-    const globalButtons = config.actions.filter(action => 
-      action.trigger.type === 'ui_button' && 
-      action.trigger.ui?.placement === 'global_header'
-    );
+    const globalButtons = config.actions.filter(action => {
+      if (action.trigger.type !== 'ui_button') return false;
+      if (action.trigger.ui?.placement !== 'global_header') return false;
+      // If targetPartPks is set (and not an empty array), this button is too specific for global placement.
+      if (action.trigger.ui?.targetPartPks) {
+        if (Array.isArray(action.trigger.ui.targetPartPks) && action.trigger.ui.targetPartPks.length > 0) {
+          logger.log('GlobalActionButtons', `Filtering out global button '${action.name}' because targetPartPks is specified.`, { actionId: action.id });
+          return false;
+        }
+        // Potentially handle non-empty string targetPartPks if they have a global meaning, for now, filter out if present and not an empty array.
+        if (typeof action.trigger.ui.targetPartPks === 'string' && action.trigger.ui.targetPartPks.trim() !== '') {
+            logger.log('GlobalActionButtons', `Filtering out global button '${action.name}' because string targetPartPks '${action.trigger.ui.targetPartPks}' is specified.`, { actionId: action.id });
+            return false;
+        }
+      }
+      return true;
+    });
     logger.log('GlobalActionButtons', `Found ${globalButtons.length} UI Action Buttons for global_header`, { data: globalButtons });
     return globalButtons;
   }, [config, logger]);
@@ -95,9 +108,18 @@ const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass,
         // For global buttons, labelTemplate would typically be static or rely on hassStates.
         // The ActionEngine will handle %%context.hassStates.*%% templating if used in confirmation messages or future dynamic label processing within the engine.
         // For direct rendering, we use the template as is, or the action name.
-        const buttonLabel = action.trigger.ui?.labelTemplate || action.name;
+        let buttonLabel = ''; // Default to empty string
+        if (action.trigger.ui?.labelTemplate && action.trigger.ui.labelTemplate.trim() !== '') {
+          buttonLabel = processButtonLabelTemplate(action.trigger.ui.labelTemplate);
+        }
         
         const buttonIcon = action.trigger.ui?.icon;
+
+        // If there's no icon and no label, skip rendering this button as it would be invisible/confusing.
+        if (!buttonIcon && !buttonLabel) {
+          logger.log('GlobalActionButtons', `Skipping rendering button for action '${action.name}' as it has no icon and no label.`, {actionId: action.id});
+          return null;
+        }
 
         // Determine if the button should be disabled
         const isDisabled = !!(action.isEnabledExpressionId && action.isEnabledExpressionId.trim() !== '');

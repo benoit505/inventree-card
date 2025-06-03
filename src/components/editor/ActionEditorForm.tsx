@@ -534,6 +534,35 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
                 <option value="global_header">Global Header</option>
             </select>
           </div>
+          <div style={formFieldStyle}>
+            <label style={labelStyle} htmlFor="targetPartPks">Target Part PKs (Optional)</label>
+            <input
+              type="text"
+              id="targetPartPks"
+              style={inputStyle}
+              value={Array.isArray(action.trigger?.ui?.targetPartPks) ? action.trigger.ui.targetPartPks.join(',') : action.trigger?.ui?.targetPartPks || ''}
+              onChange={(e) => {
+                const pkString = e.target.value;
+                if (!pkString.trim()) {
+                  handleInputChange('trigger.ui.targetPartPks', []);
+                } else {
+                  // Try to parse as numbers, but allow string for future flexibility if needed (e.g. "all_selected")
+                  // For now, focusing on number[]
+                  const pkArray = pkString.split(',').map(pk => parseInt(pk.trim(), 10)).filter(pk => !isNaN(pk));
+                  if (pkArray.length > 0 || pkString.split(',').every(s => !isNaN(parseInt(s.trim(), 10)))) {
+                    handleInputChange('trigger.ui.targetPartPks', pkArray);
+                  } else {
+                    // If not a list of numbers, pass the raw string if your type supports it and you want to handle keywords
+                    // For now, if it's not numbers and not empty, we could clear or retain string based on stricter needs
+                    // Let's default to setting it as an array of valid numbers, or empty if none are valid numbers
+                    handleInputChange('trigger.ui.targetPartPks', pkArray.length > 0 ? pkArray : []);
+                  }
+                }
+              }}
+              placeholder="e.g., 1, 2, 3 (comma-separated Part PKs)"
+            />
+            <small style={smallTextStyle}>Comma-separated Part Primary Keys. If empty, applies based on placement (e.g., current part in footer, or all if global and no specific target defined by action operation itself).</small>
+          </div>
         </>
       )}
       {currentTriggerType === 'ui_thumbnail_click' && (

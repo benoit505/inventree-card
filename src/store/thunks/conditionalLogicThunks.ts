@@ -2,123 +2,51 @@ import { createAsyncThunk } from '@reduxjs/toolkit';
 import { RootState, AppDispatch } from '../index';
 import { 
     ConditionalLogicItem,
-    ParameterOperator,
-    ProcessedCondition,
-    RuleGroupType,
-    RuleType
+    // ParameterOperator, // No longer directly used here for ProcessedCondition creation
+    // RuleGroupType, // No longer directly used here for ProcessedCondition creation
+    // RuleType // No longer directly used here for ProcessedCondition creation
 } from '../../types';
 import { Logger } from '../../core/logger';
-import { generateSimpleId } from '../../utils/generateSimpleId';
+// import { generateSimpleId } from '../../utils/generateSimpleId'; // No longer needed here
 import {
   setDefinedLogicItems,
-  setProcessedConditions,
-} from '../slices/conditionalLogicSlice';
+  selectDefinedLogicItems // Added selector
+} from '../slices/conditionalLogicSlice'; // Removed setProcessedConditions
 import { ConditionalEffectsEngine } from '../../core/ConditionalEffectsEngine';
 
 const logger = Logger.getInstance();
 
-const parseSourceString = (sourceString: string): {
-  sourceType: ProcessedCondition['sourceType'];
-  partId?: number;
-  parameterName?: string;
-  attributeName?: string;
-  entityId?: string;
-  haAttributeName?: string;
-} => {
-  logger.debug('parseSourceString', `Parsing: ${sourceString}`, {data: {sourceString}});
-
-  if (sourceString.startsWith('ha_entity_state_')) {
-    return { sourceType: 'ha_entity_state', entityId: sourceString.substring('ha_entity_state_'.length) };
-  }
-  if (sourceString.startsWith('ha_entity_attr_')) {
-    const content = sourceString.substring('ha_entity_attr_'.length);
-    const parts = content.split(':::');
-    if (parts.length === 2) {
-      const entityId = parts[0];
-      const haAttributeName = parts[1];
-      return { sourceType: 'ha_entity_attribute', entityId, haAttributeName };
-    } else {
-      logger.warn('parseSourceString', `Malformed ha_entity_attr string (expected 2 parts after splitting by :::): ${sourceString}` , {data: {sourceString, content, partsCount: parts.length}});
-      return { sourceType: 'unknown' }; // Or handle error appropriately
-    }
-  }
-  if (sourceString.startsWith('part_')) {
-    return { sourceType: 'inventree_attribute', attributeName: sourceString.substring('part_'.length) };
-  }
-  if (sourceString.startsWith('param_')) {
-    return { sourceType: 'inventree_parameter', parameterName: sourceString.substring('param_'.length) };
-  }
-  const pkMatch = sourceString.match(/^part:(\d+):(.+)$/);
-  if (pkMatch) {
-    const partId = parseInt(pkMatch[1], 10);
-    const paramOrAttrName = pkMatch[2];
-    logger.warn('parseSourceString', `Ambiguous format 'part:PK:name' for ${sourceString}. Assuming parameter if not a known attribute.`);
-    const knownAttributes = ['name', 'IPN', 'description', 'category_name', 'in_stock', 'on_order'];
-    if (knownAttributes.includes(paramOrAttrName)) {
-      return { sourceType: 'inventree_attribute', partId, attributeName: paramOrAttrName };
-    }
-    return { sourceType: 'inventree_parameter', partId, parameterName: paramOrAttrName };
-  }
-
-  logger.warn('parseSourceString', `Unknown source string format: ${sourceString}`);
-  return { sourceType: 'unknown' };
-};
-
-const extractAllRules = (ruleGroup: RuleGroupType): RuleType[] => {
-  let rules: RuleType[] = [];
-  for (const ruleOrGroup of ruleGroup.rules) {
-    if ('combinator' in ruleOrGroup) {
-      rules = rules.concat(extractAllRules(ruleOrGroup as RuleGroupType));
-    } else {
-      rules.push(ruleOrGroup as RuleType);
-    }
-  }
-  return rules;
-};
+// parseSourceString and extractAllRules are no longer needed here as processing moves to the engine
 
 export const evaluateAndApplyEffectsThunk = createAsyncThunk<
   void,
-  { cardInstanceId?: string; forceReevaluation?: boolean; logicItems?: ConditionalLogicItem[] },
+  { cardInstanceId?: string; forceReevaluation?: boolean; /* logicItems argument removed, will be fetched from state */ },
   { state: RootState; dispatch: AppDispatch }
->('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId, forceReevaluation = false, logicItems }, { dispatch, getState }) => {
+>('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId, forceReevaluation = false }, { dispatch, getState }) => {
   const cardId = cardInstanceId || 'undefined_card';
-  logger.debug('evaluateAndApplyEffectsThunk', `START for cardInstanceId: ${cardId}`, { data: { logicItems } });
+  const state = getState();
+  const logicItemsToEvaluate = selectDefinedLogicItems(state); // Fetch logic items from state
+
+  logger.debug('evaluateAndApplyEffectsThunk', `START for cardInstanceId: ${cardId}`, { data: { logicItems: logicItemsToEvaluate } });
   const engine = new ConditionalEffectsEngine(dispatch, getState);
-  await engine.evaluateAndApplyEffects(cardId, forceReevaluation, logicItems);
+  // Pass the fetched logicItems to the engine
+  await engine.evaluateAndApplyEffects(cardId, forceReevaluation, logicItemsToEvaluate);
   logger.debug('evaluateAndApplyEffectsThunk', `END for cardInstanceId: ${cardId}`);
 });
 
 export const initializeRuleDefinitionsThunk = createAsyncThunk<
   void,
-  ConditionalLogicItem[],
-  { dispatch: AppDispatch; state: RootState }
->('conditionalLogic/initializeRuleDefinitions', async (logicItems, { dispatch, getState }) => {
-  logger.debug('initializeRuleDefinitionsThunk', 'Initializing rule definitions...', { data: logicItems });
+  ConditionalLogicItem[], // Expects the new structure
+  { dispatch: AppDispatch; /* state: RootState // getState not needed here anymore */ }
+>('conditionalLogic/initializeRuleDefinitions', async (logicItems, { dispatch }) => {
+  logger.debug('initializeRuleDefinitionsThunk', 'Initializing rule definitions (now ConditionalLogicItems with logicPairs)...', { data: logicItems });
   
+  // Directly store the received logicItems (which should have the new structure)
   dispatch(setDefinedLogicItems(logicItems || []));
 
-  const allProcessedConditions: ProcessedCondition[] = [];
-  (logicItems || []).forEach(item => {
-    const rules = extractAllRules(item.conditionRules);
-    rules.forEach(rule => {
-      const parsedSource = parseSourceString(rule.field);
-      
-      allProcessedConditions.push({
-        id: rule.id || generateSimpleId(),
-        originalRule: {
-          name: rule.id || rule.field,
-          parameter: rule.field,
-          operator: rule.operator as any,
-          value: rule.value,
-          action: 'filter',
-          action_value: 'show',
-        },
-        ...parsedSource,
-        effects: item.effects
-      });
-    });
-  });
-
-  dispatch(setProcessedConditions(allProcessedConditions));
-  logger.debug('initializeRuleDefinitionsThunk', `Processed ${allProcessedConditions.length} conditions from ${logicItems?.length || 0} logic items.`);
+  logger.debug('initializeRuleDefinitionsThunk', `Stored ${logicItems?.length || 0} defined logic items.`);
+  
+  // No more transformation to ProcessedCondition here.
+  // After defining logic items, trigger an initial evaluation.
+  dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: 'undefined_card', forceReevaluation: true }));
 });

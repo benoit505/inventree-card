@@ -29,13 +29,25 @@ const PartButtons: React.FC<PartButtonsProps> = ({ partItem, config, hass }) => 
       return [];
     }
     
-    const uiButtons = config.actions.filter(action => 
-      action.trigger.type === 'ui_button' && 
-      (action.trigger.ui?.placement === 'part_footer' || !action.trigger.ui?.placement)
-    );
-    logger.log('PartButtons React', `Found ${uiButtons.length} UI Action Buttons for part_footer`, { data: uiButtons });
+    const uiButtons = config.actions.filter(action => {
+      if (action.trigger.type !== 'ui_button') return false;
+      if (action.trigger.ui?.placement && action.trigger.ui.placement !== 'part_footer') return false;
+      if (partItem && action.trigger.ui?.targetPartPks) {
+        if (Array.isArray(action.trigger.ui.targetPartPks)) {
+          if (action.trigger.ui.targetPartPks.length > 0 && !action.trigger.ui.targetPartPks.includes(partItem.pk)) {
+            return false;
+          }
+        } else if (typeof action.trigger.ui.targetPartPks === 'string') {
+          // Handle string-based targetPartPks if needed in the future (e.g., keywords like 'all_selected')
+          // For now, if it's a non-empty string and not parsed to an array, assume it doesn't match specific PKs
+          // This part might need refinement based on how string values for targetPartPks are used
+        }
+      }
+      return true;
+    });
+    logger.log('PartButtons React', `Found ${uiButtons.length} UI Action Buttons for part_footer (part PK: ${partItem?.pk})`, { data: uiButtons });
     return uiButtons;
-  }, [config, logger]);
+  }, [config, logger, partItem]);
 
   const handleClick = useCallback(async (action: ActionDefinition) => {
     if (!partItem) {

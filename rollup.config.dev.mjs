@@ -7,31 +7,42 @@ import serve from 'rollup-plugin-serve';
 import livereload from 'rollup-plugin-livereload';
 import json from '@rollup/plugin-json';
 import copy from 'rollup-plugin-copy';
+import replace from '@rollup/plugin-replace';
+import postcss from 'rollup-plugin-postcss';
 
 const plugins = [
+    replace({
+        'process.env.NODE_ENV': JSON.stringify('development'),
+        preventAssignment: true
+    }),
     nodeResolve({
         browser: true,
         preferBuiltins: false,
         dedupe: ['lit'],
-        extensions: ['.ts', '.js', '.json']
+        extensions: ['.ts', '.tsx', '.js', '.json']
     }),
     commonjs({
         include: 'node_modules/**'
     }),
     typescript({
         tsconfig: './tsconfig.json',
-        include: ['dev/**/*.ts'],
-        exclude: ['src/**/*.ts'],
+        include: ['src/**/*.ts', 'src/**/*.tsx'],
+        exclude: ['dev/**/*.ts', 'node_modules/**'],
         sourceMap: true,
-        inlineSources: true
+        inlineSources: true,
     }),
     json(),
+    postcss({
+        extract: true,
+        minimize: false,
+        sourceMap: 'inline',
+    }),
     babel({
         exclude: 'node_modules/**',
         babelHelpers: 'bundled',
-        extensions: ['.ts'],
+        extensions: ['.ts', '.tsx', '.js', '.jsx'],
         presets: [
-            ['@babel/preset-typescript']
+            ['@babel/preset-react', { runtime: 'automatic' }]
         ],
         plugins: [
             ['@babel/plugin-proposal-decorators', { legacy: true }],
@@ -47,7 +58,7 @@ const plugins = [
     serve({
         contentBase: ['./dist'],
         host: '0.0.0.0',
-        port: 5000,
+        port: 5021,
         allowCrossOrigin: true,
         headers: {
             'Access-Control-Allow-Origin': '*',
@@ -60,7 +71,7 @@ const plugins = [
 ].filter(Boolean);
 
 export default {
-    input: 'dev/index.ts',
+    input: 'src/index.ts',
     output: {
         dir: 'dist',
         format: 'es',
