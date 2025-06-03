@@ -37,12 +37,28 @@ export class Logger {
     this.logLevel = level;
   }
 
+  public getLogLevel(): LogLevel {
+    return this.logLevel;
+  }
+
   /**
    * Enable or disable logging
    * @param enabled Whether logging is enabled
    */
   public setEnabled(enabled: boolean): void {
     this.enabled = enabled;
+  }
+
+  public getIsEnabled(): boolean {
+    return this.enabled;
+  }
+
+  public setDebugConfig(config: any): void {
+    if (config && typeof config.debug === 'boolean') {
+      this.setEnabled(config.debug);
+      const newLogLevel = config.debug_verbose ? 'debug' : (config.debug ? 'log' : 'warn');
+      this.setLogLevel(newLogLevel);
+    }
   }
 
   /**
@@ -53,7 +69,7 @@ export class Logger {
    */
   public debug(system: string, message: string, options?: LogOptions): void {
     if (!this.enabled || this.getLevelValue(this.logLevel) > this.getLevelValue('debug')) return;
-    console.debug(`[${system}] ${message}`, options?.data || '');
+    console.debug(`[${system}] ${message}`, options?.data !== undefined ? options.data : '');
   }
 
   /**
@@ -64,7 +80,7 @@ export class Logger {
    */
   public info(system: string, message: string, options?: LogOptions): void {
     if (!this.enabled || this.getLevelValue(this.logLevel) > this.getLevelValue('info')) return;
-    console.info(`[${system}] ${message}`, options?.data || '');
+    console.info(`[${system}] ${message}`, options?.data !== undefined ? options.data : '');
   }
 
   /**
@@ -75,7 +91,7 @@ export class Logger {
    */
   public log(system: string, message: string, options?: LogOptions): void {
     if (!this.enabled || this.getLevelValue(this.logLevel) > this.getLevelValue('log')) return;
-    console.log(`[${system}] ${message}`, options?.data || '');
+    console.log(`[${system}] ${message}`, options?.data !== undefined ? options.data : '');
   }
 
   /**
@@ -86,7 +102,7 @@ export class Logger {
    */
   public warn(system: string, message: string, options?: LogOptions): void {
     if (!this.enabled || this.getLevelValue(this.logLevel) > this.getLevelValue('warn')) return;
-    console.warn(`[${system}] ${message}`, options?.data || '');
+    console.warn(`[${system}] ${message}`, options?.data !== undefined ? options.data : '');
   }
 
   /**
@@ -97,7 +113,7 @@ export class Logger {
    */
   public error(system: string, message: string, options?: LogOptions): void {
     if (!this.enabled || this.getLevelValue(this.logLevel) > this.getLevelValue('error')) return;
-    console.error(`[${system}] ${message}`, options?.data || '');
+    console.error(`[${system}] ${message}`, options?.data !== undefined ? options.data : '');
   }
 
   /**

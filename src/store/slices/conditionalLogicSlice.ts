@@ -1,18 +1,18 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { RootState } from '../index'; // Changed import path back
-import { ConditionalLogicItem, ProcessedCondition, ConditionRuleDefinition, EffectDefinition } from '../../types';
+import { ConditionalLogicItem, ProcessedCondition } from '../../types';
+import { RootState } from '../index';
 import { Logger } from '../../utils/logger';
 
 const logger = Logger.getInstance();
 
 export interface ConditionalLogicState {
-  rawRuleDefinitions: ConditionRuleDefinition[];
+  definedLogicItems: ConditionalLogicItem[];
   processedConditions: ProcessedCondition[];
   // We could add status flags here if needed, e.g., 'initializing', 'ready'
 }
 
 const initialState: ConditionalLogicState = {
-  rawRuleDefinitions: [],
+  definedLogicItems: [],
   processedConditions: [],
 };
 
@@ -20,18 +20,18 @@ const conditionalLogicSlice = createSlice({
   name: 'conditionalLogic',
   initialState,
   reducers: {
-    setRawRuleDefinitions(state: ConditionalLogicState, action: PayloadAction<ConditionRuleDefinition[]>) {
-      state.rawRuleDefinitions = action.payload;
-      logger.log('conditionalLogicSlice', `Set ${action.payload.length} raw rule definitions.`);
+    setDefinedLogicItems(state: ConditionalLogicState, action: PayloadAction<ConditionalLogicItem[]>) {
+      state.definedLogicItems = action.payload;
+      logger.log('conditionalLogicSlice', `Set ${state.definedLogicItems.length} defined logic items.`);
     },
     setProcessedConditions(state: ConditionalLogicState, action: PayloadAction<ProcessedCondition[]>) {
       state.processedConditions = action.payload;
-      logger.log('conditionalLogicSlice', `Set ${action.payload.length} processed conditions.`);
+      logger.log('conditionalLogicSlice', `Set ${state.processedConditions.length} processed conditions.`);
     },
     clearAllConditions(state: ConditionalLogicState) {
-      state.rawRuleDefinitions = [];
+      state.definedLogicItems = [];
       state.processedConditions = [];
-      logger.log('conditionalLogicSlice', 'Cleared all raw and processed conditions.');
+      logger.log('conditionalLogicSlice', 'Cleared all conditions (defined logic items and processed).');
     }
   },
   // extraReducers: (builder) => {
@@ -40,13 +40,13 @@ const conditionalLogicSlice = createSlice({
 });
 
 export const {
-  setRawRuleDefinitions,
+  setDefinedLogicItems,
   setProcessedConditions,
   clearAllConditions
 } = conditionalLogicSlice.actions;
 
 // Selectors
-export const selectRawRuleDefinitions = (state: RootState): ConditionRuleDefinition[] => state.conditionalLogic.rawRuleDefinitions;
+export const selectDefinedLogicItems = (state: RootState): ConditionalLogicItem[] => state.conditionalLogic.definedLogicItems;
 export const selectProcessedConditions = (state: RootState): ProcessedCondition[] => state.conditionalLogic.processedConditions;
 
 export default conditionalLogicSlice.reducer; 

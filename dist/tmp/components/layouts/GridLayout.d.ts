@@ -5,6 +5,8 @@ interface GridLayoutProps {
     hass?: HomeAssistant;
     config?: InventreeCardConfig;
     parts: InventreeItem[];
+    cardInstanceId?: string;
+    item?: InventreeItem;
 }
 declare const GridLayout: React.FC<GridLayoutProps>;
 export default GridLayout;

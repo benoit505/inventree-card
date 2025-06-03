@@ -16,9 +16,10 @@ interface ListLayoutProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
   parts: InventreeItem[];
+  cardInstanceId?: string;
 }
 
-const ListLayout: React.FC<ListLayoutProps> = ({ hass, config, parts }) => {
+const ListLayout: React.FC<ListLayoutProps> = ({ hass, config, parts, cardInstanceId }) => {
   const logger = useMemo(() => Logger.getInstance(), []);
   const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
 
@@ -81,6 +82,7 @@ const ListLayout: React.FC<ListLayoutProps> = ({ hass, config, parts }) => {
             parametersDisplayEnabled={parametersDisplayEnabledInList}
             onLocate={handleLocatePart}
             parameterActions={globalParameterActions}
+            cardInstanceId={cardInstanceId}
           />
         );
       })}

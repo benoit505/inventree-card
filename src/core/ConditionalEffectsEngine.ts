@@ -1,228 +1,189 @@
-import { RootState } from '../store';
-import { ParameterDetail, InventreeItem, ParameterOperator, ProcessedCondition, ConditionRuleDefinition, EffectDefinition, ActionExecutionContext } from '../types';
-import { VisualEffect } from '../store/slices/visualEffectsSlice';
-import { selectProcessedConditions as selectProcessedConditionsFromLogic } from '../store/slices/conditionalLogicSlice';
-import {
-    selectGenericHaEntityState,
-    selectGenericHaEntityActualState,
-    selectGenericHaEntityAttribute
+import { RootState, AppDispatch } from '../store';
+import { Logger } from './logger';
+import { 
+    ConditionalLogicItem, 
+    RuleGroupType, 
+    RuleType, 
+    EffectDefinition, 
+    InventreeItem, 
+    ParameterDetail 
+} from '../types';
+import { 
+    VisualEffect,
+    setConditionalPartEffectsBatch, 
+    clearConditionalPartEffectsForCard
+} from '../store/slices/visualEffectsSlice';
+import { 
+    selectAllGenericHaStates
 } from '../store/slices/genericHaStateSlice';
-import { Logger } from '../utils/logger';
-import { setVisualEffectsBatch } from '../store/slices/visualEffectsSlice';
-import { AppDispatch } from '../store';
-import { inventreeApi } from '../store/apis/inventreeApi';
-import { actionEngine } from '../services/ActionEngine';
-import { HomeAssistant } from 'custom-card-helpers';
+import { selectApiConfig } from '../store/slices/apiSlice';
+import { evaluateExpression } from '../utils/evaluateExpression';
 
 const logger = Logger.getInstance();
 
-// Helper function to map styleProperty from EffectDefinition to VisualEffect keys
+// Helper to map styleProperty from EffectDefinition to VisualEffect keys
 const mapStylePropertyToVisualEffectKey = (styleProperty: string): keyof VisualEffect | null => {
-    const lowerCaseProp = styleProperty.toLowerCase();
-    switch (lowerCaseProp) {
-        case 'highlight':
-        case 'backgroundcolor':
-            return 'highlight';
-        case 'textcolor':
+    switch (styleProperty) {
+        case 'backgroundColor':
+        case 'highlight': return 'highlight';
         case 'color':
-            return 'textColor';
-        case 'border':
-            return 'border';
-        case 'icon':
-            return 'icon';
-        case 'badge':
-            return 'badge';
-        case 'opacity':
-            return 'opacity';
-        case 'priority':
-            return 'priority';
-        // Add other direct mappings here if VisualEffect has more specific keys
-        // For example, if customClasses becomes a direct string property:
-        // case 'customclasses':
-        // return 'customClasses';
-        default:
-            // Check if it's a direct match to a VisualEffect key (for less common ones)
-            const directMatch = styleProperty as keyof VisualEffect;
-            const sampleVisualEffect: VisualEffect = { isVisible: true }; // Dummy object to check keys
-            if (Object.keys(sampleVisualEffect).includes(directMatch)) {
-                return directMatch;
-            }
-            return null;
+        case 'textColor': return 'textColor';
+        case 'border': return 'border';
+        case 'opacity': return 'opacity';
+        case 'icon': return 'icon';
+        case 'badge': return 'badge';
+        // Add other mappings as necessary
+        default: return null;
     }
 };
 
 export class ConditionalEffectsEngine {
     private dispatch: AppDispatch;
     private getState: () => RootState;
+    private logger: Logger;
 
     constructor(dispatch: AppDispatch, getState: () => RootState) {
         this.dispatch = dispatch;
         this.getState = getState;
-        logger.log('ConditionalEffectsEngine', 'Engine initialized.');
+        this.logger = Logger.getInstance();
+        this.logger.log('ConditionalEffectsEngine', 'CONSTRUCTOR CALLED. Instance created.');
     }
 
-    public async evaluateAndApplyEffects(): Promise<void> {
+    public async evaluateAndApplyEffects(
+        cardInstanceId: string, 
+        forceReevaluation: boolean = false, 
+        logicItems?: ConditionalLogicItem[]  
+    ): Promise<void> {
+        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED. cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItems}, Count: ${logicItems?.length}`);
+
         const state = this.getState();
-        const conditions = selectProcessedConditionsFromLogic(state);
-        const allPartsById = state.parts.partsById;
-        const config = state.config;
-        const hass = config.hass as HomeAssistant | undefined;
-        const genericHaStates = state.genericHaStates as Record<string, any>;
 
-        logger.log('[ConditionalEffectsEngine]', 'evaluateAndApplyEffects - START.', {
-            processedConditionsCount: conditions.length,
-        });
-
-        if (!conditions || conditions.length === 0) {
-            this.dispatch(setVisualEffectsBatch({}));
+        if (!logicItems || logicItems.length === 0) {
+            this.logger.log('ConditionalEffectsEngine', `No logic items provided for card ${cardInstanceId}. Clearing its visual effects.`);
+            this.dispatch(clearConditionalPartEffectsForCard({ cardInstanceId }));
             return;
         }
 
-        const newEffectsToApplyToParts: Record<number, VisualEffect> = {};
+        const effectsToApply: Record<number, VisualEffect> = {};
 
         const mergeVisualEffect = (partId: number, visualEffect: Partial<VisualEffect>) => {
-            newEffectsToApplyToParts[partId] = { 
-                ...(newEffectsToApplyToParts[partId] || {}), 
-                ...visualEffect 
-            } as VisualEffect;
+            if (!effectsToApply[partId]) {
+                effectsToApply[partId] = {};
+            }
+            effectsToApply[partId] = { ...effectsToApply[partId], ...visualEffect };
         };
 
-        for (const processedCond of conditions) {
+        const allPartsById = state.parts.partsById; 
+        const allHaEntities = selectAllGenericHaStates(state);
+        const allInventreeParametersByPartId = state.parameters.parametersByPartId;
+
+        const globalContextForEval = {
+            haEntities: allHaEntities,
+            parameters: { parameterValues: allInventreeParametersByPartId } 
+        };
+
+        for (const logicItem of logicItems) {
+            this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Processing logic item: ${logicItem.id} (${logicItem.name || 'Unnamed'})`, { data: logicItem });
+
+            const relevantPartsForLogicItemEffectSet = new Set<number>();
+            logicItem.effects.forEach(effect => {
+                if (effect.targetPartPks === 'all_loaded') {
+                    Object.keys(allPartsById).forEach(pkStr => relevantPartsForLogicItemEffectSet.add(Number(pkStr)));
+                } else if (Array.isArray(effect.targetPartPks)) {
+                    effect.targetPartPks.forEach(pk => relevantPartsForLogicItemEffectSet.add(Number(pk)));
+                } else if (typeof effect.targetPartPks === 'string' && effect.targetPartPks.length > 0) {
+                    effect.targetPartPks.split(',').forEach(pkStr => {
+                        const numPk = Number(pkStr.trim());
+                        if (!isNaN(numPk)) relevantPartsForLogicItemEffectSet.add(numPk);
+                    });
+                }
+            });
+            const relevantPartsArray = Array.from(relevantPartsForLogicItemEffectSet);
+            
+            this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] LogicItem ${logicItem.id} - Relevant part PKs for *effects*: ${relevantPartsArray.join(', ') || 'None defined'}`);
+
             let conditionResult = false;
-            const rule = processedCond.originalRule;
-            let valueToEvaluateAgainst: any;
-
-            let baseTargetPartPks: number[] = [];
-            if (rule.targetPartIds === '*') {
-                baseTargetPartPks = Object.keys(allPartsById).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-            } else if (Array.isArray(rule.targetPartIds)) {
-                baseTargetPartPks = rule.targetPartIds.filter((id: any): id is number => typeof id === 'number' && !isNaN(id));
-            } else if (typeof processedCond.partId === 'number') {
-                baseTargetPartPks = [processedCond.partId];
-            }
-
-            if ((processedCond.sourceType === 'inventree_parameter' || processedCond.sourceType === 'inventree_attribute') && typeof processedCond.partId !== 'number') {
-                logger.warn('CEE', `Skipping part-specific condition (ID: ${processedCond.id}) due to missing partId.`, { rule });
-                continue;
-            }
-
-            switch (processedCond.sourceType) {
-                case 'inventree_parameter':
-                    if (typeof processedCond.partId === 'number' && processedCond.parameterName) {
-                        const params = inventreeApi.endpoints.getPartParameters.select(processedCond.partId)(state)?.data;
-                        valueToEvaluateAgainst = params?.find(p => p.template_detail?.name === processedCond.parameterName)?.data;
-                    }
-                    break;
-                case 'inventree_attribute':
-                    if (typeof processedCond.partId === 'number' && processedCond.attributeName) {
-                        valueToEvaluateAgainst = allPartsById[processedCond.partId]?.[processedCond.attributeName];
-                    }
-                    break;
-                case 'ha_entity_state':
-                    if (processedCond.entityId) valueToEvaluateAgainst = selectGenericHaEntityActualState(state, processedCond.entityId);
-                    break;
-                case 'ha_entity_attribute':
-                    if (processedCond.entityId && processedCond.haAttributeName) valueToEvaluateAgainst = selectGenericHaEntityAttribute(state, processedCond.entityId, processedCond.haAttributeName);
-                    break;
-                default: valueToEvaluateAgainst = undefined; break;
-            }
-
-            const opStr = String(rule.operator);
-            let normalizedOp: ParameterOperator | string = opStr;
-            if (opStr === '=') normalizedOp = 'equals';
-            else if (opStr === '!=') normalizedOp = 'not_equals';
-            else if (opStr === '>') normalizedOp = 'greater_than';
-            else if (opStr === '<') normalizedOp = 'less_than';
-
-            if (valueToEvaluateAgainst === undefined || valueToEvaluateAgainst === null) {
-                switch (normalizedOp) {
-                    case 'exists': conditionResult = false; break;
-                    case 'is_empty': conditionResult = true; break;
-                    default: conditionResult = (normalizedOp === 'equals' && (rule.value === null || rule.value === '')) || 
-                                           (normalizedOp === 'not_equals' && (rule.value !== null && rule.value !== '')); break;
-                }
-            } else {
-                switch (normalizedOp as ParameterOperator) {
-                    case 'equals': conditionResult = String(valueToEvaluateAgainst) === String(rule.value); break;
-                    case 'not_equals': conditionResult = String(valueToEvaluateAgainst) !== String(rule.value); break;
-                    case 'contains': conditionResult = String(valueToEvaluateAgainst).includes(String(rule.value)); break;
-                    case 'exists': conditionResult = String(valueToEvaluateAgainst).trim() !== ''; break;
-                    case 'is_empty': conditionResult = String(valueToEvaluateAgainst).trim() === ''; break;
-                    case 'greater_than': const vGt = parseFloat(String(valueToEvaluateAgainst)), rGt = parseFloat(String(rule.value)); conditionResult = !isNaN(vGt) && !isNaN(rGt) && vGt > rGt; break;
-                    case 'less_than': const vLt = parseFloat(String(valueToEvaluateAgainst)), rLt = parseFloat(String(rule.value)); conditionResult = !isNaN(vLt) && !isNaN(rLt) && vLt < rLt; break;
-                    default: 
-                        logger.warn('CEE', `Unhandled operator '${normalizedOp}' for rule.`, { rule });
-                        conditionResult = false;
-                }
+            try {
+                this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] PRE-EVALUATE EXPRESSION for LogicItem ${logicItem.id}.`, {data: {ruleGroup: logicItem.conditionRules, partContext: null}});
+                conditionResult = evaluateExpression(logicItem.conditionRules, null, state, this.logger);
+                this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] POST-EVALUATE EXPRESSION for LogicItem ${logicItem.id}. Result: ${conditionResult}`);
+            } catch (e: any) {
+                this.logger.error('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] ERROR during evaluateExpression for LogicItem ${logicItem.id}: ${e.message}`, {data: {stack: e.stack, ruleGroup: logicItem.conditionRules}});
+                conditionResult = false; 
             }
 
             if (conditionResult) {
-                logger.log('CEE', `Condition TRUE (ID: ${processedCond.id}, RuleParam: ${rule.parameter}). Applying effects.`, { baseTargetPartPks });
-
-                if (processedCond.effects && Array.isArray(processedCond.effects)) {
-                    for (const effect of processedCond.effects) {
-                        let currentEffectTargetPks: number[] = baseTargetPartPks;
-                        if (effect.targetPartPks) {
-                            if (effect.targetPartPks === 'all_loaded') {
-                                currentEffectTargetPks = Object.keys(allPartsById).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-                            } else if (Array.isArray(effect.targetPartPks)){
-                                currentEffectTargetPks = effect.targetPartPks.filter((id: any): id is number => typeof id === 'number' && !isNaN(id));
-                            } else if (typeof effect.targetPartPks === 'string') { 
-                                currentEffectTargetPks = effect.targetPartPks.split(',').map(pk => parseInt(pk.trim(),10)).filter(pk => !isNaN(pk));
-                            }
-                        }
-
-                        for (const pk of currentEffectTargetPks) {
-                            if (typeof pk !== 'number' || isNaN(pk)) continue;
-
-                            const currentPartForContext = allPartsById[pk];
-                            if (!currentPartForContext && (effect.type === 'trigger_custom_action' || effect.type === 'set_style' || effect.type === 'set_visibility')) {
-                                logger.warn('CEE', `Part PK ${pk} not found. Skipping effect.`, {effectType: effect.type});
-                                continue;
-                            }
-
-                            switch (effect.type) {
-                                case 'set_style':
-                                    if (effect.styleProperty && effect.styleValue !== undefined) {
-                                        const visualEffectKey = mapStylePropertyToVisualEffectKey(effect.styleProperty);
-                                        if (visualEffectKey) {
-                                            mergeVisualEffect(pk, { [visualEffectKey]: effect.styleValue });
-                                        }
-                                    }
-                                    break;
-                                case 'set_visibility':
-                                    if (typeof effect.isVisible === 'boolean') { 
-                                        mergeVisualEffect(pk, { isVisible: effect.isVisible });
-                                    } else {
-                                        logger.warn('CEE', `Effect 'set_visibility' for PK ${pk} used non-boolean isVisible. EffectDef:`, {effect});
-                                        mergeVisualEffect(pk, { isVisible: (effect as any).value === 'show' }); 
-                                    }
-                                    break;
-                                case 'trigger_custom_action':
-                                    if (effect.customActionId) {
-                                        logger.log('CEE', `Triggering custom action ID: ${effect.customActionId} for part PK: ${pk}`);
-                                        const executionContext: ActionExecutionContext & { hass?: HomeAssistant } = {
-                                            part: currentPartForContext,
-                                            hass: hass,
-                                            hassStates: genericHaStates,
-                                        };
-                                        actionEngine.executeAction(effect.customActionId, executionContext)
-                                          .catch(actionError => {
-                                                logger.error('CEE', `Error executing action ${effect.customActionId} from condition`, {pk, actionError});
-                                          });
-                                    }
-                                    break;
-                                default:
-                                    logger.warn('CEE', `Unknown effect type: ${(effect as any).type}`, { effect });
-                                    break;
-                            }
-                        }
+                 this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Condition MET for logic item: ${logicItem.id}. Applying ${logicItem.effects.length} effects.`);
+                for (const effect of logicItem.effects) {
+                    const targetPks = new Set<number>();
+                    if (effect.targetPartPks === 'all_loaded') {
+                        Object.keys(allPartsById).forEach(pkStr => targetPks.add(Number(pkStr)));
+                    } else if (Array.isArray(effect.targetPartPks)) {
+                        effect.targetPartPks.forEach(pk => targetPks.add(Number(pk)));
+                    } else if (typeof effect.targetPartPks === 'string' && effect.targetPartPks.length > 0) {
+                         effect.targetPartPks.split(',').forEach(pkStr => {
+                            const numPk = Number(pkStr.trim());
+                            if (!isNaN(numPk)) targetPks.add(numPk);
+                        });
+                    } else {
+                        this.logger.warn('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Effect in LogicItem ${logicItem.id} has no targetPartPks. Skipping part-specific application.`, {data: effect});
+                        continue; 
                     }
+
+                    if (targetPks.size === 0) {
+                        this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] No specific target PKs resolved for effect in ${logicItem.id}, skipping this effect application.`, {data: effect});
+                        continue;
+                    }
+                    
+                    targetPks.forEach(partId => {
+                        if (!effectsToApply[partId]) {
+                            effectsToApply[partId] = {};
+                        }
+                        const currentPartEffects = effectsToApply[partId];
+
+                        switch (effect.type) {
+                            case 'set_visibility':
+                                currentPartEffects.isVisible = effect.isVisible;
+                                break;
+                            case 'set_style':
+                                if (effect.styleProperty && effect.styleValue !== undefined) {
+                                    const visualEffectKey = mapStylePropertyToVisualEffectKey(effect.styleProperty);
+                                    if (visualEffectKey) {
+                                        (currentPartEffects as any)[visualEffectKey] = effect.styleValue;
+                                    } else {
+                                        this.logger.warn('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Unhandled styleProperty: ${effect.styleProperty} in LogicItem ${logicItem.id}`);
+                                    }
+                                }
+                                break;
+                            default:
+                                this.logger.warn('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Unhandled effect type: ${effect.type} in LogicItem ${logicItem.id}`);
+                                break;
+                        }
+                        this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Effect applied for part ${partId} from logicItem ${logicItem.id}.`, {data: {effect, currentPartEffects: JSON.parse(JSON.stringify(currentPartEffects))}});
+                    });
                 }
+            } else {
+                this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Condition NOT MET for logic item: ${logicItem.id}`);
             }
         }
-        this.dispatch(setVisualEffectsBatch(newEffectsToApplyToParts));
-        logger.log('[ConditionalEffectsEngine]', 'evaluateAndApplyEffects - END.', { appliedEffectsCount: Object.keys(newEffectsToApplyToParts).length });
+
+        this.logger.debug('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, {
+            data: JSON.parse(JSON.stringify(effectsToApply)) 
+        });
+        const hasEffectsToApply = Object.keys(effectsToApply).length > 0;
+        this.logger.debug('ConditionalEffectsEngine', `[DEBUG] hasEffectsToApply for card ${cardInstanceId}: ${hasEffectsToApply}`);
+
+        this.logger.log('ConditionalEffectsEngine', `Dispatching setConditionalPartEffectsBatch for card ${cardInstanceId}`, {
+            data: { effectsCount: Object.keys(effectsToApply).length }
+        });
+
+        if (hasEffectsToApply) { 
+            this.dispatch(setConditionalPartEffectsBatch({ cardInstanceId: cardInstanceId, effectsMap: effectsToApply }));
+        } else {
+            this.logger.debug('ConditionalEffectsEngine', `No new visual effects to apply for card ${cardInstanceId}. Existing effects (if any) for this card instance will persist unless cleared by empty logicItems.`);
+        }
+
+        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects END for cardInstanceId: ${cardInstanceId}`);
     }
 }
 
@@ -231,4 +192,4 @@ export class ConditionalEffectsEngine {
 // import { store } from '../store'; // Or get dispatch/getState from thunkAPI
 //
 // const effectsEngine = new ConditionalEffectsEngine(store.dispatch, store.getState);
-// effectsEngine.evaluateAndApplyEffects(); 
+// effectsEngine.evaluateAndApplyEffects('someCardInstanceId', false, []); 

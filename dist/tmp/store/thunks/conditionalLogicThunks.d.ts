@@ -1,20 +1,24 @@
-import { RootState } from '../index';
+import { RootState, AppDispatch } from '../index';
 import { ConditionalLogicItem } from '../../types';
-export declare const initializeRuleDefinitionsThunk: import("@reduxjs/toolkit").AsyncThunk<void, ConditionalLogicItem[], {
+export declare const evaluateAndApplyEffectsThunk: import("@reduxjs/toolkit").AsyncThunk<void, {
+    cardInstanceId?: string;
+    forceReevaluation?: boolean;
+    logicItems?: ConditionalLogicItem[];
+}, {
     state: RootState;
-    rejectValue: string;
-    dispatch?: import("redux-thunk").ThunkDispatch<unknown, unknown, import("redux").UnknownAction> | undefined;
+    dispatch: AppDispatch;
     extra?: unknown;
+    rejectValue?: unknown;
     serializedErrorType?: unknown;
     pendingMeta?: unknown;
     fulfilledMeta?: unknown;
     rejectedMeta?: unknown;
 }>;
-export declare const evaluateAndApplyEffectsThunk: import("@reduxjs/toolkit").AsyncThunk<void, void, {
+export declare const initializeRuleDefinitionsThunk: import("@reduxjs/toolkit").AsyncThunk<void, ConditionalLogicItem[], {
+    dispatch: AppDispatch;
     state: RootState;
-    rejectValue: string;
-    dispatch?: import("redux-thunk").ThunkDispatch<unknown, unknown, import("redux").UnknownAction> | undefined;
     extra?: unknown;
+    rejectValue?: unknown;
     serializedErrorType?: unknown;
     pendingMeta?: unknown;
     fulfilledMeta?: unknown;

@@ -5,6 +5,7 @@ interface DetailLayoutProps {
     hass?: HomeAssistant;
     config?: InventreeCardConfig;
     selectedPartId?: number;
+    cardInstanceId?: string;
 }
 declare const DetailLayout: React.FC<DetailLayoutProps>;
 export default DetailLayout;

@@ -106,8 +106,6 @@ export const selectInteractionsConfig = (state: RootState): InventreeCardConfig[
 };
 
 export const selectConditionalLogicRules = (state: RootState): ConditionRuleDefinition[] => {
-  // ADD TEMP LOG
-  console.log('[TEMP LOG - configSlice.ts:115]', 'selectConditionalLogicRules called. Accessing state.config.conditional_logic.rules. Current value:', JSON.parse(JSON.stringify(state.config.conditional_logic?.rules || [])));
   return state.config.conditional_logic?.rules || [];
 };
 
@@ -116,7 +114,6 @@ export const selectConditionalDefinedLogics = (state: RootState): ConditionalLog
 };
 
 export const selectInventreeParametersToFetch = (state: RootState): InventreeParameterFetchConfig[] => {
-    // console.log('[TEMP LOG - configSlice.ts:109] selectInventreeParametersToFetch called. Accessing state.config.data_sources.inventreeParametersToFetch. Current value:', JSON.parse(JSON.stringify(state.config.data_sources?.inventreeParametersToFetch || [])));
     return state.config.data_sources?.inventreeParametersToFetch || [];
 };
 
@@ -156,8 +153,7 @@ export const selectDirectApiEnabled = (state: RootState): boolean => {
 };
 
 export const selectConfig = (state: RootState): InventreeCardConfig => {
-    // console.log('[TEMP LOG - configSlice.ts:102] selectConfig selector. Full config state:', JSON.parse(JSON.stringify(state.config || {})));
-    return state.config as InventreeCardConfig; // Cast because initialState is Partial but runtime state is full
+    return state.config as InventreeCardConfig; // Ensure it returns the full config state
 };
 
 export default configSlice.reducer; 

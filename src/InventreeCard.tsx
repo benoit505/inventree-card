@@ -62,6 +62,9 @@ import VariantLayout from './components/layouts/VariantLayout';
 // Import GlobalActionButtons
 import GlobalActionButtons from './components/global/GlobalActionButtons';
 
+// Helper to generate a simple unique ID
+const generateSimpleId = () => Math.random().toString(36).substring(2, 15);
+
 interface InventreeCardProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
@@ -69,7 +72,7 @@ interface InventreeCardProps {
 
 const logger = Logger.getInstance();
 
-// Temporary Transformer: RuleGroupType to ParameterCondition[]
+// TEMPORARY Transformer: RuleGroupType to ParameterCondition[]
 // This is a simplified transformation. A more robust solution would handle nested groups
 // and properly map actions/effects which are not part of RuleGroupType.
 const transformRuleGroupToParameterConditions = (ruleGroup?: RuleGroupType): ConditionRuleDefinition[] => {
@@ -104,12 +107,11 @@ const transformRuleGroupToParameterConditions = (ruleGroup?: RuleGroupType): Con
 };
 
 const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null => {
-  // TEMPORARY CONSOLE LOG
-  // console.log('InventreeCard.tsx (React) received config prop:', JSON.parse(JSON.stringify(config || {})));
-  // ADD TEMP LOG
-  // console.log('[TEMP LOG - InventreeCard.tsx:101]', 'InventreeCard component render/re-render. HASS available:', !!hass, 'Config available:', !!config);
-
   const dispatch = useDispatch<any>();
+  const cardInstanceId = useMemo(() => {
+    const id = generateSimpleId();
+    return id;
+  }, []);
 
   // Performance settings from config
   const renderPerformanceConfig = config?.performance?.rendering;
@@ -173,27 +175,13 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   }, [config]);
 
   // Debounced version of the initialization logic
-  const debouncedInitializationEffect = useCallback(debounce(async (currentHass: HomeAssistant | undefined, currentConfig: InventreeCardConfig | undefined, currentDispatch: AppDispatch) => {
-    // REMOVE TEMP LOG
-    // console.log('[TEMP LOG - InventreeCard.tsx:172]', 'debouncedInitializationEffect triggered. HASS available:', !!currentHass, 'Config available:', !!currentConfig);
+  const debouncedInitializationEffect = useCallback(debounce(async (currentHass: HomeAssistant | undefined, currentConfig: InventreeCardConfig | undefined, currentDispatch: AppDispatch, instanceId: string) => {
     if (currentHass && currentConfig) {
-      // REMOVE TEMP LOG
-      // console.log('[TEMP LOG - InventreeCard.tsx:174]', 'debouncedInitializationEffect: Inside if (currentHass && currentConfig). currentConfig:', JSON.parse(JSON.stringify(currentConfig)));
       logger.log('InventreeCard.tsx', 'Debounced Effect: HASS and Config are available. Initializing.', { hass: !!currentHass, config: !!currentConfig });
 
-      logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching clearCache() from parametersSlice.');
-      // REMOVE TEMP LOG
-      // console.log('[TEMP LOG - InventreeCard.tsx:181]', 'debouncedInitializationEffect: Dispatching clearCache()');
       currentDispatch(clearCache());
-      // REMOVE TEMP LOG
-      // console.log('[TEMP LOG - InventreeCard.tsx:184]', 'debouncedInitializationEffect: clearCache() dispatched.');
 
-      logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching setConfigAction with currentConfig.');
-      // REMOVE TEMP LOG
-      // console.log('[TEMP LOG - InventreeCard.tsx:189]', 'debouncedInitializationEffect: Dispatching setConfigAction with currentConfig:', JSON.parse(JSON.stringify(currentConfig)));
       currentDispatch(setConfigAction(currentConfig));
-      // REMOVE TEMP LOG
-      // console.log('[TEMP LOG - InventreeCard.tsx:192]', 'debouncedInitializationEffect: setConfigAction dispatched.');
 
       // After setting the main config, set the action definitions if they exist
       if (currentConfig.actions && Array.isArray(currentConfig.actions)) {
@@ -368,24 +356,8 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
 
       // Dispatch fetchConfiguredParameters (if API enabled)
       if (currentConfig.direct_api?.enabled) {
-        // Log the specific property before assignment
-        // REMOVE CONSOLE LOG
-        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] Value of currentConfig.data_sources.inventreeParametersToFetch directly:', currentConfig.data_sources?.inventreeParametersToFetch);
-        
         const paramsToFetch = currentConfig.data_sources?.inventreeParametersToFetch || []; // Ensure it's an array
         
-        // Log the value of paramsToFetch immediately after assignment
-        // REMOVE CONSOLE LOG
-        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] Value of paramsToFetch after assignment:', paramsToFetch);
-
-        // Existing log (modified for safety)
-        // REMOVE CONSOLE LOG
-        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] Full data_sources from currentConfig:', currentConfig.data_sources || {});
-
-        // Modified for safety
-        // REMOVE CONSOLE LOG
-        // console.log('[TEMP LOG - InventreeCard.tsx: debouncedInitializationEffect] About to dispatch fetchConfiguredParameters. paramsToFetch value:', paramsToFetch);
-
         logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching fetchConfiguredParameters...', {
           level: 'info',
           inventreeParametersToFetch: paramsToFetch // Log the actual variable being passed
@@ -397,18 +369,24 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
 
       // After all data fetching and rule initialization, evaluate conditions and apply effects
       if (currentConfig.direct_api?.enabled && (currentConfig.parameters?.enabled || currentConfig.conditional_logic)) {
-        logger.log('InventreeCard.tsx', 'Debounced Effect: Dispatching evaluateAndApplyEffectsThunk after initial setup.');
-        currentDispatch(evaluateAndApplyEffectsThunk());
+        currentDispatch(evaluateAndApplyEffectsThunk({ 
+          cardInstanceId: instanceId, 
+          logicItems: logicItemsToInitialize // Pass the determined logic items
+        }));
+      } else {
+        // If API or conditional logic is not enabled, but we have an instanceId, 
+        // still dispatch with empty logicItems to clear any potential stale effects for this card instance.
+        currentDispatch(evaluateAndApplyEffectsThunk({ 
+          cardInstanceId: instanceId, 
+          logicItems: [] 
+        }));
       }
-
     }
-  }, debounceTime), [debounceTime, logger]); // logger is stable, debounceTime might change if config reloads
+  }, debounceTime), [debounceTime, logger]);
 
   useEffect(() => {
-    // REMOVE TEMP LOG
-    // console.log('[TEMP LOG - InventreeCard.tsx:330]', 'useEffect for debouncedInitializationEffect triggered. HASS available:', !!hass, 'Config available:', !!config);
-    debouncedInitializationEffect(hass, config, dispatch);
-  }, [hass, config, dispatch, debouncedInitializationEffect]);
+    debouncedInitializationEffect(hass, config, dispatch, cardInstanceId);
+  }, [hass, config, dispatch, debouncedInitializationEffect, cardInstanceId]);
 
   // Idle Render Interval effect
   useEffect(() => {
@@ -483,30 +461,26 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   */
 
   if (!config) {
-    // REMOVE TEMP LOG
-    // console.log('[TEMP LOG - InventreeCard.tsx:417]', 'Render: No config, returning "Loading configuration..."');
     return React.createElement('div', null, 'Loading configuration...');
   }
   
-  // REMOVE TEMP LOG
-  // console.log('[TEMP LOG - InventreeCard.tsx:422]', 'Render: Config available. view_type:', config.view_type, 'Number of parts:', parts.length, 'Selected Item PK:', selectedItem?.pk);
-  
   const renderLayout = (): JSX.Element | null => {
-    // Prepare common props
-    let commonLayoutProps: any = { hass, config };
+    // Prepare common props once
+    const commonLayoutProps: any = { hass, config, cardInstanceId }; // Add cardInstanceId here
 
     switch (config.view_type) {
       case 'detail':
+        // Pass commonLayoutProps to DetailLayout
         return React.createElement(DetailLayout, { ...commonLayoutProps, selectedPartId: selectedItem?.pk });
       case 'grid':
+        // Pass commonLayoutProps to GridLayout
         return React.createElement(GridLayout, { ...commonLayoutProps, parts, item: selectedItem });
       case 'list':
+        // Pass commonLayoutProps to ListLayout
         return React.createElement(ListLayout, { ...commonLayoutProps, parts, item: selectedItem });
       case 'parts':
-        // PartsLayout expects all parts
         return React.createElement(PartsLayout, { ...commonLayoutProps, parts });
       case 'variants':
-        // VariantLayout expects the specific template part (selectedItem) and all parts for context if needed
         return React.createElement(VariantLayout, { ...commonLayoutProps, item: selectedItem, parts });
       default:
         logger.warn('InventreeCard.tsx', `Unknown view_type: ${config.view_type}. Defaulting to Detail view or placeholder.`);
@@ -517,7 +491,7 @@ const InventreeCard = ({ hass, config }: InventreeCardProps): JSX.Element | null
   return (
     <div style={{ padding: '16px' }}>
       {/* GlobalActionButtons are rendered before the main layout */}
-      <GlobalActionButtons config={config} hass={hass} />
+      <GlobalActionButtons config={config} hass={hass} cardInstanceId={cardInstanceId} />
       {renderLayout()}
     </div>
   );

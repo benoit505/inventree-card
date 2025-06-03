@@ -22,11 +22,14 @@ export declare class Logger {
      * @param level The minimum level of logs to output
      */
     setLogLevel(level: LogLevel): void;
+    getLogLevel(): LogLevel;
     /**
      * Enable or disable logging
      * @param enabled Whether logging is enabled
      */
     setEnabled(enabled: boolean): void;
+    getIsEnabled(): boolean;
+    setDebugConfig(config: any): void;
     /**
      * Log a debug message
      * @param system The system generating the log

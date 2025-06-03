@@ -8,6 +8,7 @@ interface ListItemProps {
     parametersDisplayEnabled: boolean;
     onLocate?: (partId: number) => void;
     parameterActions?: ParameterAction[];
+    cardInstanceId?: string;
 }
 declare const ListItem: React.FC<ListItemProps>;
 export default ListItem;

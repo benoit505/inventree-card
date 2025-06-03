@@ -18,15 +18,10 @@ const axiosBaseQuery = ((): BaseQueryFn<
   unknown,
   { status?: number | 'CUSTOM_ERROR'; data?: any; message?: string } // Refined Error Type
  > => async ({ serviceMethod, methodArgs }) => {
-  // ADD TEMP LOG for entry
-  console.log(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Entry. ServiceMethod: ${serviceMethod}, Args:`, JSON.parse(JSON.stringify(methodArgs || [])));
-
   try {
     const serviceFn = inventreeApiService[serviceMethod] as (...args: any[]) => Promise<any>; // Explicitly cast to any[] for args
     if (typeof serviceFn !== 'function') {
       logger.error('axiosBaseQuery', `Service method '${String(serviceMethod)}' does not exist on inventreeApiService`);
-      // ADD TEMP LOG for non-existent service method
-      console.error(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Service method '${String(serviceMethod)}' does not exist.`);
       return {
         error: {
           status: 'CUSTOM_ERROR',
@@ -34,18 +29,10 @@ const axiosBaseQuery = ((): BaseQueryFn<
         },
       };
     }
-    // ADD TEMP LOG before calling serviceFn
-    console.log(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Calling serviceFn '${serviceMethod}'`);
     const result = await serviceFn.apply(inventreeApiService, methodArgs);
-    // ADD TEMP LOG after serviceFn call, showing result
-    console.log(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Result from '${serviceMethod}':`, JSON.parse(JSON.stringify(result === undefined ? 'undefined' : result)));
 
-
-    // Explicitly handle null result from service methods as an error
     if (result === null && (serviceMethod === 'getPartParameters' || serviceMethod === 'getPart' || serviceMethod === 'getStockItemsForPart' )) { // Add other methods that can return null on error
       logger.warn('axiosBaseQuery', `Service method '${String(serviceMethod)}' returned null, treating as error. Args:`, { data: methodArgs });
-      // ADD TEMP LOG for null result treated as error
-      console.warn(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Service method '${String(serviceMethod)}' returned null. Treating as ERROR.`);
       return {
         error: {
           status: 'CUSTOM_ERROR', // Or a more specific status if available
@@ -55,13 +42,10 @@ const axiosBaseQuery = ((): BaseQueryFn<
       };
     }
 
-    // ADD TEMP LOG for successful data return
-    console.log(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Returning data for '${serviceMethod}'.`);
     return { data: result };
   } catch (axiosError) {
     const err = axiosError as AxiosError;
-    // ADD TEMP LOG for caught exception
-    console.error(`[TEMP LOG - inventreeApi.ts: axiosBaseQuery] Caught AxiosError for '${serviceMethod}':`, err);
+    logger.error('axiosBaseQuery', `Error executing service method '${serviceMethod}': ${err.message}`, { data: err.response?.data });
     return {
       error: {
         status: err.response?.status,

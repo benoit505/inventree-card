@@ -1,33 +1,29 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
 import { Logger } from '../../utils/logger';
+import { VisualModifiers } from '../../types';
 
 const logger = Logger.getInstance();
 
 // Interface for a single visual effect applicable to a part
-export interface VisualEffect {
-  isVisible?: boolean;
-  highlight?: string; // e.g., color code like '#RRGGBB' or 'red'
-  textColor?: string; // e.g., color code
-  border?: string; // e.g., CSS border string like "2px solid red"
-  opacity?: number; // 0.0 to 1.0
-  // Add other style-related effect types as needed
-  icon?: string; // mdi icon name to display
-  badge?: string; // text for a badge overlay
-  // Effects that might influence layout or other non-CSS properties
-  isExpanded?: boolean; // For expandable sections within a part display
-  customClasses?: string[]; // Array of CSS class names to apply
-  priority?: 'high' | 'medium' | 'low' | string;
+export interface VisualEffect extends VisualModifiers {
+  // id could be added if individual effects need unique identifiers beyond partId
+  // For now, VisualModifiers covers all style and behavioral properties
+  // Add opacity as an explicit property if it's commonly used
+  opacity?: number; 
+  customClasses?: string[]; // Allow adding custom CSS classes
 }
 
 // Interface for the state of this slice
 export interface VisualEffectsState {
-  effectsByPartId: Record<number, VisualEffect>; // Stores active VisualEffect objects keyed by partId
-  // We could add more state here if needed, e.g., global default effects
+  effectsByCardInstance: Record<string, Record<number, VisualEffect>>;
+  // Consider adding a global effects record if some effects should apply to all cards
+  // globalEffects: Record<number, VisualEffect>; 
 }
 
 const initialState: VisualEffectsState = {
-  effectsByPartId: {},
+  effectsByCardInstance: {},
+  // globalEffects: {}
 };
 
 const visualEffectsSlice = createSlice({
@@ -35,53 +31,138 @@ const visualEffectsSlice = createSlice({
   initialState,
   reducers: {
     // Sets or merges an effect for a specific part
-    setVisualEffect(state: VisualEffectsState, action: PayloadAction<{ partId: number; effect: Partial<VisualEffect> }>) {
-      const { partId, effect } = action.payload;
-      if (!state.effectsByPartId[partId]) {
-        state.effectsByPartId[partId] = {};
+    setVisualEffect(state, action: PayloadAction<{ cardInstanceId: string; partId: number; effect: Partial<VisualEffect> }>) {
+      const { cardInstanceId, partId, effect } = action.payload;
+      if (!state.effectsByCardInstance[cardInstanceId]) {
+        state.effectsByCardInstance[cardInstanceId] = {};
       }
-      // Merge the new partial effect with any existing effects for that part
-      state.effectsByPartId[partId] = { ...state.effectsByPartId[partId], ...effect };
-      logger.log('visualEffectsSlice', `Visual effect set/merged for part ${partId}.`, { partId, newEffect: effect, level: 'debug' });
+      state.effectsByCardInstance[cardInstanceId][partId] = {
+        ...(state.effectsByCardInstance[cardInstanceId][partId] || {}),
+        ...effect,
+      };
+      // logger.log('visualEffectsSlice', `Set visual effect for card ${cardInstanceId}, part ${partId}`, { data: effect, level: 'silly' });
     },
 
-    // Replaces the entire batch of effects. Useful for re-evaluation results.
-    setVisualEffectsBatch(state: VisualEffectsState, action: PayloadAction<Record<number, VisualEffect>>) {
-      state.effectsByPartId = action.payload;
-      logger.log('visualEffectsSlice', 'Visual effects batch updated.', { count: Object.keys(action.payload).length, level: 'debug' });
+    // Sets a batch of effects for a specific card
+    setVisualEffectsBatchForCard(state, action: PayloadAction<{ cardInstanceId: string; effects: Record<number, VisualEffect> }>) {
+      const { cardInstanceId, effects } = action.payload;
+      state.effectsByCardInstance[cardInstanceId] = effects;
+      // logger.log('visualEffectsSlice', `Set visual effects batch for card ${cardInstanceId}`, { count: Object.keys(effects).length, level: 'debug' });
     },
 
     // Clears any visual effect for a specific part, reverting it to default appearance
-    clearVisualEffect(state: VisualEffectsState, action: PayloadAction<number>) {
-      const partId = action.payload;
-      delete state.effectsByPartId[partId];
-      logger.log('visualEffectsSlice', `Visual effects cleared for part ${partId}.`, { partId, level: 'debug' });
+    clearVisualEffectForPart(state, action: PayloadAction<{ cardInstanceId: string; partId: number }>) {
+      const { cardInstanceId, partId } = action.payload;
+      if (state.effectsByCardInstance[cardInstanceId]) {
+        delete state.effectsByCardInstance[cardInstanceId][partId];
+        // logger.log('visualEffectsSlice', `Cleared visual effect for card ${cardInstanceId}, part ${partId}`, {level: 'silly'});
+      }
     },
 
     // Clears all visual effects for all parts
-    clearAllVisualEffects(state: VisualEffectsState) {
-      state.effectsByPartId = {};
-      logger.log('visualEffectsSlice', 'All visual effects cleared.', { level: 'debug' });
+    clearAllVisualEffectsForCard(state, action: PayloadAction<{ cardInstanceId: string }>) {
+      const { cardInstanceId } = action.payload;
+      delete state.effectsByCardInstance[cardInstanceId];
+      logger.log('visualEffectsSlice', `Cleared all visual effects for card ${cardInstanceId}.`, {level: 'debug'});
+    },
+
+    // Clears all visual effects for all parts
+    clearEffectsForAllCardInstances(state) {
+      state.effectsByCardInstance = {};
+      logger.log('visualEffectsSlice', 'Cleared all visual effects for ALL card instances.', {level: 'debug'});
+    },
+
+    setConditionalPartEffect(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; partId: number; effect: VisualEffect }>) {
+      const { cardInstanceId, partId, effect } = action.payload;
+      if (!state.effectsByCardInstance[cardInstanceId]) {
+        state.effectsByCardInstance[cardInstanceId] = {};
+      }
+      state.effectsByCardInstance[cardInstanceId][partId] = {
+        ...(state.effectsByCardInstance[cardInstanceId][partId] || {}),
+        ...effect,
+      };
+    },
+
+    setConditionalPartEffectsBatch(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; effectsMap: Record<number, VisualEffect> }>) {
+      const { cardInstanceId, effectsMap } = action.payload;
+      // REMOVED: console.log(`%c[visualEffectsSlice] Reducer: setConditionalPartEffectsBatch for cardInstanceId: ${cardInstanceId}`, 'color: purple; font-weight: bold;', { effectsMap });
+      
+      if (!state.effectsByCardInstance[cardInstanceId]) {
+        state.effectsByCardInstance[cardInstanceId] = {};
+      }
+      for (const partIdStr in effectsMap) {
+        const partId = parseInt(partIdStr, 10);
+        if (!isNaN(partId)) {
+          state.effectsByCardInstance[cardInstanceId][partId] = {
+            ...state.effectsByCardInstance[cardInstanceId][partId],
+            ...effectsMap[partId],
+          };
+        }
+      }
+      // logger.log('visualEffectsSlice', `Batch set ${Object.keys(effectsMap).length} effects for card ${cardInstanceId}`, { level: 'debug' });
+      // REMOVED: console.log(`%c[visualEffectsSlice] Reducer: State AFTER update for cardInstanceId ${cardInstanceId}:`, 'color: purple; font-weight: bold;', JSON.parse(JSON.stringify(state.effectsByCardInstance[cardInstanceId])));
+      // REMOVED: console.log(`%c[visualEffectsSlice] Reducer: FULL visualEffects state AFTER update:`, 'color: purple; font-weight: bold;', JSON.parse(JSON.stringify(state.effectsByCardInstance)));
+    },
+
+    clearConditionalPartEffectsForPart(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; partId: number }>) {
+      const { cardInstanceId, partId } = action.payload;
+      if (state.effectsByCardInstance[cardInstanceId] && state.effectsByCardInstance[cardInstanceId][partId]) {
+        state.effectsByCardInstance[cardInstanceId][partId] = {}; // Reset to empty effect object
+      }
+    },
+
+    clearAllConditionalPartEffects(state: VisualEffectsState) {
+      state.effectsByCardInstance = {};
+    },
+
+    clearConditionalPartEffectsForCard(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string }>) {
+      const { cardInstanceId } = action.payload;
+      if (state.effectsByCardInstance[cardInstanceId]) {
+        Object.keys(state.effectsByCardInstance[cardInstanceId]).forEach(partIdStr => {
+          state.effectsByCardInstance[cardInstanceId][parseInt(partIdStr, 10)] = {}; // Reset to empty effect
+        });
+        logger.log('visualEffectsSlice', `Cleared all conditional part effects for cardInstanceId: ${cardInstanceId}`);
+      }
     },
   },
 });
 
 export const {
   setVisualEffect,
-  setVisualEffectsBatch,
-  clearVisualEffect,
-  clearAllVisualEffects,
+  setVisualEffectsBatchForCard,
+  clearVisualEffectForPart,
+  clearAllVisualEffectsForCard,
+  clearEffectsForAllCardInstances,
+  setConditionalPartEffect,
+  setConditionalPartEffectsBatch,
+  clearConditionalPartEffectsForPart,
+  clearAllConditionalPartEffects,
+  clearConditionalPartEffectsForCard,
 } = visualEffectsSlice.actions;
 
 // Selectors
-export const selectAllVisualEffects = (state: RootState): Record<number, VisualEffect> => state.visualEffects.effectsByPartId;
+export const selectVisualEffectForPart = (
+  state: RootState,
+  cardInstanceId: string,
+  partId: number
+): VisualEffect | undefined => {
+  return state.visualEffects.effectsByCardInstance[cardInstanceId]?.[partId];
+};
 
-export const selectVisualEffectForPart = (state: RootState, partId: number): VisualEffect | undefined => state.visualEffects.effectsByPartId[partId];
+export const selectAllVisualEffectsForCard = (
+  state: RootState,
+  cardInstanceId: string
+): Record<number, VisualEffect> | undefined => {
+  return state.visualEffects.effectsByCardInstance[cardInstanceId];
+};
 
-// Example of a more specific selector if needed:
-// export const selectPartVisibility = (state: RootState, partId: number): boolean => {
-//   const effect = state.visualEffects.effectsByPartId[partId];
-//   return effect?.isVisible !== undefined ? effect.isVisible : true; // Default to visible
-// };
+// Potentially a selector for all effects across all cards if ever needed for debugging
+export const selectAllEffectsByCardInstance = (state: RootState): Record<string, Record<number, VisualEffect>> => {
+    return state.visualEffects.effectsByCardInstance;
+};
+
+export const selectVisualEffectsForCard = (state: RootState, cardInstanceId: string): Record<number, VisualEffect> | undefined => {
+  return state.visualEffects.effectsByCardInstance[cardInstanceId];
+};
 
 export default visualEffectsSlice.reducer; 

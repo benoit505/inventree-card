@@ -21,9 +21,10 @@ interface PartViewProps {
   partId?: number;
   config?: InventreeCardConfig;
   hass?: HomeAssistant;
+  cardInstanceId?: string;
 }
 
-const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
+const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceId }) => {
   const logger = React.useMemo(() => Logger.getInstance(), []);
 
   // Fetch Part Data using RTK Query hook
@@ -46,7 +47,7 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
 
   // Visual effects selector remains the same
   const visualEffect = useSelector((state: RootState) => 
-    partId ? selectVisualEffectForPart(state, partId) : undefined
+    partId ? selectVisualEffectForPart(state, cardInstanceId || 'unknown_card', partId) : undefined
   );
 
   React.useEffect(() => {
@@ -214,12 +215,12 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass }) => {
       <div style={partContentStyle}>
         {display.show_image !== false && partData.thumbnail && (
           <div className="part-thumbnail-wrapper" style={{ width: '100px', height: '100px' /* Example size */ }}>
-            {/* Pass visualEffect down to PartThumbnail */}
             <PartThumbnail 
               partData={partData} 
               config={config} 
               layout="detail" 
-              visualEffect={visualEffect} 
+              icon={visualEffect?.icon} 
+              badge={visualEffect?.badge} 
               onClick={handleThumbnailClick}
             />
           </div>

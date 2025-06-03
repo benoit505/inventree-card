@@ -5,6 +5,7 @@ interface PartsLayoutProps {
     hass?: HomeAssistant;
     config?: InventreeCardConfig;
     parts: InventreeItem[];
+    cardInstanceId?: string;
 }
 declare const PartsLayout: React.FC<PartsLayoutProps>;
 export default PartsLayout;

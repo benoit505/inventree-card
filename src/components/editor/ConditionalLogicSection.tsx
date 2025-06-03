@@ -53,10 +53,36 @@ const generateFieldsFromDataSources = (
 
   (dataSources.ha_entities || []).forEach((entityId: string) => {
     const entity = hass?.states[entityId];
-    const entityName = entity?.attributes.friendly_name || entityId;
-    fields.push({ name: `ha_entity_state_${entityId}`, label: `HA: ${entityName} State`});
-    if (entity?.attributes.temperature) {
-        fields.push({ name: `ha_entity_attr_${entityId}_temperature`, label: `HA: ${entityName} Temperature`, inputType: 'number'});
+    if (entity) {
+      const entityName = entity.attributes.friendly_name || entityId;
+      const stateFieldIdentifier = `ha_entity_state_${entityId}`;
+      fields.push({ 
+        name: stateFieldIdentifier,
+        label: `${entityName} - State`,
+        value: stateFieldIdentifier
+      });
+
+      for (const attrName in entity.attributes) {
+        if (Object.prototype.hasOwnProperty.call(entity.attributes, attrName)) {
+          let inputType: 'text' | 'number' | 'boolean' = 'text';
+          const attrValue = entity.attributes[attrName];
+          if (typeof attrValue === 'number') {
+            inputType = 'number';
+          } else if (typeof attrValue === 'boolean') {
+            inputType = 'boolean';
+          }
+          if (typeof attrValue !== 'object' && !Array.isArray(attrValue)) {
+            const attrFieldIdentifier = `ha_entity_attr_${entityId}:::${attrName}`;
+            const fieldLabel = `${entityName} - Attribute: ${attrName}`;
+            fields.push({
+              name: attrFieldIdentifier,
+              label: fieldLabel,
+              value: attrFieldIdentifier,
+              inputType: inputType
+            });
+          }
+        }
+      }
     }
   });
 
@@ -72,26 +98,17 @@ const generateFieldsFromDataSources = (
     fields.push({ name: `part_${pk}_virtual`, label: `Part ${pk}: Is Virtual`, inputType: 'boolean' });
   });
 
-  // Process NEW inventree_parameters_to_fetch
   if (dataSources.inventree_parameters_to_fetch) {
     dataSources.inventree_parameters_to_fetch.forEach(fetchConfig => {
       const targetIds = fetchConfig.targetPartIds;
       const paramNames = fetchConfig.parameterNames;
 
       if (targetIds === 'all_loaded') {
-        // For 'all_loaded', we might not know specific PKs at editor time easily.
-        // Option 1: Generate generic parameter fields if parameterNames is not '*'
-        // Option 2: Or, require users to specify PKs if they want them in the dropdown for 'all_loaded'.
-        // For now, let's handle specific parameter names if provided for 'all_loaded'.
         if (paramNames !== '*' && Array.isArray(paramNames)) {
           paramNames.forEach(paramName => {
-            // We don't have a specific PK, so this field will apply to any part
-            // that has this parameter when the condition is evaluated.
-            // The inputType might be hard to determine without a specific part's parameter detail.
             fields.push({
-              name: `inv_param_any_${paramName.replace(/[^a-zA-Z0-9_]/g, '_')}`, // Ensure valid name
+              name: `inv_param_any_${paramName.replace(/[^a-zA-Z0-9_]/g, '_')}`,
               label: `InvParam (Any Part): ${paramName}`,
-              // inputType: 'text', // Default or try to infer later if possible
             });
           });
         }
@@ -99,10 +116,6 @@ const generateFieldsFromDataSources = (
         targetIds.forEach(pk => {
           if (typeof pk === 'number' && !isNaN(pk)) {
             if (paramNames === '*') {
-              // If all parameters for a PK are fetched, we can't list them all without knowing them.
-              // One option is to show a generic "Any Parameter for Part PK" or fetch known params for this PK.
-              // For now, this case is complex for field generation.
-              // We could list known parameters if 'allParameterValues' has entries for this pk.
               if (allParameterValues && allParameterValues[pk]) {
                 Object.keys(allParameterValues[pk]).forEach(paramName => {
                   const paramDetail = allParameterValues[pk][paramName];
@@ -132,7 +145,6 @@ const generateFieldsFromDataSources = (
     });
   }
 
-  // Legacy inventree_parameters (OLD format)
   (dataSources.inventree_parameters || []).forEach((paramString: string) => {
     const parts = paramString.split(':');
     if (parts.length === 3 && parts[0] === 'part') {
@@ -145,15 +157,17 @@ const generateFieldsFromDataSources = (
           inputType = getParameterInputType(allParameterValues[pk][paramName]);
         }
         fields.push({ 
-          name: `inv_param_${pk}_${paramName}`,
+          name: `inv_param_${pk}_${paramName.replace(/[^a-zA-Z0-9_]/g, '_')}`,
           label: `InvParam: ${paramName} (Part ${pk})`,
           inputType: inputType
         });
       } else {
-        fields.push({ name: `inv_param_raw_${paramString.replace(/[^a-zA-Z0-9_]/g, '_')}`, label: `InvParam: ${paramString} (Invalid PK)` });
+        fields.push({ name: `inv_param_raw_${paramString.replace(/[^a-zA-Z0-9_]/g, '_')}`,
+                       label: `InvParam: ${paramString} (Invalid PK)` });
       }
     } else {
-      fields.push({ name: `inv_param_raw_${paramString.replace(/[^a-zA-Z0-9_]/g, '_')}`, label: `InvParam: ${paramString} (Malformed)` });
+      fields.push({ name: `inv_param_raw_${paramString.replace(/[^a-zA-Z0-9_]/g, '_')}`,
+                     label: `InvParam: ${paramString} (Malformed)` });
     }
   });
   

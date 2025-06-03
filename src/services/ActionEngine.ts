@@ -215,7 +215,7 @@ export class ActionEngine {
         try {
           // We don't necessarily need to pass the specific IDs to the current evaluateAndApplyEffectsThunk,
           // as it evaluates all defined logic. If a more targeted thunk is created later, this could be adjusted.
-          await this.dispatch(evaluateAndApplyEffectsThunk());
+          await this.dispatch(evaluateAndApplyEffectsThunk({}));
           logger.log('ActionEngine', `Finished dispatching evaluateAndApplyEffectsThunk for action ${actionId}.`);
         } catch (evalError) {
           logger.error('ActionEngine', `Error dispatching or executing evaluateAndApplyEffectsThunk after action ${actionId}:`, { error: evalError });
@@ -399,8 +399,8 @@ export class ActionEngine {
     logger.log('ActionEngine:handleTriggerConditionalLogic', `Operation requests triggering of conditional logic ID: ${logicIdToTrigger}. Currently, this will re-evaluate all conditional logic.`, { context });
 
     try {
-      await this.dispatch(evaluateAndApplyEffectsThunk());
-      logger.log('ActionEngine:handleTriggerConditionalLogic', `Successfully dispatched evaluateAndApplyEffectsThunk to re-evaluate conditional logic (triggered by action ${actionDef.id}).`);
+      await this.dispatch(evaluateAndApplyEffectsThunk({}));
+      logger.log('ActionEngine', `Finished triggering conditional logic evaluation for action: ${actionDef.name}.`);
     } catch (error: any) {
       logger.error('ActionEngine:handleTriggerConditionalLogic', `Error dispatching evaluateAndApplyEffectsThunk (triggered by action ${actionDef.id}):`, { error });
       throw new Error(`Failed to trigger conditional logic re-evaluation: ${error.message || 'Unknown error'}`);

@@ -5,6 +5,7 @@ interface ListLayoutProps {
     hass?: HomeAssistant;
     config?: InventreeCardConfig;
     parts: InventreeItem[];
+    cardInstanceId?: string;
 }
 declare const ListLayout: React.FC<ListLayoutProps>;
 export default ListLayout;

@@ -9,9 +9,10 @@ import { actionEngine } from '../../services/ActionEngine';
 interface GlobalActionButtonsProps {
   config?: InventreeCardConfig;
   hass?: HomeAssistant;
+  cardInstanceId?: string;
 }
 
-const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass }) => {
+const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass, cardInstanceId }) => {
   const logger = useMemo(() => Logger.getInstance(), []);
   const genericHaStates = useSelector((state: RootState) => state.genericHaStates);
 

@@ -5,6 +5,7 @@ interface PartViewProps {
     partId?: number;
     config?: InventreeCardConfig;
     hass?: HomeAssistant;
+    cardInstanceId?: string;
 }
 declare const PartView: React.FC<PartViewProps>;
 export default PartView;

@@ -10,9 +10,10 @@ interface DetailLayoutProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
   selectedPartId?: number;
+  cardInstanceId?: string;
 }
 
-const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartId }) => {
+const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartId, cardInstanceId }) => {
   const logger = React.useMemo(() => Logger.getInstance(), []);
 
   React.useEffect(() => {
@@ -37,6 +38,7 @@ const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartI
           partId={selectedPartId} 
           config={config} 
           hass={hass} 
+          cardInstanceId={cardInstanceId}
         />
       ) : (
         <div>

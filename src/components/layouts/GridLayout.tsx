@@ -22,9 +22,11 @@ interface GridLayoutProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
   parts: InventreeItem[];
+  cardInstanceId?: string;
+  item?: InventreeItem;
 }
 
-const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts }) => {
+const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts, cardInstanceId, item }) => {
   const logger = Logger.getInstance();
   const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
 
@@ -198,6 +200,7 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, parts }) => {
             part={part}
             config={config!}
             hass={hass}
+            cardInstanceId={cardInstanceId}
             isCurrentlyLocating={isCurrentlyLocating}
             parameterActions={parameterActions} 
             parametersDisplayEnabled={parametersDisplayEnabled}

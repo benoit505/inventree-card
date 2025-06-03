@@ -18,6 +18,7 @@ interface GridItemProps {
   part: InventreeItem;
   config: InventreeCardConfig;
   hass?: HomeAssistant;
+  cardInstanceId?: string;
   isCurrentlyLocating: boolean;
   parameterActions: ParameterAction[];
   parametersDisplayEnabled: boolean;
@@ -53,6 +54,7 @@ const GridItem: React.FC<GridItemProps> = ({
   part,
   config,
   hass,
+  cardInstanceId,
   isCurrentlyLocating,
   parameterActions,
   parametersDisplayEnabled,
@@ -61,7 +63,13 @@ const GridItem: React.FC<GridItemProps> = ({
 }) => {
   const logger = Logger.getInstance();
   const partId = part.pk;
-  const visualModifiers = useSelector((state: RootState) => selectVisualEffectForPart(state, partId));
+  
+  // Log for selecting visual effect
+  const visualModifiers = useSelector((state: RootState) => {
+    const effect = selectVisualEffectForPart(state, cardInstanceId || 'unknown_card', partId);
+    return effect;
+  });
+
   const displayConfig = config.display || {};
 
   const {

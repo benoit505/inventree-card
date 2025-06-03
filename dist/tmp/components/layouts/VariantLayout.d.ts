@@ -5,6 +5,7 @@ interface VariantLayoutProps {
     hass?: HomeAssistant;
     config?: InventreeCardConfig;
     parts: InventreeItem[];
+    cardInstanceId?: string;
 }
 declare const VariantLayout: React.FC<VariantLayoutProps>;
 export default VariantLayout;

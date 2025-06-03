@@ -291,7 +291,7 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
       };
     });
   }, []);
-  
+
   const handleConfirmationToggle = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setIsConfirmationEnabled(event.target.checked);
     if (!event.target.checked) {
@@ -550,7 +550,7 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
       <h4 style={{ marginBottom: '8px', marginTop: '20px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Operation</h4>
       <div style={formFieldStyle}>
         <label style={labelStyle} htmlFor="operationType">Operation Type</label>
-        <select 
+        <select
             id="operationType" 
             style={inputStyle} 
             value={currentOperationType} 
@@ -592,14 +592,14 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
           {isTargetEntityEnabled && ( 
             <div style={formFieldStyle}>
               <label style={labelStyle} htmlFor="targetEntityId">Target Entity ID</label>
-              <CustomEntityPicker
-                  hass={hass}
+            <CustomEntityPicker
+              hass={hass}
                   value={currentTargetEntityIdForPicker}
                   label="Target Entity"
                   onValueChanged={(value: string | undefined) => handleInputChange('operation.callHAService.target.target_details.entity_id', value)}
               />
               <small style={smallTextStyle}>Templateable. E.g., `sensor.%%context.part.name%%_status` or `%%context.hassStates['input_select.my_selector'].state%%`.</small>
-            </div>
+          </div>
           )}
           <div style={formFieldStyle}>
             <label style={labelStyle} htmlFor="serviceData">Service Data (JSON Template, Optional)</label>
@@ -683,7 +683,7 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
                 placeholder={"{\n  \"partId\": \"%%context.part.pk%%\",\n  \"newStock\": \"%%context.hassStates['input_number.adjustment_amount'].state%%\"\n}"} 
                 />
                 <small style={smallTextStyle}>JSON object. Values can be templates. This will be the action's payload.</small>
-            </div>
+        </div>
         </>
       )}
 
@@ -699,7 +699,7 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
               placeholder="Enter the ID of the ConditionalLogicItem"
             />
             <small style={smallTextStyle}>The unique ID of a defined Conditional Logic item to re-evaluate.</small>
-          </div>
+        </div>
       )}
 
 
@@ -707,12 +707,12 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
       <h4 style={{ marginBottom: '8px', marginTop: '20px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Advanced Options</h4>
       <div style={formFieldStyle}>
         <label style={{ ...labelStyle, display: 'flex', alignItems: 'center' }}>
-          <input
-            type="checkbox"
+        <input
+          type="checkbox"
             checked={isConfirmationEnabled}
             onChange={handleConfirmationToggle}
-            style={{ marginRight: '8px' }}
-          />
+          style={{ marginRight: '8px' }}
+        />
           Require Confirmation
         </label>
         {isConfirmationEnabled && (
@@ -750,7 +750,7 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
           placeholder="logic_id_1, logic_id_2"
         />
         <small style={smallTextStyle}>Comma-separated IDs of Conditional Logic items to re-evaluate after this action executes.</small>
-      </div>
+        </div>
 
 
       {/* Save/Cancel Buttons */}

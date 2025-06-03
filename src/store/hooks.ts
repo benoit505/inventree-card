@@ -23,7 +23,7 @@ export const useParameters = (): any =>
   useAppSelector(state => state.parameters.parameterValues);
 
 export const useConditions = (): any[] => 
-  useAppSelector(state => state.conditionalLogic.rawRuleDefinitions || []);
+  useAppSelector(state => state.conditionalLogic.definedLogicItems || []);
 
 export const useActions = (): ActionDefinition[] => 
   useAppSelector(state => Object.values(state.actions.actionDefinitions) || []);

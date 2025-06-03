@@ -24,6 +24,7 @@ interface PartsLayoutProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
   parts: InventreeItem[]; 
+  cardInstanceId?: string;
 }
 
 const getItemContainerStyle = (modifiers?: VisualModifiers, layoutMode?: 'grid' | 'list', config?: InventreeCardConfig): React.CSSProperties => {
@@ -51,7 +52,7 @@ const getItemTextStyle = (modifiers?: VisualModifiers): React.CSSProperties => {
   return { color: modifiers.textColor };
 };
 
-const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts }) => {
+const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts, cardInstanceId }) => {
   const logger = useMemo(() => Logger.getInstance(), []);
   const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
   const fullState = useSelector((state: RootState) => state);
@@ -92,13 +93,13 @@ const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts }) => {
     
     processedParts = processedParts.filter(part => {
       if (!part) return false;
-      const effect = selectVisualEffectForPart(fullState, part.pk) as VisualModifiers | undefined;
+      const effect = selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', part.pk) as VisualModifiers | undefined;
       return effect?.isVisible !== false;
     });
 
     processedParts.sort((a, b) => {
-        const effectA = (selectVisualEffectForPart(fullState, a.pk) as VisualModifiers | undefined) || {};
-        const effectB = (selectVisualEffectForPart(fullState, b.pk) as VisualModifiers | undefined) || {};
+        const effectA = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', a.pk) as VisualModifiers | undefined) || {};
+        const effectB = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', b.pk) as VisualModifiers | undefined) || {};
 
         if (effectA.sort === 'top' && effectB.sort !== 'top') return -1;
         if (effectA.sort !== 'top' && effectB.sort === 'top') return 1;
@@ -113,7 +114,7 @@ const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts }) => {
     });
 
     return processedParts;
-  }, [parts, currentSearchQuery, localSearchQuery, searchApiResults, isSearchApiLoading, isSearchApiFetching, fullState]);
+  }, [parts, currentSearchQuery, localSearchQuery, searchApiResults, isSearchApiLoading, isSearchApiFetching, fullState, cardInstanceId]);
 
   const handleLocateItem = useCallback((partId: number) => { 
     if (hass) {
@@ -169,7 +170,7 @@ const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts }) => {
   const renderPartItem = (part: InventreeItem): React.ReactElement | null => {
     if (!part) return null;
     const partId = part.pk;
-    const visualModifiers = (selectVisualEffectForPart(fullState, partId) as VisualModifiers | undefined) || {};
+    const visualModifiers = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partId) as VisualModifiers | undefined) || {};
     const parameterActionsForPart = parameterConfigFromProps?.actions || [];
     const isCurrentlyLocating = locatingPartId === partId;
 

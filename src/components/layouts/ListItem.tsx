@@ -22,6 +22,7 @@ interface ListItemProps {
   parametersDisplayEnabled: boolean;
   onLocate?: (partId: number) => void;
   parameterActions?: ParameterAction[]; 
+  cardInstanceId?: string;
 }
 
 const logger = Logger.getInstance();
@@ -72,9 +73,10 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
   parametersDisplayEnabled,
   onLocate,
   parameterActions = [],
+  cardInstanceId,
 }) => {
   const partId = part.pk;
-  const conditionalEffect = useSelector((state: RootState) => selectVisualEffectForPart(state, partId));
+  const conditionalEffect = useSelector((state: RootState) => selectVisualEffectForPart(state, cardInstanceId || 'unknown_card', partId));
   const locatingPartId = useSelector((state: RootState) => state.parts.locatingPartId);
 
   const displayConfig = config.display || {};
@@ -172,10 +174,9 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
             partData={part}
             config={config}
             layout="list"
-            visualEffect={actualModifiers}
-            onClick={handleThumbnailClick}
             icon={actualModifiers?.icon}
             badge={actualModifiers?.badge}
+            onClick={handleThumbnailClick}
           />
         </div>
       )}

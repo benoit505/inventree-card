@@ -10,6 +10,8 @@ import { WebSocketEventMessage, EnhancedStockItemEventData, EnhancedParameterEve
 import { evaluateAndApplyEffectsThunk } from '../thunks/conditionalLogicThunks';
 import throttle from 'lodash-es/throttle';
 import { inventreeApi } from '../apis/inventreeApi';
+// Import actions from genericHaStateSlice
+import { setEntityState, setEntityStatesBatch } from '../slices/genericHaStateSlice';
 
 const logger = Logger.getInstance();
 let throttledEvaluateEffects: (() => void) | null = null;
@@ -22,7 +24,9 @@ const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootS
 
   throttledEvaluateEffects = throttle(() => {
     logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (throttled).`);
-    storeAPI.dispatch(evaluateAndApplyEffectsThunk());
+    // Pass an empty object to use default behavior: evaluate all defined logic for all active cards (if engine supports it)
+    // or for the 'undefined_card' if no specific cardInstanceId is given and engine isn't multi-instance aware.
+    storeAPI.dispatch(evaluateAndApplyEffectsThunk({})); 
   }, conditionEvalFrequency, { leading: false, trailing: true });
 };
 
@@ -38,6 +42,14 @@ export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> =
     if (actionWithType.type === 'config/setConfigAction') {
       logger.log('WebSocketMiddleware', 'Config changed, re-initializing throttled evaluator.');
       initializeThrottledEvaluator(storeAPI);
+    }
+
+    // Check if the action is one of the HA entity state updates
+    if (setEntityState.match(actionWithType as Action) || setEntityStatesBatch.match(actionWithType as Action)) {
+      logger.log('WebSocketMiddleware', `HA entity state updated (action: ${actionWithType.type}), triggering (throttled) effects re-evaluation.`);
+      if (throttledEvaluateEffects) {
+        throttledEvaluateEffects();
+      }
     }
 
     if (webSocketMessageReceived.match(actionWithType as Action)) {

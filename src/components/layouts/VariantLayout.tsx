@@ -17,6 +17,7 @@ interface VariantLayoutProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
   parts: InventreeItem[]; // Raw parts array
+  cardInstanceId?: string;
 }
 
 // --- Style Helpers (Consider moving to a shared util if used across more layouts) ---
@@ -40,7 +41,7 @@ const getVariantItemTextStyle = (modifiers?: VisualModifiers): React.CSSProperti
   return { color: modifiers.textColor };
 };
 
-const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts }) => {
+const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, cardInstanceId }) => {
   const logger = useMemo(() => Logger.getInstance(), []);
   const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
   const fullState = useSelector((state: RootState) => state);
@@ -86,10 +87,10 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts }) =>
     }
     return processedVariants.filter(item => {
       const partToCheckId = VariantHandler.isVariant(item) ? item.template.pk : item.pk;
-      const effect = selectVisualEffectForPart(fullState, partToCheckId) as VisualModifiers | undefined;
+      const effect = selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partToCheckId) as VisualModifiers | undefined;
       return effect?.isVisible !== false;
     });
-  }, [processedVariants, config?.parameters, config?.conditional_logic, fullState]);
+  }, [processedVariants, config?.parameters, config?.conditional_logic, fullState, cardInstanceId]);
 
   // --- Event Handlers ---
   const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.style.display = 'none'; }, []);
@@ -113,7 +114,7 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts }) =>
   // --- Render Helper for a single part (template or variant) ---
   const renderPartItem = useCallback((part: InventreeItem, isVariantInGroup: boolean = false, isGroupHeader: boolean = false) => {
     const partId = part.pk;
-    const visualModifiers = (selectVisualEffectForPart(fullState, partId) as VisualModifiers | undefined) || {};
+    const visualModifiers = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partId) as VisualModifiers | undefined) || {};
     const isCurrentlyLocating = locatingPartId === partId;
 
     const baseDisplayConfig = config?.display || {};
@@ -145,11 +146,11 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts }) =>
         style={itemContainerStyleToUse}
         onClick={() => !isGroupHeader && handleLocateItem(partId)}
       >
-        <PartView partId={partId} config={itemConfig} hass={hass} />
+        <PartView partId={partId} config={itemConfig} hass={hass} cardInstanceId={cardInstanceId} />
         {isCurrentlyLocating && <div className="locating-indicator" style={{ marginTop: '5px', textAlign:'center', color:'blue' }}>Locating...</div>}
       </div>
     );
-  }, [config, hass, fullState, locatingPartId, handleLocateItem]);
+  }, [config, hass, fullState, locatingPartId, handleLocateItem, cardInstanceId]);
 
   // --- Main Render Logic ---
   if (!config) return <div className="variant-layout loading"><p>Loading config...</p></div>;

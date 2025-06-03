@@ -5,6 +5,7 @@ interface GridItemProps {
     part: InventreeItem;
     config: InventreeCardConfig;
     hass?: HomeAssistant;
+    cardInstanceId?: string;
     isCurrentlyLocating: boolean;
     parameterActions: ParameterAction[];
     parametersDisplayEnabled: boolean;
