@@ -3,8 +3,10 @@ import { RootState } from "../store";
 import { Logger } from "../core/logger";
 import { selectGenericHaEntityActualState, selectGenericHaEntityAttribute } from "../store/slices/genericHaStateSlice";
 import { selectParameterValue } from "../store/slices/parametersSlice";
-import { selectPartById } from "../store/slices/partsSlice";
+import { selectPartByPk, selectPartLoadingStatus } from "../store/slices/partsSlice";
 import { InventreeItem } from "../types"; // For partContext
+import { inventreeApi } from "../store/apis/inventreeApi"; // Import the API slice
+import memoizeOne from 'memoize-one';
 
 /**
  * Placeholder for a sophisticated expression evaluation engine.
@@ -63,6 +65,34 @@ const getActualValue = (
 ): any => {
     let valueToReturn: any = undefined;
 
+    const partPkAndAttributeMatch = field.match(/^part_(\d+)_(.+)$/);
+    if (partPkAndAttributeMatch) {
+        const pk = parseInt(partPkAndAttributeMatch[1], 10);
+        let attribute = partPkAndAttributeMatch[2];
+        
+        // Handle shorthand name for stock
+        if (attribute === 'stock') {
+            attribute = 'in_stock';
+        }
+
+        // --- NEW LOGIC: Check RTK Query Cache first ---
+        const rtkQueryState = inventreeApi.endpoints.getPart.select(pk)(globalContext);
+        if (rtkQueryState.data && attribute in rtkQueryState.data) {
+            return (rtkQueryState.data as any)[attribute];
+        }
+
+        // --- FALLBACK: Check old partsById slice ---
+        const part = selectPartByPk(globalContext, pk);
+        if (part && attribute in part) {
+            return (part as any)[attribute];
+        }
+
+        // --- If not found in either, log and return undefined ---
+        const partStatus = rtkQueryState.status;
+        logger.warn('getActualValue', `Part with PK ${pk} not found in RTK Query cache (status: ${partStatus}) or partsSlice, or attribute '${attribute}' does not exist.`);
+        return undefined;
+    }
+
     // HA Entity State: ha_entity_state_media_player.denon_avr_x2600h
     if (field.startsWith('ha_entity_state_')) {
         const entityId = field.substring('ha_entity_state_'.length);
@@ -93,8 +123,9 @@ const getActualValue = (
     // Part Parameter: e.g., param_color (assuming partContext is provided)
     else if (field.startsWith('param_') && partContext) {
         const parameterName = field.substring('param_'.length);
-        const parametersForPart = globalContext.parameters.parameterValues[partContext.pk];
-        valueToReturn = parametersForPart?.[parameterName]?.data;
+        // SLAY THE HYDRA: Get parameters from the partContext, which is populated by RTK Query.
+        const param = partContext.parameters?.find(p => p.template_detail?.name === parameterName);
+        valueToReturn = param?.data;
     }
     else {
         logger.warn('getActualValue', 'Unknown field format or context missing for field: ' + field);
@@ -103,13 +134,11 @@ const getActualValue = (
     return valueToReturn;
 };
 
-const evaluateRule = (
+const _internalEvaluateRule = (
     rule: RuleType,
-    partContext: InventreeItem | null,
-    globalContext: RootState,
+    actualValue: any,
     logger: Logger
 ): boolean => {
-    const actualValue = getActualValue(rule.field, partContext, globalContext, logger);
     const ruleValue = rule.value;
 
     if (actualValue === undefined) {
@@ -173,4 +202,16 @@ const evaluateRule = (
             result = false;
     }
     return result;
+};
+
+const memoizedInternalEvaluateRule = memoizeOne(_internalEvaluateRule);
+
+const evaluateRule = (
+    rule: RuleType,
+    partContext: InventreeItem | null,
+    globalContext: RootState,
+    logger: Logger
+): boolean => {
+    const actualValue = getActualValue(rule.field, partContext, globalContext, logger);
+    return memoizedInternalEvaluateRule(rule, actualValue, logger);
 }; 

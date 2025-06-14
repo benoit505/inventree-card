@@ -35,10 +35,10 @@ class InventreeApiService {
     });
 
     this.axiosInstance.interceptors.response.use((response: AxiosResponse) => {
-      this.lastApiFailureTimestamp = 0;
+      // this.lastApiFailureTimestamp = 0;
       return response;
     }, (error: AxiosError) => {
-      this.lastApiFailureTimestamp = Date.now();
+      // this.lastApiFailureTimestamp = Date.now();
       return Promise.reject(error);
     });
   }
@@ -61,6 +61,7 @@ class InventreeApiService {
     const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     const requestUrl = `${cleanBaseUrl}/${endpoint.startsWith('/') ? endpoint.substring(1) : endpoint}`;
     
+    /*
     if (this.lastApiFailureTimestamp > 0) {
       const timeSinceLastFailure = Date.now() - this.lastApiFailureTimestamp;
       if (timeSinceLastFailure < failedRequestRetryDelayMs) {
@@ -69,6 +70,7 @@ class InventreeApiService {
         await new Promise(resolve => setTimeout(resolve, failureDelayNeeded));
       }
     }
+    */
 
     if (throttleDelayMs > 0) {
       const currentTimeForThrottle = Date.now(); 

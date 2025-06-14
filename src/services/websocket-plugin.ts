@@ -1,9 +1,9 @@
 import { Logger } from "../utils/logger";
 // import { CacheService, DEFAULT_TTL, CacheCategory } from "./cache"; // Removed
 import { HomeAssistant } from "custom-card-helpers";
-import { store } from "../store";
+import { store, AppDispatch } from "../store";
 import { webSocketMessageReceived, setWebSocketStatus } from '../store/slices/websocketSlice';
-import { webSocketUpdateReceived as webSocketUpdateReceivedAction } from '../store/slices/parametersSlice';
+import { inventreeApi } from '../store/apis/inventreeApi';
 import { WebSocketEventMessage, DirectApiConfig } from '../types';
 import { Dispatch, UnknownAction } from '@reduxjs/toolkit';
 import debounce from 'lodash-es/debounce'; // Import debounce
@@ -55,7 +55,7 @@ export class WebSocketPlugin {
   private _lastMessageTime: number = 0;
   private _processingMessages: Set<string> = new Set();
   private _messageDebounceTime: number = 50; // Default, will be overridden by config
-  private _dispatch: Dispatch<UnknownAction> | null = null;
+  private _dispatch: AppDispatch | null = null;
 
   // Map to store debounced _processMessage functions, keyed by messageId
   private _debouncedProcessors: Map<string, (message: any) => void> = new Map();
@@ -579,33 +579,46 @@ export class WebSocketPlugin {
    * Handle parameter update message
    */
   private _handleParameterUpdate(messageData: any): void {
-    this._logger.log('WebSocket', 'Processing parameter update', { 
+    this._logger.log('WebSocket', 'Processing parameter update with RTK Query', { 
         category: 'websocket', 
         subsystem: 'parameters', 
         data: messageData 
     });
 
     const partId = messageData.part_pk ?? messageData.parent_id;
-    const paramName = messageData.parameter_name;
+    const paramPk = messageData.id; // The WebSocket message 'id' is the Parameter's PK
     const paramValue = messageData.parameter_value;
 
-    if (partId !== undefined && paramName !== undefined && paramValue !== undefined) {
-        // PARAMETER caching logic removed
-        // const paramCacheKey = `parameter:${partId}:${paramName}`;
-        // this.cache.set(paramCacheKey, paramValue, DEFAULT_TTL.PARAMETER, CacheCategory.PARAMETER);
-
-        this._logger.log('WebSocket', `Dispatching parameters/webSocketUpdateReceived for Part ${partId}, Param ${paramName} to value ${paramValue}`, { 
-            category: 'websocket', 
-            subsystem: 'parameters', 
-            level: 'info' 
-        });
+    if (partId !== undefined && paramPk !== undefined && paramValue !== undefined) {
         
-        if (this._dispatch) { // Ensure _dispatch is initialized
-            this._dispatch(webSocketUpdateReceivedAction({ 
-                partId: Number(partId), 
-                parameterName: String(paramName), 
-                value: String(paramValue),
-                source: 'websocket'
+        if (this._dispatch) {
+            this._logger.log('WebSocket', `Dispatching updateQueryData for Part ${partId}, Param PK ${paramPk} to value ${paramValue}`, { 
+                category: 'websocket', 
+                subsystem: 'parameters', 
+                level: 'info' 
+            });
+
+            this._dispatch(inventreeApi.util.updateQueryData('getPartParameters', Number(partId), (draft) => {
+                const parameterToUpdate = draft.find(p => p.pk === Number(paramPk));
+                
+                if (parameterToUpdate) {
+                    parameterToUpdate.data = String(paramValue);
+                    this._logger.log('WebSocket', `Successfully updated parameter PK ${paramPk} in RTK Query cache for part ${partId}.`, {
+                        category: 'websocket',
+                        subsystem: 'parameters'
+                    });
+                } else {
+                    this._logger.warn('WebSocket', `Received update for parameter PK ${paramPk} which was not found in cache for Part ${partId}. Invalidating cache instead.`, {
+                        category: 'websocket',
+                        subsystem: 'parameters'
+                    });
+                    // If the parameter is not found, it might be newly created. 
+                    // The safest and most robust fallback is to invalidate the cache for this part's parameters,
+                    // which will cause any subscribed components to refetch the full, correct list.
+                    if (this._dispatch) {
+                        this._dispatch(inventreeApi.util.invalidateTags([{ type: 'PartParameter', id: `LIST-${Number(partId)}` }]));
+                    }
+                }
             }));
         } else {
             this._logger.warn('WebSocket', 'Dispatch function not available in _handleParameterUpdate.', { 
@@ -614,7 +627,7 @@ export class WebSocketPlugin {
             });
         }
     } else {
-        this._logger.warn('WebSocket', 'Parameter update received, but missing part_pk/parent_id, parameter_name, or parameter_value.', {
+        this._logger.warn('WebSocket', 'Parameter update received, but missing part_pk/parent_id, id, or parameter_value.', {
             category: 'websocket',
             subsystem: 'parameters',
             data: messageData

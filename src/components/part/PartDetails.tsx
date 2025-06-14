@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { InventreeCardConfig, ParameterDetail, InventreeItem } from '../../types';
+import { InventreeCardConfig, ParameterDetail } from '../../types';
 import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { SerializedError } from '@reduxjs/toolkit';
 import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
@@ -8,19 +8,29 @@ interface PartDetailsProps {
   config?: InventreeCardConfig;
   visualEffect?: VisualEffect;
   
-  name?: string;
   description?: string | null;
-  inStock?: number;
-  units?: string | null;
-  minimumStock?: number | null;
+  categoryName?: string | null;
+  ipn?: string | null;
+  locationName?: string | null;
+  supplierName?: string | null;
+  manufacturerName?: string | null;
+  notes?: string | null;
 
   parametersData?: ParameterDetail[] | null;
   isLoadingParameters?: boolean;
   isParametersError?: boolean;
   parametersError?: SerializedError | FetchBaseQueryError | null;
+
+  showDescription?: boolean;
+  showCategory?: boolean;
+  showIpn?: boolean;
+  showLocation?: boolean;
+  showSupplier?: boolean;
+  showManufacturer?: boolean;
+  showNotes?: boolean;
+  showParameters?: boolean;
 }
 
-// Styles adapted from the Lit component
 const stylesFactory = (visualEffect?: VisualEffect) => ({
   partDetails: {
     flex: 1,
@@ -63,53 +73,94 @@ const stylesFactory = (visualEffect?: VisualEffect) => ({
     marginRight: '4px',
   },
   paramValue: {},
+  detailItem: {
+    marginBottom: '0.25rem',
+    fontSize: '0.9em',
+  },
 });
 
 const PartDetails: React.FC<PartDetailsProps> = ({
-  config,
   visualEffect,
-  name,
+  
   description,
-  inStock,
-  units,
-  minimumStock,
+  categoryName,
+  ipn,
+  locationName,
+  supplierName,
+  manufacturerName,
+  notes,
   parametersData,
   isLoadingParameters,
   isParametersError,
-  parametersError
+  parametersError,
+  showDescription,
+  showCategory,
+  showIpn,
+  showLocation,
+  showSupplier,
+  showManufacturer,
+  showNotes,
+  showParameters
 }) => {
-  // Get dynamic styles based on visualEffect
   const styles = stylesFactory(visualEffect);
 
-  if (name === undefined && !isLoadingParameters) { 
+  if (description === undefined && !isLoadingParameters) { 
     return null; 
   }
 
-  const display = config?.display || {};
+  const hasVisibleContent = 
+    (showDescription && description) ||
+    (showCategory && categoryName) ||
+    (showIpn && ipn) ||
+    (showLocation && locationName) ||
+    (showSupplier && supplierName) ||
+    (showManufacturer && manufacturerName) ||
+    (showNotes && notes) ||
+    (showParameters && (parametersData || isLoadingParameters || isParametersError));
+
+  if (!hasVisibleContent) {
+    return null;
+  }
 
   return (
     <div style={styles.partDetails}>
-      {/* Name */}
-      {display.show_name !== false && name !== undefined && (
-        <div style={styles.partName}>{name}</div>
-      )}
-      
       {/* Description */}
-      {display.show_description && description && (
+      {showDescription && description && (
         <div style={styles.partDescription}>{description}</div>
       )}
       
-      {/* Stock */}
-      {display.show_stock !== false && inStock !== undefined && (
-        <div style={styles.partStock}>
-          Stock: {inStock}
-          {minimumStock && minimumStock > 0 ? ` / Min: ${minimumStock}` : ''}
-          {units ? ` ${units}` : ''}
-        </div>
+      {/* Category */}
+      {showCategory && categoryName && (
+        <div style={styles.detailItem}><strong>Category:</strong> {categoryName}</div>
+      )}
+
+      {/* IPN */}
+      {showIpn && ipn && (
+        <div style={styles.detailItem}><strong>IPN:</strong> {ipn}</div>
+      )}
+
+      {/* Location */}
+      {showLocation && locationName && (
+        <div style={styles.detailItem}><strong>Location:</strong> {locationName}</div>
+      )}
+
+      {/* Supplier */}
+      {showSupplier && supplierName && (
+        <div style={styles.detailItem}><strong>Supplier:</strong> {supplierName}</div>
+      )}
+
+      {/* Manufacturer */}
+      {showManufacturer && manufacturerName && (
+        <div style={styles.detailItem}><strong>Manufacturer:</strong> {manufacturerName}</div>
+      )}
+
+      {/* Notes */}
+      {showNotes && notes && (
+        <div style={styles.detailItem}><strong>Notes:</strong> {notes}</div>
       )}
       
       {/* Parameters Display Logic */}
-      {display.show_parameters !== false && (
+      {showParameters && (
         <>
           {isLoadingParameters && <p>Loading parameters...</p>}
           {isParametersError && (

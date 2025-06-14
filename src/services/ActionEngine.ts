@@ -19,8 +19,22 @@ import { Logger } from '../utils/logger';
 import { evaluateAndApplyEffectsThunk } from '../store/thunks/conditionalLogicThunks';
 import { inventreeApi } from '../store/apis/inventreeApi';
 
+// SLAY THE HYDRA: Import the safe, user-exposable action creators
+import { setActiveView, setSelectedPart, toggleDebugPanel } from '../store/slices/uiSlice';
+import { setLocatingPartId } from '../store/slices/partsSlice';
+import { selectActiveCardInstanceIds } from '../store/slices/componentSlice';
+
 const logger = Logger.getInstance();
 const UNDEFINED_TEMPLATE_MARKER = '[TEMPLATE_VALUE_NOT_FOUND]';
+
+// SLAY THE HYDRA: Define the manifest of safe actions users can dispatch
+const actionManifest = {
+  'ui.setActiveView': setActiveView,
+  'ui.setSelectedPart': setSelectedPart,
+  'ui.toggleDebugPanel': toggleDebugPanel,
+  'parts.setLocatingPartId': setLocatingPartId,
+  // Add other safe actions here in the future
+};
 
 function getPathValue(obj: any, path: string): any {
   if (obj === null || obj === undefined) return undefined;
@@ -71,24 +85,31 @@ function getPathValue(obj: any, path: string): any {
 function processTemplate(template: any, context: ActionExecutionContext): any {
   if (typeof template === 'string') {
     let processedString = template;
-    const regex = /%%context\.([^%]+)%%/g;
+
+    // New combined regex to find both formats
+    const combinedRegex = /%(\w+)%|%%context\.([^%]+)%%/g;
     
-    const matches = Array.from(template.matchAll(regex));
+    const matches = Array.from(template.matchAll(combinedRegex));
 
     for (const match of matches) {
-      const path = match[1];
+      // If match[1] is not undefined, it's the simple format (e.g., %pk%)
+      // If match[2] is not undefined, it's the context format (e.g., %%context.part.pk%%)
+      const isSimpleFormat = match[1] !== undefined;
+      const path = isSimpleFormat ? `part.${match[1]}` : match[2];
+      const templateString = match[0];
+
       try {
         const value = getPathValue(context, path);
 
         if (value !== undefined && value !== null) {
-          processedString = processedString.split(match[0]).join(String(value)); 
+          processedString = processedString.split(templateString).join(String(value)); 
         } else {
-          processedString = processedString.split(match[0]).join(UNDEFINED_TEMPLATE_MARKER);
-          logger.warn('ActionEngine', `Template path '%%context.${path}%%' resolved to undefined or null.`);
+          processedString = processedString.split(templateString).join(UNDEFINED_TEMPLATE_MARKER);
+          logger.warn('ActionEngine', `Template path '${templateString}' (resolved to 'context.${path}') was undefined or null.`);
         }
       } catch (e: any) {
-        logger.error('ActionEngine', `Template processing error for path '%%context.${path}%%'`, { errorMessage: e.message, errorStack: e.stack });
-        processedString = processedString.split(match[0]).join(UNDEFINED_TEMPLATE_MARKER);
+        logger.error('ActionEngine', `Template processing error for path '${templateString}'`, { errorMessage: e.message, errorStack: e.stack });
+        processedString = processedString.split(templateString).join(UNDEFINED_TEMPLATE_MARKER);
       }
     }
     return processedString;
@@ -211,12 +232,15 @@ export class ActionEngine {
 
       // Phase 4.2: Trigger post-evaluation conditional logic
       if (actionDef.postEvaluationLogicIds && actionDef.postEvaluationLogicIds.length > 0) {
-        logger.log('ActionEngine', `Action ${actionId} has postEvaluationLogicIds. Dispatching evaluateAndApplyEffectsThunk.`, { ids: actionDef.postEvaluationLogicIds });
+        logger.log('ActionEngine', `Action ${actionId} has postEvaluationLogicIds. Dispatching evaluateAndApplyEffectsThunk for all active cards.`);
         try {
-          // We don't necessarily need to pass the specific IDs to the current evaluateAndApplyEffectsThunk,
-          // as it evaluates all defined logic. If a more targeted thunk is created later, this could be adjusted.
-          await this.dispatch(evaluateAndApplyEffectsThunk({}));
-          logger.log('ActionEngine', `Finished dispatching evaluateAndApplyEffectsThunk for action ${actionId}.`);
+          // Since the ActionEngine is global, it doesn't have a single cardInstanceId.
+          // The correct approach is to get all active card instances and dispatch the thunk for each.
+          const activeCardIds = selectActiveCardInstanceIds(store.getState());
+          for (const cardId of activeCardIds) {
+            await this.dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: cardId }));
+          }
+          logger.log('ActionEngine', `Finished dispatching evaluateAndApplyEffectsThunk for action ${actionId} on cards:`, { ids: activeCardIds });
         } catch (evalError) {
           logger.error('ActionEngine', `Error dispatching or executing evaluateAndApplyEffectsThunk after action ${actionId}:`, { error: evalError });
         }
@@ -358,30 +382,33 @@ export class ActionEngine {
     const operationConfig = actionDef.operation.dispatchReduxAction;
     if (!operationConfig) throw new Error('dispatch_redux_action operation configuration is missing.');
 
-    const actionType = operationConfig.actionType;
-    if (!actionType || typeof actionType !== 'string' || actionType.trim() === '') {
-      throw new Error('Invalid or missing actionType for dispatch_redux_action operation.');
+    // The user now provides an 'actionName' which must be in our manifest.
+    const actionName = (operationConfig as any).actionName; 
+    if (!actionName || typeof actionName !== 'string' || !actionManifest.hasOwnProperty(actionName)) {
+      throw new Error(`Invalid or missing actionName: '${actionName}'. It must be one of [${Object.keys(actionManifest).join(', ')}].`);
     }
+
+    // Get the actual action creator function from our manifest.
+    const actionCreator = actionManifest[actionName as keyof typeof actionManifest];
 
     let resolvedPayload: any = {};
     if (operationConfig.payloadTemplate) {
       resolvedPayload = processTemplate(operationConfig.payloadTemplate, context);
       if (resolvedPayload === UNDEFINED_TEMPLATE_MARKER && Object.keys(operationConfig.payloadTemplate).length > 0) {
-        // If the entire payload resolved to not found, but there was a template, it's an issue.
-        // If payloadTemplate was an empty object, resolvedPayload would be {} which is fine.
-        logger.warn('ActionEngine:handleDispatchReduxAction', `Payload template for actionType ${actionType} resolved to UNDEFINED_TEMPLATE_MARKER. This might indicate missing context variables.`);
-        // Depending on strictness, we might throw an error or proceed with an empty/partially resolved payload.
-        // For now, let's proceed but log a warning.
+        logger.warn('ActionEngine:handleDispatchReduxAction', `Payload template for actionName ${actionName} resolved to UNDEFINED_TEMPLATE_MARKER. This might indicate missing context variables.`);
       }
     }
 
-    logger.log('ActionEngine:handleDispatchReduxAction', `Dispatching Redux action:`, { actionType, payload: resolvedPayload });
+    logger.log('ActionEngine:handleDispatchReduxAction', `Dispatching supervised Redux action:`, { actionName, payload: resolvedPayload });
 
     try {
-      this.dispatch({ type: actionType, payload: resolvedPayload });
-      logger.log('ActionEngine:handleDispatchReduxAction', `Successfully dispatched Redux action ${actionType}.`);
+      // Dispatch the action by calling the type-safe action creator from the manifest.
+      // We use 'as any' here because TypeScript cannot infer the correct payload type for the dynamically chosen action creator.
+      // This is a safe and necessary assertion in this dynamic dispatch context.
+      this.dispatch((actionCreator as any)(resolvedPayload));
+      logger.log('ActionEngine:handleDispatchReduxAction', `Successfully dispatched Redux action ${actionName}.`);
     } catch (error: any) {
-      logger.error('ActionEngine:handleDispatchReduxAction', `Error dispatching Redux action ${actionType}:`, { error });
+      logger.error('ActionEngine:handleDispatchReduxAction', `Error dispatching Redux action ${actionName}:`, { error });
       throw new Error(`Failed to dispatch Redux action: ${error.message || 'Unknown error'}`);
     }
   }
@@ -390,20 +417,19 @@ export class ActionEngine {
     actionDef: ActionDefinition,
     context: ActionExecutionContext
   ): Promise<void> {
-    const operationConfig = actionDef.operation.triggerConditionalLogic;
-    if (!operationConfig) throw new Error('trigger_conditional_logic operation configuration is missing.');
+    const operation = actionDef.operation.triggerConditionalLogic;
+    if (!operation) {
+      throw new Error('trigger_conditional_logic operation details are missing.');
+    }
+    const logicId = processTemplate(operation.logicIdToTrigger, context);
 
-    const logicIdToTrigger = operationConfig.logicIdToTrigger;
-    // TODO: Future enhancement - pass logicIdToTrigger to a modified evaluateAndApplyEffectsThunk
-    // that can perform a targeted re-evaluation.
-    logger.log('ActionEngine:handleTriggerConditionalLogic', `Operation requests triggering of conditional logic ID: ${logicIdToTrigger}. Currently, this will re-evaluate all conditional logic.`, { context });
-
-    try {
-      await this.dispatch(evaluateAndApplyEffectsThunk({}));
-      logger.log('ActionEngine', `Finished triggering conditional logic evaluation for action: ${actionDef.name}.`);
-    } catch (error: any) {
-      logger.error('ActionEngine:handleTriggerConditionalLogic', `Error dispatching evaluateAndApplyEffectsThunk (triggered by action ${actionDef.id}):`, { error });
-      throw new Error(`Failed to trigger conditional logic re-evaluation: ${error.message || 'Unknown error'}`);
+    logger.log('ActionEngine', `Triggering conditional logic evaluation for logic ID: ${logicId}.`);
+    
+    // As in the post-evaluation logic, we dispatch for all active cards
+    const activeCardIds = selectActiveCardInstanceIds(store.getState());
+    for (const cardId of activeCardIds) {
+      // Here, we might want a more targeted thunk in the future that can take a specific logicId
+      await this.dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: cardId }));
     }
   }
 

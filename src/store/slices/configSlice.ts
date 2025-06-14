@@ -46,6 +46,7 @@ const isObject = (item: any): boolean => {
 };
 
 export interface ConfigState extends InventreeCardConfig {
+  configInitialized?: boolean;
   _configLastUpdated?: number;
 }
 
@@ -69,6 +70,7 @@ const initialState: ConfigState = {
   debug_verbose: DEFAULT_CONFIG.debug_verbose || false,
   show_debug: DEFAULT_CONFIG.show_debug || false,
   // Initialize other InventreeCardConfig fields if they have defaults or are mandatory
+  configInitialized: false,
   _configLastUpdated: undefined,
 };
 
@@ -81,6 +83,7 @@ const configSlice = createSlice({
       const mergedConfig = mergeDeep(current(state), newConfigPayload);
       Object.assign(state, mergedConfig);
       state._configLastUpdated = Date.now();
+      state.configInitialized = true;
     },
   },
 });

@@ -5,6 +5,6 @@ export declare class ConditionalEffectsEngine {
     private getState;
     private logger;
     constructor(dispatch: AppDispatch, getState: () => RootState);
-    evaluateAndApplyEffects(cardInstanceId: string, forceReevaluation?: boolean, // forceReevaluation might be used for cache busting in evaluateExpression if implemented
+    evaluateAndApplyEffects(cardInstanceId: string, forceReevaluation?: boolean, // Not used in this implementation, but kept for API consistency
     logicItemsToEvaluate?: ConditionalLogicItem[]): Promise<void>;
 }

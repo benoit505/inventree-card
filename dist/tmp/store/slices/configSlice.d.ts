@@ -1,6 +1,7 @@
 import { RootState } from '../index';
 import { InventreeCardConfig, PerformanceConfig, DirectApiConfig, DataSourceConfig, DisplayConfig, InventreeParameterFetchConfig, ConditionRuleDefinition, ConditionalLogicItem } from '../../types';
 export interface ConfigState extends InventreeCardConfig {
+    configInitialized?: boolean;
     _configLastUpdated?: number;
 }
 export declare const setConfigAction: import("@reduxjs/toolkit").ActionCreatorWithPayload<InventreeCardConfig, "config/setConfigAction">;

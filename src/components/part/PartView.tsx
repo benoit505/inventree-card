@@ -2,6 +2,7 @@ import * as React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeItem, InventreeCardConfig, ParameterDetail, ActionDefinition, ActionExecutionContext } from '../../types';
 import { Logger } from '../../utils/logger';
+import { useElementDisplayStatus } from '../../hooks/useElementDisplayStatus';
 
 // ADDED: RTK Query hooks
 import { useGetPartQuery, useGetPartParametersQuery } from '../../store/apis/inventreeApi';
@@ -37,18 +38,40 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
   } = useGetPartQuery(partId!, { skip: !partId });
 
   // Fetch Parameters Data using RTK Query hook
+  const shouldShowParametersForDetails = useElementDisplayStatus(cardInstanceId, 'show_parameters', config?.display);
   const {
     data: parametersData,
     isLoading: isLoadingParameters,
     isError: isParametersError,
     error: parametersError,
     isFetching: isFetchingParameters,
-  } = useGetPartParametersQuery(partId!, { skip: !partId || !partData });
+  } = useGetPartParametersQuery(partId!, { 
+    skip: !partId || !partData || !shouldShowParametersForDetails 
+  });
 
   // Visual effects selector remains the same
   const visualEffect = useSelector((state: RootState) => 
     partId ? selectVisualEffectForPart(state, cardInstanceId || 'unknown_card', partId) : undefined
   );
+
+  // Use the new hook for individual element visibility
+  const shouldShowHeader = useElementDisplayStatus(cardInstanceId, 'show_header', config?.display);
+  const shouldShowImage = useElementDisplayStatus(cardInstanceId, 'show_image', config?.display);
+  const shouldShowName = useElementDisplayStatus(cardInstanceId, 'show_name', config?.display);
+  const shouldShowStock = useElementDisplayStatus(cardInstanceId, 'show_stock', config?.display);
+  const shouldShowButtons = useElementDisplayStatus(cardInstanceId, 'show_buttons', config?.display);
+  const shouldShowStockStatusBorder = useElementDisplayStatus(cardInstanceId, 'show_stock_status_border', config?.display);
+  const shouldShowStockStatusColors = useElementDisplayStatus(cardInstanceId, 'show_stock_status_colors', config?.display);
+  
+  // Props for PartDetails - these will also use the hook
+  const shouldShowDescriptionForDetails = useElementDisplayStatus(cardInstanceId, 'show_description', config?.display);
+  const shouldShowCategoryForDetails = useElementDisplayStatus(cardInstanceId, 'show_category', config?.display);
+  const shouldShowIpnForDetails = useElementDisplayStatus(cardInstanceId, 'show_ipn', config?.display);
+  const shouldShowLocationForDetails = useElementDisplayStatus(cardInstanceId, 'show_location', config?.display);
+  const shouldShowSupplierForDetails = useElementDisplayStatus(cardInstanceId, 'show_supplier', config?.display);
+  const shouldShowManufacturerForDetails = useElementDisplayStatus(cardInstanceId, 'show_manufacturer', config?.display);
+  const shouldShowNotesForDetails = useElementDisplayStatus(cardInstanceId, 'show_notes', config?.display);
+  // shouldShowParametersForDetails is already defined above for the skip logic
 
   React.useEffect(() => {
     if (partData) {
@@ -89,26 +112,24 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
     }
   }, []);
 
-  // Handle Loading and Error states from RTK Query
   if (!config) {
     return <div>Configuration is missing.</div>;
   }
 
-  if (isLoadingPart || (isFetchingPart && !partData)) { // Show loading if initially loading or fetching without data yet
+  if (isLoadingPart || (isFetchingPart && !partData)) {
     return <div>Loading part details...</div>;
   }
 
   if (isPartError) {
-    // Attempt to get a more specific error message if available
     let errorMessage = 'Unknown error';
     if (partError) {
-        if ('status' in partError) { // FetchBaseQueryError
+        if ('status' in partError) { 
             const fetchError = partError as { status?: number | string; data?: any; error?: string };
             if (typeof fetchError.data === 'string') errorMessage = fetchError.data;
             else if (fetchError.data && typeof fetchError.data === 'object' && fetchError.data.message) errorMessage = fetchError.data.message;
             else if (fetchError.error) errorMessage = fetchError.error;
             else errorMessage = `API error status: ${fetchError.status}`;
-        } else { // SerializedError
+        } else { 
             errorMessage = (partError as { message?: string }).message || 'Client error';
         }
     }
@@ -119,35 +140,31 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
     return <div>Part data not available.</div>;
   }
 
-  // ADD: Check for visibility from visualEffect
   if (visualEffect?.isVisible === false) {
     logger.log('PartView React', `Part ${partId} is not visible due to conditional effect.`, { partId, visualEffect });
     return null;
   }
 
-  const display = config.display || {};
   const stockStatus = getStockStatus();
   const stockIndicatorColor = getStockColor(stockStatus);
 
-  // Basic styles - these would ideally come from a shared theme or CSS modules
   const partContainerStyle: React.CSSProperties = {
     position: 'relative',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.5rem',
     padding: '1rem',
-    borderRadius: '4px', // var(--ha-card-border-radius, 4px)
-    background: visualEffect?.highlight || 'white', // APPLY highlight
-    border: visualEffect?.border, // APPLY border
-    opacity: typeof visualEffect?.opacity === 'number' ? visualEffect.opacity : 1, // APPLY opacity
-    // For the top border indicator:
-    borderTop: display.show_stock_status_border && !visualEffect?.border ? `3px solid ${stockIndicatorColor}` : visualEffect?.border || undefined,
+    borderRadius: '4px',
+    background: visualEffect?.highlight || 'white',
+    border: visualEffect?.border,
+    opacity: typeof visualEffect?.opacity === 'number' ? visualEffect.opacity : 1,
+    borderTop: shouldShowStockStatusBorder && !visualEffect?.border ? `3px solid ${stockIndicatorColor}` : visualEffect?.border || undefined,
   };
 
   const partNameStyle: React.CSSProperties = {
     fontWeight: 'bold',
     fontSize: '1.1em',
-    color: visualEffect?.textColor, // APPLY textColor
+    color: visualEffect?.textColor,
   };
 
   const stockValueStyle: React.CSSProperties = {
@@ -155,19 +172,18 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
     padding: '2px 8px',
     borderRadius: '12px',
     fontSize: '0.9em',
-    backgroundColor: config.display?.show_stock_status_colors ? stockIndicatorColor : 'transparent',
-    color: config.display?.show_stock_status_colors ? 'white' : visualEffect?.textColor || 'inherit', // APPLY textColor
+    backgroundColor: shouldShowStockStatusColors ? stockIndicatorColor : 'transparent',
+    color: shouldShowStockStatusColors ? 'white' : visualEffect?.textColor || 'inherit',
   };
   
   const partContentStyle: React.CSSProperties = {
     display: 'flex',
-    // flexDirection: 'column', // Default, can be row if thumbnail is beside details
     gap: '0.5rem',
   };
 
   const detailsWrapperStyle: React.CSSProperties = {
     flexGrow: 1,
-    color: visualEffect?.textColor, // APPLY textColor to details wrapper
+    color: visualEffect?.textColor,
   };
 
   const itemClasses = [
@@ -176,23 +192,16 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
     ...(visualEffect?.customClasses || [])
   ].filter(Boolean).join(' ');
 
-  // logger.log('PartView React', 'Rendering PartView for:', { partId: partData.pk, name: partData.name });
-
   const handleThumbnailClick = React.useMemo(() => {
     if (!config?.actions || !partData) return undefined;
-
     const thumbnailClickAction = config.actions.find(
       (action: ActionDefinition) => action.trigger.type === 'ui_thumbnail_click'
     );
-
     if (thumbnailClickAction) {
       return (event: React.MouseEvent<HTMLDivElement>) => {
         event.stopPropagation();
         logger.log('PartView', `Thumbnail clicked for part ${partData.pk}, executing action: ${thumbnailClickAction.name}`);
-        const executionContext: ActionExecutionContext = {
-          part: partData,
-          hassStates: hass?.states,
-        };
+        const executionContext: ActionExecutionContext = { part: partData, hassStates: hass?.states };
         actionEngine.executeAction(thumbnailClickAction.id, { ...executionContext, hass });
       };
     }
@@ -201,10 +210,10 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
 
   return (
     <div style={partContainerStyle} className={itemClasses}>
-      {display.show_header !== false && (
+      {shouldShowHeader && (
         <div className="part-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {display.show_name !== false && <div style={partNameStyle}>{partData.name}</div>}
-          {display.show_stock !== false && (
+          {shouldShowName && <div style={partNameStyle}>{partData.name}</div>}
+          {shouldShowStock && (
             <span style={stockValueStyle}>
               {partData.in_stock} {partData.units || ''}
             </span>
@@ -213,8 +222,8 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
       )}
 
       <div style={partContentStyle}>
-        {display.show_image !== false && partData.thumbnail && (
-          <div className="part-thumbnail-wrapper" style={{ width: '100px', height: '100px' /* Example size */ }}>
+        {shouldShowImage && partData.thumbnail && (
+          <div className="part-thumbnail-wrapper" style={{ width: '100px', height: '100px' }}>
             <PartThumbnail 
               partData={partData} 
               config={config} 
@@ -227,26 +236,33 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
         )}
 
         <div style={detailsWrapperStyle}>
-          {/* Pass part data and parameter data (and their states) to PartDetails */}
           <PartDetails 
-            config={config} 
+            config={config}
             visualEffect={visualEffect}
-            name={partData.name}
             description={partData.description}
-            inStock={partData.in_stock}
-            units={partData.units}
-            minimumStock={partData.minimum_stock}
+            categoryName={partData.category_name}
+            ipn={partData.IPN}
+            locationName={partData.location_pathstring}
+            notes={partData.notes}
             parametersData={parametersData}
-            isLoadingParameters={isLoadingParameters || (isFetchingParameters && !parametersData)} // Consider fetching as loading too
+            isLoadingParameters={isLoadingParameters || (isFetchingParameters && !parametersData)}
             isParametersError={isParametersError}
             parametersError={parametersError}
+            showDescription={shouldShowDescriptionForDetails}
+            showCategory={shouldShowCategoryForDetails}
+            showIpn={shouldShowIpnForDetails}
+            showLocation={shouldShowLocationForDetails}
+            showSupplier={shouldShowSupplierForDetails}
+            showManufacturer={shouldShowManufacturerForDetails}
+            showNotes={shouldShowNotesForDetails}
+            showParameters={shouldShowParametersForDetails}
           />
         </div>
       </div>
 
-      {display.show_buttons !== false && (
+      {shouldShowButtons && (
         <div className="part-buttons-wrapper" style={{ marginTop: '0.5rem' }}>
-          <PartButtons partItem={partData} config={config} hass={hass} />
+          <PartButtons partItem={partData} config={config} hass={hass} cardInstanceId={cardInstanceId} />
         </div>
       )}
     </div>

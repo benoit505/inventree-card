@@ -1,8 +1,9 @@
 import React from 'react';
-import { DisplayConfig } from '../../types';
+import { DisplayConfig, ConditionalLogicItem } from '../../types';
 interface ElementVisibilitySectionProps {
     displayConfig?: Partial<DisplayConfig>;
-    onDisplayConfigChanged: (newDisplayConfig: DisplayConfig) => void;
+    onDisplayConfigChanged: (newDisplayConfig: Partial<DisplayConfig>) => void;
+    definedLogics: ConditionalLogicItem[];
 }
 declare const ElementVisibilitySection: React.FC<ElementVisibilitySectionProps>;
 export default ElementVisibilitySection;

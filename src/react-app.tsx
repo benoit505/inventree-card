@@ -1,3 +1,5 @@
+console.log('[DEBUG] STEP 2: react-app.tsx executing');
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
@@ -12,9 +14,10 @@ const logger = Logger.getInstance();
 interface ReactAppProps {
   hass?: HomeAssistant;
   config?: InventreeCardConfig;
+  cardInstanceId?: string;
 }
 
-export const ReactApp: React.FC<ReactAppProps> = ({ hass, config }) => {
+export const ReactApp: React.FC<ReactAppProps> = ({ hass, config, cardInstanceId }) => {
   // Log when the component mounts or props change
   React.useEffect(() => {
     logger.log('ReactApp', 'ReactApp component mounted or props updated.', { 
@@ -24,21 +27,16 @@ export const ReactApp: React.FC<ReactAppProps> = ({ hass, config }) => {
     });
   }, [hass, config]);
 
-  if (!hass || !config) {
-    logger.warn('ReactApp', 'ReactApp rendered without HASS or config. Displaying loading/error.');
-    // Display a loading or error state, perhaps based on which prop is missing
-    return (
-      <div style={{ padding: '16px', border: '1px dashed red' }}>
-        { !hass && <p>Waiting for Home Assistant connection...</p> }
-        { !config && <p>Waiting for card configuration...</p> }
-      </div>
-    );
-  }
-
-  // Render the main card component within the Redux Provider
   return (
     <Provider store={store}>
-      <InventreeCard hass={hass} config={config} />
+      {(!hass || !config) ? (
+        <div style={{ padding: '16px', border: '1px dashed red' }}>
+          {!hass && <p>Waiting for Home Assistant connection...</p>}
+          {!config && <p>Waiting for card configuration...</p>}
+        </div>
+      ) : (
+        <InventreeCard hass={hass} config={config} cardInstanceId={cardInstanceId} />
+      )}
     </Provider>
   );
 }; 

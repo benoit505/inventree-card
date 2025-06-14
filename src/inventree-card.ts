@@ -1,3 +1,4 @@
+console.log('[DEBUG] STEP 1: inventree-card.ts executing');
 import { html, css, PropertyValues, TemplateResult, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceCard, LovelaceCardEditor } from 'custom-card-helpers';
@@ -59,13 +60,14 @@ const BaseClass = LitElement;
 
 // Type definition for timer IDs - remove if unused
 
+console.log('[DEBUG] STEP 1: inventree-card.ts executing');
+
 try {
     // Define the card element with proper error handling
-    @customElement('inventree-card')
+    @customElement(CARD_NAME)
     class InventreeCard extends BaseClass implements LovelaceCard {
         @property({ attribute: false }) public config!: InventreeCardConfig;
-        // Make _hass internal state, triggering updates when set
-        @state() private _hass!: HomeAssistant | null; 
+        @state() private _hass!: HomeAssistant;
         private logger: Logger = Logger.getInstance();
         private _cleanupFunctions: Array<() => void> = [];
         // private _entitySubscriptions: Map<string, () => void> = new Map();
@@ -77,9 +79,15 @@ try {
         @state() private _reactRoot: ReactDOM.Root | null = null;
         private _reactMountPoint: HTMLDivElement | null = null;
         // --- End React Integration ---
+        private _cardInstanceId: string; // Add stable instance ID
 
         constructor() {
             super();
+            this._cardInstanceId = `inventree-card-${Math.random().toString(36).substring(2, 15)}`; // Create stable ID
+            console.log(`[DEBUG] inventree-card.ts: constructor() called. Stable ID created: ${this._cardInstanceId}`);
+            this.config = { type: 'custom:inventree-card' }; // FIX LINTER ERROR
+            this.hass = {} as HomeAssistant;
+            this.logger = Logger.getInstance();
             this.logger.log('InventreeCard', 'Creating InventreeCard instance (Lit Wrapper)', {
                 category: 'card',
                 subsystem: 'lifecycle'
@@ -164,11 +172,14 @@ try {
         }
 
         public setConfig(config: InventreeCardConfig): void {
+            console.log('[DEBUG] inventree-card.ts: setConfig() called.');
             if (!config) {
-                throw new Error("No configuration provided");
+                console.error('[DEBUG] inventree-card.ts: setConfig() called with null or undefined config.');
+                throw new Error('You need to define a configuration.');
             }
-            
-            this.logger.log('InventreeCard', 'setConfig called with config (raw):', { category: 'card', subsystem: 'config', data: { config: JSON.stringify(config, null, 2) } });
+            this.config = config;
+            this.logger.setDebugConfig(config);
+            console.log('[DEBUG] inventree-card.ts: setConfig() finished.');
             this.logger.info('Card', 'Setting configuration', {
                 category: 'card',
                 subsystem: 'config',
@@ -181,8 +192,8 @@ try {
             // Store config directly on the instance
             this.config = config; 
             
-            this._setupDebugMode(config); // Keep debug setup if needed at Lit level
             // Request update handled by property decorator
+            this._setupDebugMode(config);
         }
 
         // Keep entity subscriptions if Lit wrapper needs to react to HASS state changes directly
@@ -232,14 +243,62 @@ try {
 
         // Render only the container for React
         protected render(): TemplateResult | void {
+            console.log('[DEBUG] inventree-card.ts: render() called.');
             this.logger.log("InventreeCardLit", "render() called, creating react-root-container div.");
             return html`<div id="react-root-container"></div>`;
+        }
+
+        shouldUpdate(changedProperties: Map<string | number | symbol, unknown>): boolean {
+            // Always update if the config changes, as it's the source of truth for dependencies.
+            if (changedProperties.has('config')) {
+                this.logger.log('InventreeCard', 'shouldUpdate: config changed, forcing update.', { category: 'card', subsystem: 'lifecycle' });
+                return true;
+            }
+        
+            // Check if hass has changed.
+            if (changedProperties.has('_hass')) {
+                const oldHass = changedProperties.get('_hass') as HomeAssistant | undefined;
+        
+                // This can happen on the very first render or if hass is temporarily unavailable. Allow the update.
+                if (!this._hass || !oldHass) {
+                    this.logger.log('InventreeCard', 'shouldUpdate: hass not yet available, allowing update.', { category: 'card', subsystem: 'lifecycle' });
+                    return true;
+                }
+        
+                // Get the list of entities we care about from the config.
+                const dependentEntities = [
+                    ...(this.config?.data_sources?.inventree_hass_sensors || []),
+                    ...(this.config?.data_sources?.ha_entities || []),
+                ];
+        
+                // If we don't depend on any entities, there's no need to update on hass changes.
+                // This is a major optimization.
+                if (dependentEntities.length === 0) {
+                    this.logger.log('InventreeCard', 'shouldUpdate: hass changed, but no dependent entities configured. Preventing update.', { category: 'card', subsystem: 'lifecycle' });
+                    return false;
+                }
+        
+                // Check if any of our dependent entities have changed state object references.
+                for (const entityId of dependentEntities) {
+                    if (oldHass.states[entityId] !== this._hass.states[entityId]) {
+                        this.logger.log('InventreeCard', `shouldUpdate: Dependent entity ${entityId} changed. Allowing update.`, { category: 'card', subsystem: 'lifecycle' });
+                        return true;
+                    }
+                }
+        
+                // If we're here, hass changed, but none of our dependent entities did.
+                this.logger.log('InventreeCard', 'shouldUpdate: hass changed, but no dependent entities were affected. Preventing update.', { category: 'card', subsystem: 'lifecycle' });
+                return false;
+            }
+        
+            // For any other property changes (like internal state), let Lit decide.
+            return changedProperties.size > 0;
         }
 
         // Mount/Update React app
         protected firstUpdated(_changedProperties: PropertyValues): void {
             super.firstUpdated(_changedProperties);
-            this.logger.log("InventreeCardLit", "firstUpdated() called.");
+            console.log('[DEBUG] inventree-card.ts: firstUpdated() called.');
             // *** CRITICAL: Get the mount point here and store it ***
             if (this.shadowRoot) {
                 this._reactMountPoint = this.shadowRoot.getElementById('react-root-container') as HTMLDivElement;
@@ -270,6 +329,7 @@ try {
         }
 
         private _mountOrUpdateReactApp(): void {
+            console.log('[DEBUG] inventree-card.ts: _mountOrUpdateReactApp() called.');
             // *** Use the cached _reactMountPoint ***
             if (!this._reactMountPoint) {
                 this.logger.error('InventreeCardLit', 'Cannot mount React app: _reactMountPoint is not set. Attempting to find it again.');
@@ -295,13 +355,25 @@ try {
                      this.logger.error('InventreeCardLit', 'Cannot create React root: _reactMountPoint is null just before createRoot.');
                      return;
                  }
+                 this.logger.log('InventreeCardLit', 'About to call createRoot(). Mount point is:', { element: this._reactMountPoint });
                  this._reactRoot = ReactDOM.createRoot(this._reactMountPoint);
+                 this.logger.log('InventreeCardLit', 'Successfully called createRoot(). React root is created.');
                  this.logger.log('InventreeCardLit', 'Mounting React app for the first time.', { hass: !!this._hass, config: !!this.config });
              }
 
              if (this._hass && this.config) { // Ensure config is also present
                 this.logger.log('InventreeCardLit', 'Rendering ReactApp with HASS and Config.');
-                this._reactRoot.render(React.createElement(ReactApp, { hass: this._hass, config: this.config }));
+                this._reactRoot.render(
+                    React.createElement(
+                        React.StrictMode,
+                        null,
+                        React.createElement(ReactApp, { 
+                            hass: this._hass, 
+                            config: this.config, 
+                            cardInstanceId: this._cardInstanceId // Pass stable ID down
+                        })
+                    )
+                );
              } else {
                 this.logger.warn('InventreeCardLit', 'HASS or Config object is null/undefined, not rendering ReactApp.', { hass: !!this._hass, config: !!this.config });
                 if (this._reactRoot && (!this._hass || !this.config)) {

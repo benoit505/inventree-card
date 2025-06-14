@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { EffectDefinition, ActionDefinition } from '../../types'; // Added ActionDefinition
+import { EffectDefinition, ActionDefinition, DisplayConfigKey, AnimationPreset } from '../../types'; // Added AnimationPreset
 import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { Logger } from '../../utils/logger';
 import { useSelector } from 'react-redux'; // Added useSelector
 import { RootState } from '../../store'; // Added RootState
+import { ANIMATION_PRESETS } from '../../core/constants'; // Import the presets
 
 const logger = Logger.getInstance();
 
@@ -22,6 +23,10 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const [styleValue, setStyleValue] = useState<string | undefined>(effect.styleValue);
   const [targetPartPksInput, setTargetPartPksInput] = useState<string>('');
   const [customActionId, setCustomActionId] = useState<string | undefined>(effect.customActionId); // Added state for customActionId
+  const [targetDisplayKey, setTargetDisplayKey] = useState<DisplayConfigKey | undefined>(effect.targetDisplayKey);
+
+  // NEW: State for animation preset
+  const [animationPreset, setAnimationPreset] = useState<string>(effect.preset || 'none');
 
   // Fetch available actions from Redux store
   const allActionDefinitions = useSelector((state: RootState) => state.actions.actionDefinitions);
@@ -35,6 +40,10 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     setStyleProperty(effect.styleProperty);
     setStyleValue(effect.styleValue);
     setCustomActionId(effect.customActionId); // Set customActionId from prop
+    setTargetDisplayKey(effect.targetDisplayKey); // Set targetDisplayKey from prop
+
+    // NEW: Initialize animation preset state
+    setAnimationPreset(effect.preset || 'none');
 
     // Initialize targetPartPksInput from effect.targetPartPks
     if (typeof effect.targetPartPks === 'string') {
@@ -65,6 +74,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     let updatedEffectPayload: Partial<EffectDefinition> = { type: newType };
     if (newType !== 'set_visibility') {
       updatedEffectPayload.isVisible = undefined;
+      updatedEffectPayload.targetDisplayKey = undefined; // Reset targetDisplayKey if not set_visibility
     }
     if (newType !== 'set_style') {
       updatedEffectPayload.styleProperty = undefined;
@@ -72,6 +82,10 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     }
     if (newType !== 'trigger_custom_action') {
       updatedEffectPayload.customActionId = undefined;
+    }
+    if (newType !== 'animate_style') {
+      updatedEffectPayload.animation = undefined;
+      updatedEffectPayload.preset = undefined; // Clear preset if not animate_style
     }
     // Preserve existing targetPartPks
     updatedEffectPayload.targetPartPks = parseTargetPks(targetPartPksInput);
@@ -81,7 +95,22 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const handleIsVisibleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVisibility = e.target.checked;
     setIsVisible(newVisibility);
-    onUpdate({ ...effect, type: 'set_visibility', isVisible: newVisibility, targetPartPks: parseTargetPks(targetPartPksInput) });
+    onUpdate({ ...effect, type: 'set_visibility', isVisible: newVisibility, targetDisplayKey, targetPartPks: parseTargetPks(targetPartPksInput) });
+  };
+
+  const handleTargetDisplayKeyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedValue = e.target.value; // selectedValue is a string
+    let finalKey: DisplayConfigKey | undefined;
+
+    if (selectedValue === "") {
+      finalKey = undefined;
+    } else {
+      finalKey = selectedValue as DisplayConfigKey; // Now, selectedValue is one of the valid DisplayConfigKey strings
+    }
+
+    setTargetDisplayKey(finalKey);
+    // Ensure you pass the updated finalKey to onUpdate
+    onUpdate({ ...effect, type: 'set_visibility', targetDisplayKey: finalKey, isVisible, targetPartPks: parseTargetPks(targetPartPksInput) });
   };
 
   const handleStylePropertyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -105,12 +134,25 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const handleTargetPartPksChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newInput = e.target.value;
     setTargetPartPksInput(newInput);
-    // Update the effect with the new targetPartPks
-    // We need to decide if we update on every keystroke or on blur/submit for this field.
-    // For consistency with other fields, let's update on change.
+    // It's better to update on blur or with a save button for free-text fields
+    // to avoid excessive updates. For now, let's keep it on change for consistency
+    // but this is a candidate for optimization.
     onUpdate({ ...effect, targetPartPks: parseTargetPks(newInput) });
   };
   
+  const handleAnimationPresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPreset = e.target.value;
+    setAnimationPreset(newPreset);
+    onUpdate({ 
+      ...effect, 
+      type: 'animate_style', 
+      preset: newPreset, 
+      // Clear the old raw 'animation' property to avoid conflicts
+      animation: undefined, 
+      targetPartPks: parseTargetPks(targetPartPksInput) 
+    });
+  };
+
   // Map EffectDefinition styleProperty to VisualEffect keys
   const stylePropertyOptions: { value: EffectDefinition['styleProperty'], label: string, mapsTo: keyof VisualEffect }[] = [
     { value: 'highlight', label: 'Highlight Color', mapsTo: 'highlight' },
@@ -123,6 +165,32 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     // Add more mappings as VisualEffect evolves, e.g., for customClasses if it becomes a direct string
   ];
 
+  const displayConfigKeyOptions: Array<{ value: DisplayConfigKey; label: string }> = [
+    { value: 'show_header', label: 'Show Header' },
+    { value: 'show_image', label: 'Show Image' },
+    { value: 'show_name', label: 'Show Name' },
+    { value: 'show_stock', label: 'Show Stock' },
+    { value: 'show_description', label: 'Show Description' },
+    { value: 'show_category', label: 'Show Category' },
+    { value: 'show_ipn', label: 'Show IPN' },
+    { value: 'show_location', label: 'Show Location' },
+    { value: 'show_supplier', label: 'Show Supplier' },
+    { value: 'show_manufacturer', label: 'Show Manufacturer' },
+    { value: 'show_notes', label: 'Show Notes' },
+    { value: 'show_buttons', label: 'Show Buttons Area' },
+    { value: 'show_parameters', label: 'Show Parameters Section' },
+    { value: 'show_stock_status_border', label: 'Show Stock Status Border' },
+    { value: 'show_stock_status_colors', label: 'Show Stock Status Colors' },
+    { value: 'show_related_parts', label: 'Show Related Parts' },
+    { value: 'show_part_details_component', label: 'Show Part Details Component' },
+    { value: 'show_stock_status_border_for_templates', label: 'Show Stock Border (Templates)' },
+    { value: 'show_buttons_for_variants', label: 'Show Buttons (Variants)' },
+    { value: 'show_part_details_component_for_variants', label: 'Show Part Details (Variants)' },
+    { value: 'show_image_for_variants', label: 'Show Image (Variants)' },
+    { value: 'show_stock_for_variants', label: 'Show Stock (Variants)' },
+    { value: 'show_name_for_variants', label: 'Show Name (Variants)' },
+  ];
+
   return (
     <div className="effect-editor-form" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div>
@@ -130,6 +198,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
         <select id={`effect-type-${effect.id}`} value={effectType} onChange={handleTypeChange}>
           <option value="set_visibility">Set Visibility</option>
           <option value="set_style">Set Style</option>
+          <option value="animate_style">Animate Style</option>
           <option value="trigger_custom_action">Trigger Custom Action</option>
         </select>
       </div>
@@ -137,12 +206,28 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
       {effectType === 'set_visibility' && (
         <div>
           <label htmlFor={`effect-visible-${effect.id}`} style={{ marginRight: '5px' }}>Is Visible:</label>
-          <input 
-            type="checkbox" 
+          <input
+            type="checkbox"
             id={`effect-visible-${effect.id}`}
-            checked={isVisible === true} 
-            onChange={handleIsVisibleChange} 
+            checked={isVisible === true}
+            onChange={handleIsVisibleChange}
           />
+          <div style={{ marginTop: '5px' }}>
+            <label htmlFor={`effect-target-display-key-${effect.id}`} style={{ marginRight: '5px' }}>Target Element:</label>
+            <select
+              id={`effect-target-display-key-${effect.id}`}
+              value={targetDisplayKey || ''}
+              onChange={handleTargetDisplayKeyChange}
+            >
+              <option value="">Default (Whole Item)</option>
+              {displayConfigKeyOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <p style={{ fontSize: '0.8em', color: 'gray', margin: '2px 0 0 0' }}>
+              Select a specific card element to show/hide. Default targets the whole item.
+            </p>
+          </div>
         </div>
       )}
 
@@ -189,6 +274,20 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
               </option>
             ))}
             {availableActions.length === 0 && <option value="" disabled>No actions defined</option>}
+          </select>
+        </div>
+      )}
+
+      {effectType === 'animate_style' && (
+        <div>
+          <label htmlFor={`effect-animation-preset-${effect.id}`} style={{ marginRight: '5px' }}>Animation Preset:</label>
+          <select id={`effect-animation-preset-${effect.id}`} value={animationPreset} onChange={handleAnimationPresetChange}>
+            <option value="none">None</option>
+            {Object.keys(ANIMATION_PRESETS).map(presetKey => (
+              <option key={presetKey} value={presetKey}>
+                {ANIMATION_PRESETS[presetKey as keyof typeof ANIMATION_PRESETS].name}
+              </option>
+            ))}
           </select>
         </div>
       )}

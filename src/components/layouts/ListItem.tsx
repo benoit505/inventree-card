@@ -7,6 +7,7 @@ import { RootState } from '../../store';
 import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
 import { Logger } from '../../utils/logger';
 import { actionEngine } from '../../services/ActionEngine';
+import { useElementDisplayStatus } from '../../hooks/useElementDisplayStatus';
 
 import { useGetPartParametersQuery, useUpdatePartParameterMutation } from '../../store/apis/inventreeApi';
 import { SerializedError } from '@reduxjs/toolkit';
@@ -79,9 +80,15 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
   const conditionalEffect = useSelector((state: RootState) => selectVisualEffectForPart(state, cardInstanceId || 'unknown_card', partId));
   const locatingPartId = useSelector((state: RootState) => state.parts.locatingPartId);
 
-  const displayConfig = config.display || {};
   const isCurrentlyLocating = locatingPartId === partId;
   const actualModifiers = conditionalEffect || {} as VisualEffect;
+
+  const shouldShowImage = useElementDisplayStatus(cardInstanceId, 'show_image', config.display);
+  const shouldShowName = useElementDisplayStatus(cardInstanceId, 'show_name', config.display);
+  const shouldShowStock = useElementDisplayStatus(cardInstanceId, 'show_stock', config.display);
+  const shouldShowIpn = useElementDisplayStatus(cardInstanceId, 'show_ipn', config.display);
+  const shouldShowDescription = useElementDisplayStatus(cardInstanceId, 'show_description', config.display);
+  const shouldShowButtons = useElementDisplayStatus(cardInstanceId, 'show_buttons', config.display);
 
   const {
     data: parametersData,
@@ -140,24 +147,19 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
 
   const handleThumbnailClick = React.useMemo(() => {
     if (!config.actions || !part) return undefined;
-
     const thumbnailClickAction = config.actions.find(
-      (action: ActionDefinition) => action.trigger.type === 'ui_thumbnail_click'
+      (act: ActionDefinition) => act.trigger.type === 'ui_thumbnail_click'
     );
-
     if (thumbnailClickAction) {
       return (event: React.MouseEvent<HTMLDivElement>) => {
         event.stopPropagation();
         logger.log('ListItem', `Thumbnail clicked for part ${part.pk}, executing action: ${thumbnailClickAction.name}`);
-        const executionContext: ActionExecutionContext = {
-          part: part,
-          hassStates: hass?.states,
-        };
+        const executionContext: ActionExecutionContext = { part: part, hassStates: hass?.states };
         actionEngine.executeAction(thumbnailClickAction.id, { ...executionContext, hass });
       };
     }
     return undefined;
-  }, [config.actions, part, hass, logger]);
+  }, [config.actions, part, hass]);
 
   return (
     <div
@@ -168,7 +170,7 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
       title={`Click to locate Part ID: ${partId}`}
     >
       {/* Thumbnail Section */}
-      {displayConfig.show_image && (
+      {shouldShowImage && (
         <div className="list-item-thumbnail" style={{ marginRight: '12px', flexShrink: 0 }}>
           <PartThumbnail
             partData={part}
@@ -183,16 +185,16 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
 
       {/* Main Info Section */}
       <div className="list-item-info" style={{ ...itemTextStyle, flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        {displayConfig.show_name && <div className="part-name" style={{ fontWeight: 'bold', fontSize: '1.1em' }}>{part.name}</div>}
-        {displayConfig.show_stock && (
+        {shouldShowName && <div className="part-name" style={{ fontWeight: 'bold', fontSize: '1.1em' }}>{part.name}</div>}
+        {shouldShowStock && (
           <div className="part-stock" style={{ fontSize: '0.9em', opacity: 0.8 }}>
             Stock: {part.in_stock ?? 'N/A'} {part.units || ''}
           </div>
         )}
-        {displayConfig.show_ipn && part.IPN && (
+        {shouldShowIpn && part.IPN && (
             <div className="part-ipn" style={{ fontSize: '0.8em', opacity: 0.7 }}>IPN: {part.IPN}</div>
         )}
-        {displayConfig.show_description && part.description && (
+        {shouldShowDescription && part.description && (
           <p className="part-description" style={{ fontSize: '0.85em', margin: '4px 0 0 0', opacity: 0.9, fontStyle: 'italic' }}>
             {part.description}
           </p>
@@ -236,25 +238,25 @@ const ListItem: React.FC<ListItemProps> = React.memo(({
       </div>
 
       {/* Actions Footer */}
-      {(displayConfig.show_buttons || parameterActions.length > 0) && hass && (
+      {(shouldShowButtons || (parameterActions && parameterActions.length > 0)) && hass && (
         <div className="list-item-actions-footer" style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-          {displayConfig.show_buttons && config && (
-            <div style={{ marginBottom: parameterActions.length > 0 ? '4px' : '0' }}>
-              <PartButtons partItem={part} config={config} hass={hass} />
+          {shouldShowButtons && config && (
+            <div style={{ marginBottom: (parameterActions && parameterActions.length > 0) ? '4px' : '0' }}>
+              <PartButtons partItem={part} config={config} hass={hass} cardInstanceId={cardInstanceId} />
             </div>
           )}
-          {parameterActions.length > 0 && (
+          {parameterActions && parameterActions.length > 0 && (
             <div className="parameter-action-buttons" style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
               {parameterActions.map((action) => (
                 <button
                   key={`${partId}-${action.id || action.label}`}
                   className="param-action-button"
+                  style={{fontSize: '0.8em', padding: '2px 4px'}}
                   onClick={(e) => handleActionClick(e, action)}
                   title={action.label}
-                  style={{ fontSize: '0.75em', padding: '3px 6px', cursor: 'pointer' }}
                   disabled={isUpdatingParameter}
                 >
-                  {action.icon ? <ha-icon icon={action.icon}></ha-icon> : action.label}
+                  {action.icon ? <ha-icon icon={action.icon} style={{marginRight: action.label ? '2px' : '0'}} /> : action.label}
                 </button>
               ))}
             </div>

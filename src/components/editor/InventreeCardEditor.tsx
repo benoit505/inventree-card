@@ -267,11 +267,11 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
         />
       </section>
 
-      {/* Presentation (Layout & Display) Section */}
+      {/* Presentation Section */}
       <section className="editor-section">
         <h3>Presentation</h3>
         <LayoutSelectionSection 
-          viewType={editorData.view_type}
+          viewType={editorData.view_type || 'detail'}
           layoutOptions={{
             columns: editorData.columns,
             grid_spacing: editorData.grid_spacing,
@@ -280,8 +280,9 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
           onLayoutConfigChanged={handleLayoutConfigChanged}
         />
         <ElementVisibilitySection 
-          displayConfig={editorData.display} 
-          onDisplayConfigChanged={handleDisplayConfigChanged} 
+          displayConfig={editorData.display}
+          onDisplayConfigChanged={handleDisplayConfigChanged}
+          definedLogics={editorData.conditional_logic?.definedLogics || []}
         />
         <CardStylingSection 
           styleConfig={editorData.style} 

@@ -3,13 +3,15 @@ import { InventreeItem, InventreeCardConfig } from '../../types';
 import { VisualEffect } from '../../store/slices/visualEffectsSlice';
 import { RootState } from '../../store';
 import { Logger } from '../../utils/logger';
+import { motion, TargetAndTransition, Transition } from 'framer-motion';
 
 interface PartThumbnailProps {
   partData?: InventreeItem;
   config?: InventreeCardConfig;
   layout?: 'grid' | 'list' | 'detail' | 'button' | 'default';
-  icon?: string; // From VisualModifiers, passed by parent
-  badge?: string | number; // From VisualModifiers, passed by parent
+  icon?: string;
+  badge?: string | number;
+  visualModifiers?: VisualEffect;
   onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
   style?: React.CSSProperties;
   className?: string;
@@ -25,9 +27,10 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
   layout: propLayout,
   icon: directIcon,
   badge: directBadge,
+  visualModifiers,
   onClick,
   style: propStyle,
-  className: propClassName
+  className: propClassName,
 }) => {
   const logger = Logger.getInstance();
   
@@ -38,6 +41,9 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
   const [hasTriedAllLocalAutoprobe, setHasTriedAllLocalAutoprobe] = useState<boolean>(false);
   const [explicitOverrideAttempted, setExplicitOverrideAttempted] = useState<boolean>(false);
   const [explicitOverrideFailed, setExplicitOverrideFailed] = useState<boolean>(false);
+
+  // Animation props are now derived from visualModifiers
+  // const animationProps = visualModifiers?.animation; // No longer needed here
 
   // Effect 1: Initiate image loading sequence when partData or config changes
   useEffect(() => {
@@ -104,7 +110,7 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
       
       if (imageToAttempt !== nextImageToTry) {
         setImageToAttempt(nextImageToTry);
-      } else if (nextImageToTry === null && currentSrc !== null) {
+      } else if (nextImageToTry === null) {
         setCurrentSrc(null);
       }
     };
@@ -115,7 +121,7 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
       img.onload = null;
       img.onerror = null;
     };
-  }, [imageToAttempt, partData, explicitOverrideAttempted, explicitOverrideFailed, attemptedAutoprobeIndex, hasTriedAllLocalAutoprobe, currentSrc]);
+  }, [imageToAttempt, partData, explicitOverrideAttempted, explicitOverrideFailed, attemptedAutoprobeIndex, hasTriedAllLocalAutoprobe]);
 
   if (!partData) {
     return null; 
@@ -124,8 +130,10 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
   // Determine layout: prop > config.view_type > default ('default')
   const layout = propLayout || (config?.view_type as any) || 'default';
 
-  const finalIcon = directIcon;
-  const finalBadge = directBadge;
+  // Combine direct props with modifiers for final values
+  const finalIcon = directIcon ?? visualModifiers?.icon;
+  const finalBadge = directBadge ?? visualModifiers?.badge;
+  const thumbnailStyle = visualModifiers?.thumbnailStyle;
 
   const imageSizeFromConfig = config?.style?.image_size;
   const defaultGridSize = 80; 
@@ -164,8 +172,9 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
     height: '100%',
     objectFit: 'contain',
     display: currentSrc ? 'block' : 'none',
-    opacity: currentSrc ? 1 : 0, 
-    transition: 'opacity 0.3s ease-in-out',
+    opacity: thumbnailStyle?.opacity ?? (currentSrc ? 1 : 0),
+    filter: thumbnailStyle?.filter,
+    transition: 'opacity 0.3s ease-in-out, filter 0.3s ease-in-out',
   };
 
   const placeholderStyle: React.CSSProperties = {
@@ -207,19 +216,35 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
     fontSize: layout === 'list' ? '0.6em' : '0.7em',
   };
 
-  if (!currentSrc && !finalIcon && !finalBadge && layout !== 'button') {
-    return null;
+  // Logic to prevent rendering an empty box if there's nothing to show
+  const hasContent = currentSrc || finalIcon || finalBadge;
+  if (!hasContent) {
+    // If layout is button-like or has a click handler, maybe show a placeholder anyway
+    if (layout === 'button' || onClick) {
+      // Render a generic placeholder
+      return (
+        <div 
+          style={containerStyle} 
+          onClick={onClick} 
+          className={`part-thumbnail-container layout-${layout} ${propClassName || ''}`.trim()}
+        >
+          <div style={placeholderStyle}>
+            {(partData?.name || 'Part').substring(0, 1)}
+          </div>
+        </div>
+      );
+    }
+    return null; // Otherwise, render nothing
   }
 
   return (
-    <div style={containerStyle} onClick={onClick} className={`part-thumbnail-container layout-${layout} ${propClassName || ''}`.trim()}>
+    <div 
+      style={containerStyle} 
+      onClick={onClick} 
+      className={`part-thumbnail-container layout-${layout} ${propClassName || ''}`.trim()}
+    >
       {currentSrc && <img src={currentSrc} alt={partData?.name || 'Part Image'} style={imageStyle} />}
-      {!currentSrc && (finalIcon || finalBadge) && (
-        <div style={placeholderStyle}>
-          {(partData?.name || 'Part').substring(0, 1)}
-        </div>
-      )}
-      {!currentSrc && !finalIcon && !finalBadge && (
+      {!currentSrc && (
         <div style={placeholderStyle}>
           {(partData?.name || 'Part').substring(0, 1)}
         </div>

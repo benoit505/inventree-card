@@ -7,11 +7,13 @@ import { RootState, AppDispatch } from '../index';
 import { webSocketMessageReceived } from '../slices/websocketSlice';
 import { Logger } from '../../utils/logger';
 import { WebSocketEventMessage, EnhancedStockItemEventData, EnhancedParameterEventData, ParameterDetail, InventreeItem } from '../../types';
-import { evaluateAndApplyEffectsThunk } from '../thunks/conditionalLogicThunks';
+import { evaluateAndApplyEffectsThunk, evaluateEffectsForAllActiveCardsThunk } from '../thunks/conditionalLogicThunks';
 import throttle from 'lodash-es/throttle';
 import { inventreeApi } from '../apis/inventreeApi';
 // Import actions from genericHaStateSlice
 import { setEntityState, setEntityStatesBatch } from '../slices/genericHaStateSlice';
+// Import selector for active card instances
+import { selectActiveCardInstanceIds } from '../slices/componentSlice';
 
 const logger = Logger.getInstance();
 let throttledEvaluateEffects: (() => void) | null = null;
@@ -23,10 +25,8 @@ const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootS
   logger.log('WebSocketMiddleware', `Initializing/Re-initializing throttledEvaluateEffects with frequency: ${conditionEvalFrequency}ms`);
 
   throttledEvaluateEffects = throttle(() => {
-    logger.log('WebSocketMiddleware', `Dispatching evaluateAndApplyEffectsThunk (throttled).`);
-    // Pass an empty object to use default behavior: evaluate all defined logic for all active cards (if engine supports it)
-    // or for the 'undefined_card' if no specific cardInstanceId is given and engine isn't multi-instance aware.
-    storeAPI.dispatch(evaluateAndApplyEffectsThunk({})); 
+    logger.log('WebSocketMiddleware', `Dispatching evaluateEffectsForAllActiveCardsThunk (throttled).`);
+    storeAPI.dispatch(evaluateEffectsForAllActiveCardsThunk()); 
   }, conditionEvalFrequency, { leading: false, trailing: true });
 };
 

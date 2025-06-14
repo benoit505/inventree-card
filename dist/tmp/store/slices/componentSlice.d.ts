@@ -19,5 +19,6 @@ export declare const registerComponent: import("@reduxjs/toolkit").ActionCreator
 export declare const selectIsComponentActive: (state: RootState, componentId: string) => boolean;
 export declare const selectAllComponents: (state: RootState) => Record<string, ComponentRecord>;
 export declare const selectActiveComponentCount: (state: RootState) => number;
+export declare const selectActiveCardInstanceIds: (state: RootState) => string[];
 declare const _default: import("redux").Reducer<ComponentState>;
 export default _default;

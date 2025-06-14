@@ -10,8 +10,9 @@ import { Logger } from '../../core/logger';
 // import { generateSimpleId } from '../../utils/generateSimpleId'; // No longer needed here
 import {
   setDefinedLogicItems,
-  selectDefinedLogicItems // Added selector
-} from '../slices/conditionalLogicSlice'; // Removed setProcessedConditions
+  selectDefinedLogicItems
+} from '../slices/conditionalLogicSlice';
+import { selectActiveCardInstanceIds } from '../slices/componentSlice';
 import { ConditionalEffectsEngine } from '../../core/ConditionalEffectsEngine';
 
 const logger = Logger.getInstance();
@@ -20,18 +21,41 @@ const logger = Logger.getInstance();
 
 export const evaluateAndApplyEffectsThunk = createAsyncThunk<
   void,
-  { cardInstanceId?: string; forceReevaluation?: boolean; /* logicItems argument removed, will be fetched from state */ },
-  { state: RootState; dispatch: AppDispatch }
->('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId, forceReevaluation = false }, { dispatch, getState }) => {
-  const cardId = cardInstanceId || 'undefined_card';
+  { cardInstanceId: string },
+  { state: RootState, dispatch: AppDispatch }
+>('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId }, { dispatch, getState }) => {
+  console.log(`[Thunk:evaluateAndApplyEffects] Running for card instance: ${cardInstanceId}`);
   const state = getState();
-  const logicItemsToEvaluate = selectDefinedLogicItems(state); // Fetch logic items from state
-
-  logger.debug('evaluateAndApplyEffectsThunk', `START for cardInstanceId: ${cardId}`, { data: { logicItems: logicItemsToEvaluate } });
+  const logicItems = selectDefinedLogicItems(state);
   const engine = new ConditionalEffectsEngine(dispatch, getState);
-  // Pass the fetched logicItems to the engine
-  await engine.evaluateAndApplyEffects(cardId, forceReevaluation, logicItemsToEvaluate);
-  logger.debug('evaluateAndApplyEffectsThunk', `END for cardInstanceId: ${cardId}`);
+  try {
+    console.log(`[Thunk:evaluateAndApplyEffects] About to call engine.evaluateAndApplyEffects with ${logicItems.length} logic items.`);
+    await engine.evaluateAndApplyEffects(cardInstanceId, false, logicItems);
+    console.log(`[Thunk:evaluateAndApplyEffects] Engine finished evaluation.`);
+  } catch (error) {
+    logger.error('evaluateAndApplyEffectsThunk', 'An error occurred during conditional logic evaluation:', { data: error });
+    // Optionally re-throw or handle as needed
+  }
+});
+
+export const evaluateEffectsForAllActiveCardsThunk = createAsyncThunk<
+  void,
+  void, // No arguments needed
+  { state: RootState; dispatch: AppDispatch }
+>('conditionalLogic/evaluateEffectsForAllActiveCards', async (_, { dispatch, getState }) => {
+    const state = getState();
+    const activeCardIds = selectActiveCardInstanceIds(state);
+    logger.debug('evaluateEffectsForAllActiveCardsThunk', `Found ${activeCardIds.length} active card(s) to re-evaluate.`, { data: activeCardIds });
+
+    if (activeCardIds.length === 0) {
+        // If no active cards, we might still want to evaluate the 'undefined_card' for any global, non-card-specific logic.
+        logger.debug('evaluateEffectsForAllActiveCardsThunk', `No active card instances found. Evaluating for 'undefined_card' context.`);
+        dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: 'undefined_card' }));
+    } else {
+        activeCardIds.forEach((cardInstanceId: string) => {
+            dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId })); 
+        });
+    }
 });
 
 export const initializeRuleDefinitionsThunk = createAsyncThunk<
@@ -47,6 +71,6 @@ export const initializeRuleDefinitionsThunk = createAsyncThunk<
   logger.debug('initializeRuleDefinitionsThunk', `Stored ${logicItems?.length || 0} defined logic items.`);
   
   // No more transformation to ProcessedCondition here.
-  // After defining logic items, trigger an initial evaluation.
-  dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: 'undefined_card', forceReevaluation: true }));
+  // REMOVED: Initial evaluation should not be triggered from here.
+  // dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: 'undefined_card', forceReevaluation: true }));
 });

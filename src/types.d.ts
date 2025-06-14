@@ -11,6 +11,12 @@ export interface CustomCardEntry {
     documentationURL?: string;
 }
 
+export interface GlobalContext {
+  ha_states: Record<string, any>;
+  // We can add other global context properties here later,
+  // e.g., parts, config, etc., if the expression engine needs them.
+}
+
 export interface ProcessedVariant {
     pk: number;
     name: string;
@@ -39,31 +45,47 @@ export interface InventreeCardLayout {
     transparent?: boolean;
 }
 
-export interface DisplayConfig {
-    show_header?: boolean;
-    show_image?: boolean;
-    show_name?: boolean;
-    show_stock?: boolean;
-    show_description?: boolean;
-    show_category?: boolean;
-    show_ipn?: boolean;
-    show_location?: boolean;
-    show_supplier?: boolean;
-    show_manufacturer?: boolean;
-    show_notes?: boolean;
-    show_buttons?: boolean;
-    show_stock_status_border?: boolean;
-    show_stock_status_colors?: boolean;
-    show_related_parts?: boolean; 
-    show_parameters?: boolean;
-    show_part_details_component?: boolean; 
-    show_stock_status_border_for_templates?: boolean;
-    show_buttons_for_variants?: boolean;
-    show_part_details_component_for_variants?: boolean;
-    show_image_for_variants?: boolean;
-    show_stock_for_variants?: boolean;
-    show_name_for_variants?: boolean;
+// NEW: Type for conditional visibility of display elements
+export interface ConditionalVisibility {
+  default: boolean;      // The direct toggle value (from the checkbox)
+  conditionId?: string; // ID of a ConditionalLogicItem that controls visibility
+  // We could also add: expressionId?: string; // For direct expression-based visibility
 }
+
+// UPDATED: DisplayConfig properties can now be boolean OR ConditionalVisibility
+// We will redefine DisplayConfig to use a mapped type for clarity and maintainability
+
+// First, define the keys we expect in DisplayConfig. 
+// This helps ensure we don't miss any when mapping.
+export type DisplayConfigKey = 
+  | 'show_header' 
+  | 'show_image' 
+  | 'show_name' 
+  | 'show_stock' 
+  | 'show_description' 
+  | 'show_category' 
+  | 'show_ipn' 
+  | 'show_location' 
+  | 'show_supplier' 
+  | 'show_manufacturer' 
+  | 'show_notes' 
+  | 'show_buttons' 
+  | 'show_parameters' 
+  | 'show_stock_status_border' 
+  | 'show_stock_status_colors' 
+  | 'show_related_parts' 
+  | 'show_part_details_component' 
+  | 'show_stock_status_border_for_templates' 
+  | 'show_buttons_for_variants' 
+  | 'show_part_details_component_for_variants' 
+  | 'show_image_for_variants' 
+  | 'show_stock_for_variants' 
+  | 'show_name_for_variants';
+
+// Now, use a mapped type for DisplayConfig
+export type DisplayConfig = {
+  [K in DisplayConfigKey]?: boolean | ConditionalVisibility;
+};
 
 // Renamed from CustomButton to CustomAction, added confirmation fields
 export interface CustomAction {
@@ -318,6 +340,12 @@ export interface VisualModifiers {
     showSection?: 'show' | 'hide';
     priority?: 'high' | 'medium' | 'low';
     isVisible?: boolean;
+    // NEW: Thumbnail-specific styling effects
+    thumbnailStyle?: {
+      filter?: string; // e.g., 'grayscale(100%)', 'blur(5px)'
+      opacity?: number;
+    };
+    customClasses?: string[];
 }
 
 export interface HaEntityPickerEntity {
@@ -327,6 +355,20 @@ export interface HaEntityPickerEntity {
         friendly_name?: string;
         items?: any[];
     };
+    type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action' | 'set_thumbnail_style';
+    targetElement?: string; // CSS selector for custom elements OR a predefined key for standard card areas (e.g., 'part_image_container', 'part_name_text')
+    targetDisplayKey?: DisplayConfigKey; // NEW: Specifically for type 'set_visibility' to target a standard display element (e.g., 'show_name')
+    // For set_visibility
+    isVisible?: boolean;
+    // For set_style
+    styleProperty?: string; // e.g., 'backgroundColor', 'border', 'color'
+    styleValue?: string;
+    // For set_thumbnail_style (NEW)
+    thumbnailFilter?: string; // e.g., 'grayscale(100%) blur(2px)'
+    thumbnailOpacity?: number; // e.g., 0.5
+    // For call_ha_service
+    service?: string;
+    service_data?: Record<string, any>;
 }
 
 // Enums / Type Aliases
@@ -384,22 +426,34 @@ export interface ProcessedCondition {
 // --- Conditional Logic Structures ---
 export interface EffectDefinition {
   id: string; // Unique ID for this specific effect
-  type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action';
-  targetElement?: string; // CSS selector or predefined element key (e.g., 'part_image', 'part_name_text')
+  type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action' | 'set_thumbnail_style' | 'animate_style';
+  targetElement?: string; // CSS selector for custom elements OR a predefined key for standard card areas (e.g., 'part_image_container', 'part_name_text')
+  targetDisplayKey?: DisplayConfigKey; // NEW: Specifically for type 'set_visibility' to target a standard display element (e.g., 'show_name')
   targetPartPks?: number[] | string; // NEW: Which parts this specific effect applies to (e.g., [1,2], "all_loaded", "1,2,3")
   // For set_visibility
   isVisible?: boolean;
   // For set_style
   styleProperty?: string; // e.g., 'backgroundColor', 'border', 'color'
   styleValue?: string;
+  // For animate_style
+  animation?: {
+    animate?: any;
+    transition?: any;
+    whileHover?: any;
+    whileTap?: any;
+  };
+  // For set_thumbnail_style (NEW)
+  thumbnailFilter?: string; // e.g., 'grayscale(100%) blur(2px)'
+  thumbnailOpacity?: number; // e.g., 0.5
   // For call_ha_service
   service?: string;
   service_data?: Record<string, any>;
   // For trigger_custom_action
   customActionId?: string; // ID of a CustomAction defined in the Interactions section
+  preset?: string; // NEW: To store the name of the preset, e.g., "shake"
 }
 
-export interface RuleEffectPair {
+export interface LogicPair {
   id: string; // Unique ID for this specific rule-effect pairing
   name?: string; // Optional user-friendly name for this pair in the UI
   conditionRules: RuleGroupType; // The "IF" part (from React QueryBuilder) for this pair
@@ -409,7 +463,7 @@ export interface RuleEffectPair {
 export interface ConditionalLogicItem {
   id: string; // Unique ID for this logic block
   name?: string; // User-friendly name for the logic block in the UI
-  logicPairs: RuleEffectPair[]; // Array of independent "IF condition THEN effects" pairs
+  logicPairs: LogicPair[]; // Array of independent "IF condition THEN effects" pairs
 }
 
 // --- Conditional Logic Config (for react-querybuilder integration) ---
@@ -639,7 +693,7 @@ export interface InventreeItem {
 
   // Other common fields
   link?: string | null; 
-  notes?: string | null;
+  notes?: string | null; 
   parameters?: ParameterDetail[] | null; // Use ParameterDetail defined above
   
   // Fields that might come from HASS sensors or be added by the card
@@ -764,3 +818,13 @@ export interface ThumbnailOverride { // Added export
     pk: number;
     path: string;
 } 
+
+export type AnimationPreset = {
+  name: string;
+  animation: {
+    animate?: any;
+    transition?: any;
+    whileHover?: any;
+    whileTap?: any;
+  };
+}; 

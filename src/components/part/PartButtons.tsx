@@ -11,9 +11,10 @@ interface PartButtonsProps {
   partItem?: InventreeItem;
   config?: InventreeCardConfig;
   hass?: HomeAssistant;
+  cardInstanceId?: string;
 }
 
-const PartButtons: React.FC<PartButtonsProps> = ({ partItem, config, hass }) => {
+const PartButtons: React.FC<PartButtonsProps> = ({ partItem, config, hass, cardInstanceId }) => {
   const logger = useMemo(() => Logger.getInstance(), []);
 
   const processButtonLabelTemplate = useCallback((template: string, item?: InventreeItem): string => {

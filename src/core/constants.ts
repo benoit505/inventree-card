@@ -1,72 +1,64 @@
-export const CARD_VERSION = '1.0.0';
+import { AnimationPreset } from '../types';
+
+export const CARD_VERSION = '2.0.0';
 export const CARD_NAME = 'inventree-card';
 export const CARD_TYPE = 'inventree-card';
 export const EDITOR_NAME = 'inventree-card-editor';
 
 // Default configuration for the card
-export const DEFAULT_CONFIG: Record<string, any> = {
-    type: `custom:${CARD_NAME}`,
-    entity: '',
-    view_type: 'detail',
-    selected_entities: [],
-    display: {
-        show_header: true,
-        show_image: true,
-        show_name: true,
-        show_stock: true,
-        show_description: false,
-        show_category: false,
-        show_stock_status_border: true,
-        show_stock_status_colors: true,
-        show_buttons: true
-    },
-    direct_api: {
-        enabled: false,
-        url: '',
-        api_key: '',
-        method: 'websocket'
-    }
-};
+// This is a legacy object and is now deprecated.
+// The canonical source of truth for default configuration is `DEFAULT_CONFIG` in `src/core/settings.ts`.
+// export const DEFAULT_CONFIG: Record<string, any> = { ... };
 
 // Editor schema for configuration
-export const SCHEMA = [
-    {
-        name: "entity",
-        required: true,
-        selector: { 
-            entity: {
-                domain: ["sensor"],
-                multiple: false
-            }
-        }
-    },
-    {
-        name: "view_type",
-        selector: {
-            select: {
-                options: [
-                    { value: "detail", label: "Detail" },
-                    { value: "grid", label: "Grid" },
-                    { value: "list", label: "List" },
-                    { value: "parts", label: "Parts" },
-                    { value: "variants", label: "Variants" },
-                    { value: "base", label: "Base Layout" },
-                    { value: "debug", label: "Data Flow Debug" }
-                ],
-                mode: "dropdown"
-            }
-        }
-    },
-    {
-        name: "selected_entities",
-        selector: {
-            entity: {
-                domain: ["sensor"],
-                multiple: true
-            }
-        }
-    }
-];
+// This is a legacy object and is now deprecated.
+// The editor now dynamically builds its interface based on the configuration state.
+// export const SCHEMA = [ ... ];
 
 // Import settings schema directly if needed elsewhere
 // export { SETTINGS_SCHEMA } from './settings';
+
+export const ANIMATION_PRESETS: { [key: string]: AnimationPreset } = {
+  shake: {
+    name: 'Shake',
+    animation: {
+      animate: {
+        x: [0, -5, 5, -5, 5, 0],
+      },
+      transition: {
+        duration: 0.5,
+        ease: 'easeInOut',
+        repeat: Infinity,
+        repeatDelay: 1,
+      },
+    },
+  },
+  pulse: {
+    name: 'Pulse',
+    animation: {
+      animate: {
+        scale: [1, 1.05, 1],
+      },
+      transition: {
+        duration: 1.5,
+        ease: 'easeInOut',
+        repeat: Infinity,
+      },
+    },
+  },
+  highlight: {
+    name: 'Highlight',
+    animation: {
+      animate: {
+        // This is a placeholder; a real highlight would likely be
+        // a style effect, but we include it for UI consistency.
+        opacity: [1, 0.7, 1],
+      },
+      transition: {
+        duration: 1,
+        ease: 'easeInOut',
+        repeat: Infinity,
+      },
+    },
+  },
+};

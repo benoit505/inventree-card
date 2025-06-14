@@ -7,6 +7,7 @@ import { RootState } from '../../store';
 import { ThunkDispatch } from 'redux-thunk';
 import { AnyAction } from 'redux';
 import { Logger } from '../../utils/logger';
+import { useElementDisplayStatus } from '../../hooks/useElementDisplayStatus';
 
 import { selectLocatingPartId, locatePartById } from '../../store/slices/partsSlice';
 import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
@@ -174,6 +175,8 @@ const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts, cardInst
     const parameterActionsForPart = parameterConfigFromProps?.actions || [];
     const isCurrentlyLocating = locatingPartId === partId;
 
+    const shouldShowParametersSection = useElementDisplayStatus(cardInstanceId, 'show_parameters', config?.display);
+
     const itemContainerStyle = getItemContainerStyle(visualModifiers, viewMode, config);
     const itemTextStyle = getItemTextStyle(visualModifiers);
 
@@ -205,11 +208,11 @@ const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts, cardInst
             <div className={viewMode === 'grid' ? "part-info" : "list-item-info"} style={{ ...itemTextStyle, flexGrow: 1, textAlign: viewMode === 'grid' ? 'center' : 'left' }}>
                 {displayConfig.show_name && <div className="part-name" style={{ fontWeight: 'bold' }}>{part.name}</div>}
                 {displayConfig.show_stock && <div className="part-stock">Stock: {part.in_stock} {part.units || ''}</div>}
-                {displayConfig.show_parameters && (
+                {shouldShowParametersSection && (
                   <PartParametersView 
                     partId={part.pk} 
                     config={config} 
-                    parametersDisplayEnabled={displayConfig.show_parameters} 
+                    parametersDisplayEnabled={shouldShowParametersSection} 
                   />
                 )}
             </div>

@@ -31,7 +31,7 @@ import { inventreeApiService } from '../../services/inventree-api-service'; // I
 // } from '../slices/parametersSlice';
 
 // ADD: Import selectAllPartIds from partsSlice
-import { selectAllPartIds, selectAllParts } from '../slices/partsSlice'; 
+import { selectCombinedParts } from '../slices/partsSlice'; 
 // Remove the placeholder/import for selectPrimaryPartId
 // const selectPrimaryPartId = (state: RootState): number | null => { ... };
 
@@ -204,8 +204,8 @@ export const fetchConfiguredParameters = createAsyncThunk<
       return;
     }
 
-    const allLoadedPartsMap = state.parts.partsById; 
-    const allLoadedPartIds = Object.keys(allLoadedPartsMap).map(pk => parseInt(pk, 10));
+    const allLoadedParts = selectCombinedParts(state);
+    const allLoadedPartIds = allLoadedParts.map(p => p.pk);
 
     if (!parametersToFetchConfig || parametersToFetchConfig.length === 0) {
       logger.log('ParameterThunk', 'No inventreeParametersToFetch configured. Skipping proactive parameter fetch.');

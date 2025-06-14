@@ -94,4 +94,9 @@ export const selectActiveComponentCount = (state: RootState) =>
     .filter((comp): comp is ComponentRecord => (comp as ComponentRecord).isActive !== undefined)
     .filter(comp => comp.isActive).length;
 
+export const selectActiveCardInstanceIds = (state: RootState): string[] =>
+  Object.entries(state.components.registeredComponents)
+    .filter(([, record]) => record.isActive)
+    .map(([id]) => id);
+
 export default componentSlice.reducer; 

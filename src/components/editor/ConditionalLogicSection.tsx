@@ -8,7 +8,7 @@ import {
     ConditionalLogicConfig, // Imported from types.d.ts
     ConditionalLogicItem,   // Imported from types.d.ts
     EffectDefinition,       // Imported for future use
-    RuleEffectPair,         // <<<< ADDED IMPORT
+    LogicPair,              // <<<< CORRECTED IMPORT
     RuleGroupType,         // Our internal, stricter RuleGroupType
     RuleType             // Our internal RuleType
 } from '../../types';
@@ -190,8 +190,8 @@ const initialInternalRuleGroup: RuleGroupType = {
   not: false,
 };
 
-// NEW: Helper to create a new RuleEffectPair
-const getNewRuleEffectPair = (): RuleEffectPair => ({
+// NEW: Helper to create a new LogicPair
+const getNewLogicPair = (): LogicPair => ({
   id: uuidv4(),
   name: '', // Or perhaps "New Rule Pair 1"
   conditionRules: { ...initialInternalRuleGroup, id: uuidv4() }, // Each pair gets its own rule group
@@ -242,7 +242,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
         name: pair.name || '',
         conditionRules: pair.conditionRules || { ...initialInternalRuleGroup, id: uuidv4() },
         effects: Array.isArray(pair.effects) ? pair.effects.map(effect => ({...effect, id: effect.id || uuidv4()})) : []
-      })) : [getNewRuleEffectPair()],
+      })) : [getNewLogicPair()],
     }));
     setDefinedLogics(sanitizedLogics);
   }, [conditionalLogicConfig?.definedLogics]);
@@ -251,7 +251,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     const newLogicItem: ConditionalLogicItem = {
       id: uuidv4(),
       name: `New Logic Block ${definedLogics.length + 1}`,
-      logicPairs: [getNewRuleEffectPair()],
+      logicPairs: [getNewLogicPair()],
     };
     const newDefinedLogics = [...definedLogics, newLogicItem];
     setDefinedLogics(newDefinedLogics);
@@ -272,10 +272,10 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     onConfigChanged({ definedLogics: newDefinedLogics });
   };
 
-  const handleAddRuleEffectPair = (logicItemId: string) => {
+  const handleAddLogicPair = (logicItemId: string) => {
     const newDefinedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
-        return { ...item, logicPairs: [...item.logicPairs, getNewRuleEffectPair()] };
+        return { ...item, logicPairs: [...item.logicPairs, getNewLogicPair()] };
       }
       return item;
     });
@@ -283,27 +283,14 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     onConfigChanged({ definedLogics: newDefinedLogics });
   };
 
-  const handleRuleEffectPairNameChange = (logicItemId: string, pairId: string, newName: string) => {
+  const handleLogicPairNameChange = (logicItemId: string, pairId: string, newName: string) => {
     const newDefinedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
-          logicPairs: item.logicPairs.map(pair => pair.id === pairId ? { ...pair, name: newName } : pair)
-        };
-      }
-      return item;
-    });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
-  };
-  
-  const handleRuleEffectPairQueryChange = (logicItemId: string, pairId: string, queryFromBuilder: RQBRuleGroupType) => {
-    const internalRuleGroup = transformToInternalRuleGroup(queryFromBuilder);
-    const newDefinedLogics = definedLogics.map(item => {
-      if (item.id === logicItemId) {
-        return {
-          ...item,
-          logicPairs: item.logicPairs.map(pair => pair.id === pairId ? { ...pair, conditionRules: internalRuleGroup } : pair)
+          logicPairs: item.logicPairs.map(pair =>
+            pair.id === pairId ? { ...pair, name: newName } : pair
+          )
         };
       }
       return item;
@@ -312,8 +299,31 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     onConfigChanged({ definedLogics: newDefinedLogics });
   };
 
-  const handleRuleEffectPairAddEffect = (logicItemId: string, pairId: string) => {
-    const newEffect: EffectDefinition = { id: uuidv4(), type: 'set_style', styleProperty: 'highlight', styleValue: 'yellow' };
+  const handleLogicPairQueryChange = (logicItemId: string, pairId: string, queryFromBuilder: RQBRuleGroupType) => {
+    const newQuery = transformToInternalRuleGroup(queryFromBuilder);
+    const newDefinedLogics = definedLogics.map(item => {
+      if (item.id === logicItemId) {
+        return {
+          ...item,
+          logicPairs: item.logicPairs.map(pair =>
+            pair.id === pairId ? { ...pair, conditionRules: newQuery } : pair
+          )
+        };
+      }
+      return item;
+    });
+    setDefinedLogics(newDefinedLogics);
+    onConfigChanged({ definedLogics: newDefinedLogics });
+  };
+
+  const handleLogicPairAddEffect = (logicItemId: string, pairId: string) => {
+    const newEffect: EffectDefinition = {
+      id: uuidv4(),
+      type: 'set_style', // Default type
+      styleProperty: 'highlight',
+      styleValue: '#FFFF00',
+      targetPartPks: 'all_loaded'
+    };
     const newDefinedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
@@ -332,14 +342,19 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     onConfigChanged({ definedLogics: newDefinedLogics });
   };
 
-  const handleRuleEffectPairUpdateEffect = (logicItemId: string, pairId: string, updatedEffect: EffectDefinition) => {
+  const handleLogicPairUpdateEffect = (logicItemId: string, pairId: string, updatedEffect: EffectDefinition) => {
     const newDefinedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
           logicPairs: item.logicPairs.map(pair => {
             if (pair.id === pairId) {
-              return { ...pair, effects: pair.effects.map(eff => eff.id === updatedEffect.id ? updatedEffect : eff) };
+              return {
+                ...pair,
+                effects: pair.effects.map(effect =>
+                  effect.id === updatedEffect.id ? updatedEffect : effect
+                )
+              };
             }
             return pair;
           })
@@ -351,14 +366,14 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     onConfigChanged({ definedLogics: newDefinedLogics });
   };
 
-  const handleRuleEffectPairRemoveEffect = (logicItemId: string, pairId: string, effectId: string) => {
+  const handleLogicPairRemoveEffect = (logicItemId: string, pairId: string, effectId: string) => {
     const newDefinedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
           logicPairs: item.logicPairs.map(pair => {
             if (pair.id === pairId) {
-              return { ...pair, effects: pair.effects.filter(eff => eff.id !== effectId) };
+              return { ...pair, effects: pair.effects.filter(effect => effect.id !== effectId) };
             }
             return pair;
           })
@@ -370,7 +385,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
     onConfigChanged({ definedLogics: newDefinedLogics });
   };
 
-  const handleRemoveRuleEffectPair = (logicItemId: string, pairId: string) => {
+  const handleRemoveLogicPair = (logicItemId: string, pairId: string) => {
     const newDefinedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return { ...item, logicPairs: item.logicPairs.filter(pair => pair.id !== pairId) };
@@ -415,35 +430,35 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
                 <input
                   type="text"
                   value={pair.name}
-                  onChange={(e) => handleRuleEffectPairNameChange(logicItem.id, pair.id, e.target.value)}
+                  onChange={(e) => handleLogicPairNameChange(logicItem.id, pair.id, e.target.value)}
                   placeholder={`Rule-Effect Pair ${pairIndex + 1} Name (Optional)`}
                   style={{ ...commonStyles.input, width: 'calc(100% - 130px)', fontSize: '0.9em' }}
                 />
-                <button onClick={() => handleRemoveRuleEffectPair(logicItem.id, pair.id)} style={{ ...commonStyles.button, ...commonStyles.removeButton, fontSize: '0.8em', padding: '6px 10px' }}>Remove Pair</button>
+                <button onClick={() => handleRemoveLogicPair(logicItem.id, pair.id)} style={{ ...commonStyles.button, ...commonStyles.removeButton, fontSize: '0.8em', padding: '6px 10px' }}>Remove Pair</button>
               </div>
               
               <div style={commonStyles.subHeader}>IF (Conditions for this Pair):</div>
               <QueryBuilder
                 fields={dynamicFields}
                 query={pair.conditionRules as RQBRuleGroupType}
-                onQueryChange={(q) => handleRuleEffectPairQueryChange(logicItem.id, pair.id, q)}
+                onQueryChange={(q) => handleLogicPairQueryChange(logicItem.id, pair.id, q)}
               />
               
               <div style={{ ...commonStyles.subHeader, marginTop: '15px' }}>THEN (Effects for this Pair):</div>
               <EffectsConfiguration
                 effects={pair.effects}
                 logicBlockId={pair.id}
-                onAddEffect={() => handleRuleEffectPairAddEffect(logicItem.id, pair.id)}
+                onAddEffect={() => handleLogicPairAddEffect(logicItem.id, pair.id)}
                 onUpdateEffect={(effectToUpdate: EffectDefinition) => 
-                  handleRuleEffectPairUpdateEffect(logicItem.id, pair.id, effectToUpdate)
+                  handleLogicPairUpdateEffect(logicItem.id, pair.id, effectToUpdate)
                 }
                 onRemoveEffect={(effectId: string) => 
-                  handleRuleEffectPairRemoveEffect(logicItem.id, pair.id, effectId)
+                  handleLogicPairRemoveEffect(logicItem.id, pair.id, effectId)
                 }
               />
             </div>
           ))}
-          <button onClick={() => handleAddRuleEffectPair(logicItem.id)} style={{...commonStyles.button, backgroundColor: '#2196F3', color: 'white', marginTop: '15px' }}>Add Rule-Effect Pair to Block</button>
+          <button onClick={() => handleAddLogicPair(logicItem.id)} style={{...commonStyles.button, backgroundColor: '#2196F3', color: 'white', marginTop: '15px' }}>Add Rule-Effect Pair to Block</button>
         </div>
       ))}
       <button onClick={handleAddLogicBlock} style={commonStyles.addButton}>Add New Conditional Logic Block</button>

@@ -5,7 +5,9 @@ import {
     RuleGroupType, 
     // RuleType, // No longer directly needed for top-level iteration if evaluateExpression handles RuleGroupType
     EffectDefinition, 
-    // InventreeItem, // No longer directly needed here
+    InventreeItem,
+    GlobalContext,
+    LogicPair,
     // ParameterDetail // No longer directly needed here
 } from '../types';
 import { 
@@ -13,12 +15,13 @@ import {
     setConditionalPartEffectsBatch, 
     clearConditionalPartEffectsForCard
 } from '../store/slices/visualEffectsSlice';
-// import { 
-//     selectAllGenericHaStates // No longer directly needed here, evaluateExpression handles context
-// } from '../store/slices/genericHaStateSlice';
+import { selectAllGenericHaStates } from '../store/slices/genericHaStateSlice';
 // import { selectApiConfig } from '../store/slices/apiSlice'; // No longer directly needed here
 import { evaluateExpression } from '../utils/evaluateExpression';
+import { selectCombinedParts } from '../store/slices/partsSlice';
+import { ANIMATION_PRESETS } from './constants'; // Import presets
 
+// Re-added comment to force re-evaluation of types
 const logger = Logger.getInstance();
 
 // Helper to map styleProperty from EffectDefinition to VisualEffect keys
@@ -51,10 +54,11 @@ export class ConditionalEffectsEngine {
 
     public async evaluateAndApplyEffects(
         cardInstanceId: string, 
-        forceReevaluation: boolean = false, // forceReevaluation might be used for cache busting in evaluateExpression if implemented
+        forceReevaluation: boolean = false, // Not used in this implementation, but kept for API consistency
         logicItemsToEvaluate?: ConditionalLogicItem[]  
     ): Promise<void> {
-        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED. cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItemsToEvaluate}, Count: ${logicItemsToEvaluate?.length}`);
+        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED (part-first). cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItemsToEvaluate}, Count: ${logicItemsToEvaluate?.length}`);
+        console.log(`[ConditionalEffectsEngine] Starting evaluation for card: ${cardInstanceId}`);
 
         const state = this.getState();
 
@@ -65,61 +69,73 @@ export class ConditionalEffectsEngine {
         }
 
         const effectsToApply: Record<number, VisualEffect> = {};
-        const allPartsById = state.parts.partsById; // For resolving 'all_loaded' targetPartPks
+        const allParts = selectCombinedParts(state);
+        const haStates = selectAllGenericHaStates(state);
+        const globalContext: GlobalContext = { ha_states: haStates };
 
-        for (const logicItem of logicItemsToEvaluate) {
-            this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Processing logic item: ${logicItem.id} (${logicItem.name || 'Unnamed'})`, { data: logicItem });
+        console.log('[ConditionalEffectsEngine] Evaluation context:', {
+            partCount: allParts.length,
+            logicItemCount: logicItemsToEvaluate.length,
+        });
 
-            for (const pair of logicItem.logicPairs) {
-                this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}]   Processing pair: ${pair.id} (${pair.name || 'Unnamed'}) within logic item ${logicItem.id}`, { data: pair });
-                let conditionResult = false;
-                try {
-                    // evaluateExpression now takes the ruleGroup, a potential part context (null for global/non-part-specific rules), the full state, and logger.
-                    // The part context is null here because we are evaluating the rule group for the pair, 
-                    // and then applying effects to potentially many parts.
-                    // If a rule within the group is part-specific (e.g. `part.name === "Resistor"`), evaluateExpression should handle it.
-                    conditionResult = evaluateExpression(pair.conditionRules, null, state, this.logger);
-                    this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}]     Pair ${pair.id} condition result: ${conditionResult}`);
-                } catch (e: any) {
-                    this.logger.error('ConditionalEffectsEngine', `[CEE ${cardInstanceId}]     ERROR evaluating condition for pair ${pair.id}: ${e.message}`, {data: {stack: e.stack, ruleGroup: pair.conditionRules}});
-                    conditionResult = false; 
-                }
+        // --- "Part-First" Architecture ---
+        // 1. Iterate through each part.
+        for (const part of allParts) {
+            effectsToApply[part.pk] = {}; // Initialize an empty effects object for the part.
+            
+            // 2. For each part, iterate through all logic rules.
+            for (const logicItem of logicItemsToEvaluate) {
+                for (const pair of logicItem.logicPairs) {
+                    let conditionResult = false;
+                    try {
+                        // --- NEW LOGIC: Check for part-specific rules ---
+                        let isRulePartSpecific = false;
+                        let specificPartId = -1;
 
-                if (conditionResult) {
-                    this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}]     Condition MET for pair: ${pair.id}. Applying ${pair.effects.length} effects.`);
-                    for (const effect of pair.effects) {
-                        const targetPks = new Set<number>();
-                        if (effect.targetPartPks === 'all_loaded') {
-                            Object.keys(allPartsById).forEach(pkStr => targetPks.add(Number(pkStr)));
-                        } else if (Array.isArray(effect.targetPartPks)) {
-                            effect.targetPartPks.forEach(pk => targetPks.add(Number(pk)));
-                        } else if (typeof effect.targetPartPks === 'string' && effect.targetPartPks.length > 0) {
-                            effect.targetPartPks.split(',').forEach(pkStr => {
-                                const numPk = Number(pkStr.trim());
-                                if (!isNaN(numPk)) targetPks.add(numPk);
-                            });
-                        } else {
-                            // If an effect has no specific targetPartPks, it might be a global effect (e.g., calling an HA service not tied to a part).
-                            // For visual effects on parts, targetPartPks would usually be defined.
-                            // If it's a visual effect without targetPartPks, it effectively targets nothing in this loop.
-                            this.logger.warn('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Effect in pair ${pair.id} (logic item ${logicItem.id}) has no targetPartPks. Visual effects will not be applied to specific parts unless target is defined.`, {data: effect});
-                            // For non-visual effects like 'call_ha_service', this might be fine.
-                            // TODO: Handle non-part-specific effects if effect.type demands it (e.g. call_ha_service, trigger_custom_action without targetPartPks)
-                            if (effect.type === 'set_style' || effect.type === 'set_visibility') {
-                                if (!effect.targetPartPks) continue; // Skip visual effects if no parts targeted
+                        const findSpecificPartId = (rules: any) => {
+                            for (const rule of rules) {
+                                if (rule.field && typeof rule.field === 'string') {
+                                    const match = rule.field.match(/^part_(\d+)_/);
+                                    if (match && match[1]) {
+                                        isRulePartSpecific = true;
+                                        specificPartId = parseInt(match[1], 10);
+                                        return; // Found it, stop searching
+                                    }
+                                }
+                                if (rule.rules) {
+                                    findSpecificPartId(rule.rules);
+                                    if (isRulePartSpecific) return; // Propagate the find
+                                }
                             }
-                        }
-
-                        if (targetPks.size === 0 && (effect.type === 'set_style' || effect.type === 'set_visibility')) {
-                            this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] No specific target PKs resolved for visual effect in pair ${pair.id}. Skipping.`, {data: effect});
-                            continue;
-                        }
+                        };
                         
-                        targetPks.forEach(partId => {
-                            if (!effectsToApply[partId]) {
-                                effectsToApply[partId] = {};
-                            }
-                            const currentPartVisualEffects = effectsToApply[partId];
+                        if (pair.conditionRules?.rules) {
+                           findSpecificPartId(pair.conditionRules.rules);
+                        }
+
+                        // If the rule is for a specific part, and it's not the current part, skip evaluation.
+                        if (isRulePartSpecific && specificPartId !== part.pk) {
+                            conditionResult = false;
+                        } else {
+                            // 3. Evaluate the condition WITH the current part as context. This fixes the "partContext Lie".
+                            conditionResult = evaluateExpression(pair.conditionRules, part, state, this.logger);
+                        }
+                    } catch (e: any) {
+                        this.logger.error('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] ERROR evaluating condition for pair ${pair.id} on part ${part.pk}: ${e.message}`, {data: {stack: e.stack, ruleGroup: pair.conditionRules}});
+                        conditionResult = false;
+                    }
+
+                    // 4. If the condition is true for this part, apply the effects.
+                    if (conditionResult) {
+                        this.logger.log('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Condition MET for pair ${pair.id} on part ${part.pk}. Applying ${pair.effects.length} effects.`);
+                        console.log(`[ConditionalEffectsEngine] Part ${part.pk} met condition for logic pair ${pair.id}`);
+
+                        for (const effect of pair.effects) {
+                            // The targetPartPks check is now redundant for part-specific visual effects, as we are already in a part's loop.
+                            // However, we can keep it as an additional filter if needed, or for non-visual effects that might still target other parts.
+                            // For simplicity in this refactor, we assume the effect applies to the current `part`.
+
+                            const currentPartVisualEffects = effectsToApply[part.pk];
 
                             switch (effect.type) {
                                 case 'set_visibility':
@@ -130,35 +146,49 @@ export class ConditionalEffectsEngine {
                                         const visualEffectKey = mapStylePropertyToVisualEffectKey(effect.styleProperty);
                                         if (visualEffectKey) {
                                             (currentPartVisualEffects as any)[visualEffectKey] = effect.styleValue;
-                                        } else {
-                                            this.logger.warn('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Unhandled styleProperty: ${effect.styleProperty} in pair ${pair.id}`);
                                         }
                                     }
                                     break;
-                                // TODO: Handle other effect types like 'call_ha_service', 'trigger_custom_action' here if they are to be triggered by this engine.
-                                // For now, this engine focuses on visual effects on parts.
+                                case 'animate_style':
+                                    // NEW: Handle presets first
+                                    if (effect.preset && ANIMATION_PRESETS[effect.preset]) {
+                                        currentPartVisualEffects.animation = {
+                                            ...(currentPartVisualEffects.animation || {}),
+                                            ...ANIMATION_PRESETS[effect.preset].animation,
+                                        };
+                                    } 
+                                    // Keep support for legacy raw animation for now
+                                    else if (effect.animation) { 
+                                        currentPartVisualEffects.animation = {
+                                            ...(currentPartVisualEffects.animation || {}),
+                                            ...(effect.animation as any),
+                                        };
+                                    }
+                                    break;
+                                case 'set_thumbnail_style':
+                                    if (!currentPartVisualEffects.thumbnailStyle) {
+                                        currentPartVisualEffects.thumbnailStyle = {};
+                                    }
+                                    if (effect.thumbnailFilter) {
+                                        currentPartVisualEffects.thumbnailStyle.filter = effect.thumbnailFilter;
+                                    }
+                                    if (typeof effect.thumbnailOpacity === 'number') {
+                                        currentPartVisualEffects.thumbnailStyle.opacity = effect.thumbnailOpacity;
+                                    }
+                                    break;
                                 default:
-                                    this.logger.warn('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Unhandled effect type for visual application: ${effect.type} in pair ${pair.id}`);
+                                    // Non-visual effects would be handled here or in a separate engine.
                                     break;
                             }
-                            this.logger.debug('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Visual effect applied for part ${partId} from pair ${pair.id}.`, {data: {effect, currentPartEffects: JSON.parse(JSON.stringify(currentPartVisualEffects))}});
-                        });
-                    }
-                } // End of if (conditionResult)
-            } // End of loop over logicItem.logicPairs
-        } // End of loop over logicItemsToEvaluate
+                        }
+                    } // End if (conditionResult)
+                } // End loop logicPairs
+            } // End loop logicItems
+        } // End loop allParts
 
-        this.logger.debug('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, {
-            data: JSON.parse(JSON.stringify(effectsToApply)) 
-        });
-        const hasEffectsToApply = Object.keys(effectsToApply).length > 0;
-        this.logger.debug('ConditionalEffectsEngine', `[DEBUG] hasEffectsToApply for card ${cardInstanceId}: ${hasEffectsToApply}`);
+        this.logger.debug('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, effectsToApply);
 
-        this.logger.log('ConditionalEffectsEngine', `Dispatching setConditionalPartEffectsBatch for card ${cardInstanceId}`, {
-            data: { effectsCount: Object.keys(effectsToApply).length }
-        });
-
-        // Always dispatch, even if empty, to clear previous effects if no conditions are met this time.
+        console.log(`[ConditionalEffectsEngine] Evaluation complete for card ${cardInstanceId}. Final effects to apply:`, effectsToApply);
         this.dispatch(setConditionalPartEffectsBatch({ cardInstanceId: cardInstanceId, effectsMap: effectsToApply }));
         
         this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects END for cardInstanceId: ${cardInstanceId}`);

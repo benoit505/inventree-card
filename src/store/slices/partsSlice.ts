@@ -1,17 +1,30 @@
-import { createSlice, createAsyncThunk, PayloadAction, ActionReducerMapBuilder, UnknownAction, ThunkDispatch } from '@reduxjs/toolkit';
-import { InventreeItem, WLEDConfig, EnhancedStockItemEventData, ParameterDetail } from '../../types';
+import { createSlice, createAsyncThunk, PayloadAction, ActionReducerMapBuilder, UnknownAction } from '@reduxjs/toolkit';
+import {
+  InventreeItem,
+  WLEDConfig,
+  EnhancedStockItemEventData,
+  ParameterDetail,
+  InventreeParameterFetchConfig,
+  ConditionalLogicItem,
+  LogicPair,
+  InventreeCardConfig,
+} from '../../types';
 import { HomeAssistant } from 'custom-card-helpers';
 import { RootState } from '../index';
 import { WLEDService } from '../../services/wled-service';
 import { createSelector } from 'reselect';
 import { Logger } from '../../utils/logger';
 import { inventreeApiService } from '../../services/inventree-api-service';
+import { inventreeApi } from '../apis/inventreeApi';
+import { fetchPartsByPks } from '../thunks/systemThunks';
+import { evaluateAndApplyEffectsThunk } from '../thunks/conditionalLogicThunks';
 
 const logger = Logger.getInstance();
 
 export interface PartsState {
   partsById: Record<number, InventreeItem>;
   partsByEntity: Record<string, number[]>;
+  loadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
   loading: boolean;
   error: string | null;
   locatingPartId: number | null;
@@ -22,6 +35,7 @@ export interface PartsState {
 const initialState: PartsState = {
   partsById: {},
   partsByEntity: {},
+  loadingStatus: {},
   loading: false,
   error: null,
   locatingPartId: null,
@@ -68,7 +82,7 @@ export const locatePartById = createAsyncThunk<
   async ({ partId, hass }, { getState, dispatch, rejectWithValue }) => {
     const state = getState();
     const part = state.parts.partsById[partId];
-    const wledConfigFromState = state.config.resolvedConfig?.services?.wled;
+    const wledConfigFromState = state.config.config?.services?.wled;
 
     if (!part) {
       logger.warn('partsSlice', `Part with ID ${partId} not found for location.`);
@@ -134,8 +148,6 @@ const partsSlice = createSlice({
   initialState,
   reducers: {
     setParts(state: PartsState, action: PayloadAction<{ entityId: string, parts: InventreeItem[] }>) {
-      console.log('[partsSlice] setParts PAYLOAD:', JSON.stringify(action.payload, null, 2));
-      
       const { entityId, parts } = action.payload;
       const partIds: number[] = [];
       parts.forEach(part => {
@@ -148,19 +160,26 @@ const partsSlice = createSlice({
       state.partsByEntity[entityId] = partIds;
       logger.log('partsSlice', `Set ${parts.length} parts for entity '${entityId}'. Part IDs: [${partIds.join(', ')}]`, { level: 'debug' });
     },
-    addParts(state: PartsState, action: PayloadAction<InventreeItem[]>) {
-      const newParts = action.payload;
-      newParts.forEach(part => {
-        if (!part.pk) {
-          logger.warn('partsSlice', 'Attempted to add a part without a PK.', { partData: part });
-          return;
+    removePartsForEntity(state: PartsState, action: PayloadAction<{ entityId: string }>) {
+      const { entityId } = action.payload;
+      const partIdsToRemove = state.partsByEntity[entityId];
+
+      if (!partIdsToRemove) {
+        logger.warn('partsSlice:removePartsForEntity', `Attempted to remove non-existent entity: ${entityId}`);
+        return;
+      }
+
+      delete state.partsByEntity[entityId];
+      logger.log('partsSlice:removePartsForEntity', `Removed entity ${entityId} from partsByEntity.`);
+
+      // Garbage Collection
+      const allRemainingPartIds = new Set<number>(Object.values(state.partsByEntity).flat());
+      
+      partIdsToRemove.forEach(partId => {
+        if (!allRemainingPartIds.has(partId)) {
+          delete state.partsById[partId];
+          logger.log('partsSlice:removePartsForEntity', `Garbage collected part ${partId} from partsById as it is no longer referenced.`);
         }
-        state.partsById[part.pk] = {
-          ...state.partsById[part.pk],
-          ...part,
-          source: state.partsById[part.pk]?.source || 'api:direct_pk',
-        };
-        logger.log('partsSlice', `Added/Updated part ${part.pk} from direct PK fetch.`, { level: 'debug' });
       });
     },
     updatePart(state: PartsState, action: PayloadAction<InventreeItem>) {
@@ -208,7 +227,7 @@ const partsSlice = createSlice({
         }
         logger.log('partsSlice', `Part ${partId} stock updated to ${part.in_stock} via WebSocket.`, { level: 'debug', otherStockData });
       } else {
-        logger.warn('partsSlice', `Received WebSocket stock update for unknown part ${partId}. Triggering fetch.`);
+        logger.warn('partsSlice', `Received WebSocket stock update for unknown part ${partId}. Part not in state.`);
       }
     },
     setLocatingPartId(state: PartsState, action: PayloadAction<number | null>) {
@@ -226,6 +245,7 @@ const partsSlice = createSlice({
         }
       })
       .addCase(locatePartById.fulfilled, (state: PartsState, action) => {
+        // No specific state change on fulfillment, timeout is handled in thunk
       })
       .addCase(adjustPartStock.pending, (state: PartsState, action) => {
         const { partId, amount } = action.meta.arg;
@@ -234,6 +254,7 @@ const partsSlice = createSlice({
         const partToUpdate = state.partsById[partId];
         if (partToUpdate) {
            const originalStock = partToUpdate.in_stock;
+           // Ensure in_stock is a number before adding
            partToUpdate.in_stock = (partToUpdate.in_stock ?? 0) + amount;
             logger.log('partsSlice', `Optimistically updated stock for part ${partId} from ${originalStock} to ${partToUpdate.in_stock}`, { level: 'debug' });
         } else {
@@ -248,182 +269,230 @@ const partsSlice = createSlice({
         }
         if (state.adjustingStockPartId === partId) {
           state.adjustingStockPartId = null;
+          state.adjustmentError = null;
         }
-        state.adjustmentError = null;
       })
       .addCase(adjustPartStock.rejected, (state: PartsState, action) => {
-        const rejectedPartId = action.meta.arg.partId;
-        const originalArgs = action.meta.arg;
-
-        state.adjustmentError = action.payload as string || action.error.message || 'Failed to adjust stock';
-        logger.error('partsSlice', `Stock adjustment failed for part ${rejectedPartId}: ${state.adjustmentError}`);
-        
-        const partToRevert = state.partsById[rejectedPartId];
-        if (partToRevert && typeof originalArgs.amount === 'number') {
-             partToRevert.in_stock = (partToRevert.in_stock ?? 0) - originalArgs.amount; 
-             logger.warn('partsSlice', `Reverted optimistic stock update for part ${rejectedPartId}. New reverted stock: ${partToRevert.in_stock}`);
+        const { partId, amount } = action.meta.arg; // Revert optimistic update
+        const partToRevert = state.partsById[partId];
+        if (partToRevert) {
+          partToRevert.in_stock = (partToRevert.in_stock ?? 0) - amount; // Revert the change
         }
-         if (state.adjustingStockPartId === rejectedPartId) {
-           state.adjustingStockPartId = null;
-         }
+        if (state.adjustingStockPartId === partId) {
+          state.adjustingStockPartId = null;
+          state.adjustmentError = action.payload ?? 'Stock adjustment failed.';
+        }
       })
-      .addCase(fetchPartDetails.pending, (state: PartsState, action) => {
-        const partId = action.meta.arg;
-        logger.info('partsSlice', `Fetching details for part ${partId} (pending)...`);
-        state.loading = true;
+      .addCase(fetchPartDetails.pending, (state, action) => {
+        state.loadingStatus[action.meta.arg] = 'loading';
       })
-      .addCase(fetchPartDetails.fulfilled, (state: PartsState, action: PayloadAction<InventreeItem>) => {
-        const fetchedPart = action.payload;
-        logger.info('partsSlice', `Successfully fetched details for part ${fetchedPart.pk}. Updating state.`);
-        state.partsById[fetchedPart.pk] = {
-          ...state.partsById[fetchedPart.pk],
-          ...fetchedPart,
-        };
-        state.loading = false;
+      .addCase(fetchPartDetails.fulfilled, (state, action) => {
+        const part = action.payload;
+        state.loadingStatus[part.pk] = 'succeeded';
+        state.partsById[part.pk] = part;
       })
-      .addCase(fetchPartDetails.rejected, (state: PartsState, action) => {
-        const partId = action.meta.arg;
-        logger.error('partsSlice', `Failed to fetch details for part ${partId}: ${action.payload || action.error.message}`);
-        state.loading = false;
-        state.error = action.payload as string || action.error.message || `Failed to fetch details for part ${partId}`;
-      });
-  },
+      .addCase(fetchPartDetails.rejected, (state, action) => {
+        state.loadingStatus[action.meta.arg] = 'failed';
+      })
+      /*
+      .addCase(fetchPartsByPks.fulfilled, (state, action) => {
+        action.payload.forEach(part => {
+          state.partsById[part.pk] = part;
+          state.loadingStatus[part.pk] = 'succeeded';
+        });
+      })
+      */
+      .addCase(fetchPartsByPks.rejected, (state, action) => {
+        // Handle rejected case if needed
+      })
+      // Placeholder for a generic part fetcher if needed later
+      .addMatcher(
+        (action: UnknownAction) => action.type.startsWith('parts/fetch') && action.type.endsWith('/pending'),
+        (state: PartsState) => {
+          state.loading = true;
+        }
+      )
+      .addMatcher(
+        (action: UnknownAction) => action.type.startsWith('parts/fetch') && (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')),
+        (state: PartsState) => {
+          state.loading = false;
+        }
+      );
+  }
 });
 
 export const {
   setParts,
-  addParts,
+  removePartsForEntity,
   updatePart,
   updatePartStock,
   clearParts,
   registerEntity,
   partStockUpdateFromWebSocket,
-  setLocatingPartId
+  setLocatingPartId,
 } = partsSlice.actions;
 
-export default partsSlice.reducer;
+// =================================================================================
+// SELECTORS
+// This section is being replaced entirely to fix file corruption and implement
+// the correct memoized selectors.
+// =================================================================================
 
-// --- Selectors ---
-
-export const selectPartsByEntityMapping = (state: RootState): Record<string, number[]> => state.parts.partsByEntity;
-export const selectPartsById = (state: RootState): Record<number, InventreeItem> => state.parts.partsById;
-
-export const selectAllPartIds = createSelector(
-    [selectPartsById],
-    (partsById): number[] => Object.keys(partsById).map(Number)
-);
-
-export const selectAllParts = createSelector(
-    [selectPartsById],
-    (partsById): InventreeItem[] => Object.values(partsById)
-);
-
-export const selectPartsForEntities = createSelector(
-  [selectPartsByEntityMapping, selectPartsById, (_: RootState, entityIds: string[]) => entityIds],
-  (partsByEntity, partsById, entityIds): InventreeItem[] => {
-    const relevantPartIds = new Set<number>();
-    entityIds.forEach(entityId => {
-      const partIds = partsByEntity[entityId];
-      if (partIds) {
-        partIds.forEach((id: number) => relevantPartIds.add(id));
-      }
-    });
-
-    const result: InventreeItem[] = [];
-    relevantPartIds.forEach(partId => {
-      const part = partsById[partId];
-      if (part) {
-        result.push(part);
-      }
-    });
-    return result;
-  }
-);
-
-export const selectPartsByEntityId = createSelector(
-  [selectPartsById, selectPartsByEntityMapping, (_: RootState, entityId: string) => entityId],
-  (partsById, partsByEntity, entityId): InventreeItem[] => {
-    const partIds = partsByEntity[entityId] ?? [];
-    return partIds.map((id: number) => partsById[id]).filter((part?: InventreeItem): part is InventreeItem => !!part);
-  }
-);
-
-export const selectPartById = createSelector(
-  [(state: RootState) => state.parts.partsById, (_: RootState, partId: number | null | undefined) => partId],
-  (partsById, partId) => (partId !== null && partId !== undefined ? partsById[partId] : undefined)
-);
+// --- Basic State Accessors ---
 
 export const selectPartsLoading = (state: RootState): boolean => state.parts.loading;
 export const selectPartsError = (state: RootState): string | null => state.parts.error;
-
 export const selectLocatingPartId = (state: RootState): number | null => state.parts.locatingPartId;
 export const selectAdjustingStockPartId = (state: RootState): number | null => state.parts.adjustingStockPartId;
 export const selectAdjustmentError = (state: RootState): string | null => state.parts.adjustmentError;
+export const selectPartLoadingStatus = (state: RootState, partId: number): 'idle' | 'loading' | 'succeeded' | 'failed' => {
+  return state.parts.loadingStatus[partId] || 'idle';
+};
 
-export const selectFilteredParts = createSelector(
-    [selectAllParts],
-    (parts: InventreeItem[]): InventreeItem[] => {
-        return parts;
-    }
-);
+// --- Input Selectors for Memoization ---
 
-export const selectPartsByEntity = createSelector(
-  [
-    (state: RootState) => state.parts.partsById,
-    (state: RootState) => state.parts.partsByEntity,
-    (_: RootState, entityId: string | null | undefined) => entityId,
-  ],
-  (partsById, partsByEntity, entityId: string | null | undefined): InventreeItem[] => {
-    if (!entityId) {
-      return [];
+const selectPartsByIdFromSlice = (state: RootState) => state.parts.partsById;
+const selectPartsByEntity = (state: RootState) => state.parts.partsByEntity;
+const selectConfig = (state: RootState) => state.config.config;
+const selectDefinedLogicItems = (state: RootState) => state.conditionalLogic.definedLogicItems;
+const selectApiQueries = (state: RootState) => state.inventreeApi.queries;
+
+// --- Complex Input Selectors ---
+
+const selectPartsFromApi = createSelector(
+  [selectApiQueries],
+  (queries) => {
+    const allParts: Record<number, InventreeItem> = {};
+    for (const key in queries) {
+      if (key.startsWith('getPart(') && queries[key]?.status === 'fulfilled') {
+        const part = queries[key]?.data as InventreeItem;
+        if (part && part.pk) {
+          // Merge this part with any existing data to ensure we keep the latest info
+          allParts[part.pk] = { ...(allParts[part.pk] || {}), ...part };
+        }
+      }
+      // Also check for parameter data from its own endpoint
+      if (key.startsWith('getPartParameters(') && queries[key]?.status === 'fulfilled') {
+        const params = queries[key]?.data as ParameterDetail[];
+        // Find the partId from the first parameter
+        if (params && params.length > 0) {
+          const partId = params[0].part;
+          if (partId) {
+            // Ensure the part exists before trying to add parameters to it
+            if (!allParts[partId]) {
+              allParts[partId] = { pk: partId } as InventreeItem; // Stub it if not present
+            }
+            allParts[partId].parameters = params;
+          }
+        }
+      }
     }
-    const currentPartIds = partsByEntity[entityId];
-    if (!currentPartIds) {
-        return [];
-    }
-    return currentPartIds.map((id: number) => partsById[id]).filter((part?: InventreeItem): part is InventreeItem => part !== undefined);
+    return allParts;
   }
 );
 
-export const selectCombinedParts = createSelector(
-  [
-    (state: RootState) => state.parts.partsById,
-    (state: RootState) => state.parts.partsByEntity,
-    (
-      _: RootState,
-      primaryEntityId: string | null | undefined,
-      additionalEntityIds: string[] = []
-    ) => ({
-      primaryEntityId,
-      additionalEntityIds,
-    }),
-  ],
-  (partsById, partsByEntity, { primaryEntityId, additionalEntityIds }): InventreeItem[] => {
-    const combinedPartIds = new Set<number>();
+// --- Memoized Combiner Selectors ---
 
-    if (primaryEntityId) {
-        const primaryPartIds = partsByEntity[primaryEntityId];
-        if (primaryPartIds) {
-            primaryPartIds.forEach((id: number) => combinedPartIds.add(id));
-        }
+export const selectCombinedParts = createSelector(
+  [selectPartsByIdFromSlice, selectPartsFromApi],
+  (partsFromSlice, partsFromApi) => {
+    // Deep merge, with API data taking precedence over potentially stale slice data.
+    const combined: Record<number, InventreeItem> = { ...partsFromSlice };
+    for (const pk in partsFromApi) {
+      combined[Number(pk)] = { ...(combined[Number(pk)] || {}), ...partsFromApi[Number(pk)] };
+    }
+    return Object.values(combined);
+  }
+);
+
+export const selectRegisteredEntities = createSelector(
+  [selectPartsByEntity],
+  (partsByEntity) => Object.keys(partsByEntity)
+);
+
+export const selectAllReferencedPartPksFromConfig = createSelector(
+  [
+    (_state: RootState, config: InventreeCardConfig | undefined) => config,
+    selectDefinedLogicItems
+  ],
+  (config, definedLogicItems) => {
+    if (!config) return [];
+    
+    const pks = new Set<number>();
+
+    // 1. From inventree_pks
+    config.data_sources?.inventree_pks?.forEach((pk: number) => pks.add(pk));
+
+    // 2. From part_id
+    if (config.part_id) {
+      pks.add(config.part_id);
     }
 
-    additionalEntityIds.forEach((entityId: string) => {
-      const additionalPartIds = partsByEntity[entityId];
-      if (additionalPartIds) {
-        additionalPartIds.forEach((id: number) => combinedPartIds.add(id));
+    // 3. From conditional logic
+    if (definedLogicItems) {
+      const extractPksFromGroup = (group: any) => {
+        group.rules?.forEach((ruleOrGroup: any) => {
+          if ('combinator' in ruleOrGroup) {
+            extractPksFromGroup(ruleOrGroup);
+          } else {
+            const field = ruleOrGroup.field;
+            if (typeof field === 'string') {
+              const match = field.match(/^part_(\d+)_/);
+              if (match && match[1]) {
+                pks.add(parseInt(match[1], 10));
+              }
+            }
+          }
+        });
+      };
+      definedLogicItems.forEach((logicItem: any) => {
+        logicItem.logic_pairs?.forEach((pair: any) => {
+          if (pair.condition) {
+            extractPksFromGroup(pair.condition);
+          }
+        });
+      });
+    }
+
+    // 4. From parameter fetch list
+    config.data_sources?.inventree_parameters_to_fetch?.forEach((fetchConfig: InventreeParameterFetchConfig) => {
+      if (Array.isArray(fetchConfig.targetPartIds)) {
+        fetchConfig.targetPartIds.forEach((pk: number) => pks.add(pk));
       }
     });
 
-    return Array.from(combinedPartIds).map((id: number) => partsById[id]).filter((part?: InventreeItem): part is InventreeItem => part !== undefined);
+    // 5. From detail/variant view
+    if ((config.view_type === 'detail' || config.view_type === 'variants') && typeof config.part_id === 'number') {
+      pks.add(config.part_id);
+    }
+    
+    return Array.from(pks);
   }
 );
 
-// New selector to get parts by an array of PKs
-export const selectPartsByPks = createSelector(
-  [selectPartsById, (_state: RootState, pks: number[]) => pks],
-  (partsById, pks) => {
-    if (!pks || pks.length === 0) return [];
-    return pks.map(pk => partsById[pk]).filter(part => part !== undefined);
+// --- Part-specific Selectors ---
+
+export const selectPartByPk = createSelector(
+  [selectCombinedParts, (_state: RootState, pk: number) => pk],
+  (parts, pk) => parts.find(part => part.pk === pk)
+);
+
+export const selectIsReadyForEvaluation = createSelector(
+  [
+    (state: RootState) => state.inventreeApi.queries,
+    selectAllReferencedPartPksFromConfig,
+  ],
+  (queries, pksToPrefetch) => {
+    if (pksToPrefetch.length === 0) {
+      return true; // No API parts needed, so we are ready.
+    }
+
+    // Check if every required part has a 'fulfilled' status in the RTK Query cache.
+    return pksToPrefetch.every(pk => {
+      const queryState = queries[`getPart(${pk})`];
+      return queryState?.status === 'fulfilled';
+    });
   }
-); 
+);
+
+export default partsSlice.reducer; 
