@@ -20,7 +20,12 @@ let throttledEvaluateEffects: (() => void) | null = null;
 
 const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootState>) => {
   const state = storeAPI.getState();
-  const conditionEvalFrequency = state.config.values?.performance?.parameters?.conditionEvalFrequency ?? 1000;
+  // In a multi-instance world, find the most frequent (lowest) requested evaluation frequency.
+  const allConfigs = Object.values(state.config.configsByInstance);
+  const conditionEvalFrequency = allConfigs.reduce((min, configState) => {
+    const freq = configState.config?.performance?.parameters?.conditionEvalFrequency ?? 1000;
+    return Math.min(min, freq);
+  }, 1000); // Default to 1000ms
   
   logger.log('WebSocketMiddleware', `Initializing/Re-initializing throttledEvaluateEffects with frequency: ${conditionEvalFrequency}ms`);
 

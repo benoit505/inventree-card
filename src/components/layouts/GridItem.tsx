@@ -68,10 +68,11 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
   const dispatch = useAppDispatch();
 
   // Get config from the Redux store - CORRECTED a bug where it was looking for state.config.config
-  const config = useSelector((state: RootState) => state.config);
+  const configState = useSelector((state: RootState) => cardInstanceId ? state.config.configsByInstance[cardInstanceId] : undefined);
+  const config = configState?.config;
 
   // A component cannot render without its config or if its initialization flag isn't set.
-  if (!config || !config.configInitialized) {
+  if (!configState || !configState.configInitialized || !config) {
     return <div style={{ padding: '8px' }}>Loading...</div>;
   }
 

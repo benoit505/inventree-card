@@ -92,34 +92,15 @@ const visualEffectsSlice = createSlice({
       if (!state.effectsByCardInstance[cardInstanceId]) {
         state.effectsByCardInstance[cardInstanceId] = {};
       }
-      state.effectsByCardInstance[cardInstanceId][partId] = {
-        ...(state.effectsByCardInstance[cardInstanceId][partId] || {}),
-        ...effect,
-      };
+      state.effectsByCardInstance[cardInstanceId][partId] = effect;
     },
 
     setConditionalPartEffectsBatch(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; effectsMap: Record<number, VisualEffect> }>) {
       const { cardInstanceId, effectsMap } = action.payload;
-      // REMOVED: console.log(`%c[visualEffectsSlice] Reducer: setConditionalPartEffectsBatch for cardInstanceId: ${cardInstanceId}`, 'color: purple; font-weight: bold;', { effectsMap });
       
-      if (!state.effectsByCardInstance[cardInstanceId]) {
-        state.effectsByCardInstance[cardInstanceId] = {};
-      }
-      for (const partIdStr in effectsMap) {
-        const partId = parseInt(partIdStr, 10);
-        if (!isNaN(partId)) {
-          state.effectsByCardInstance[cardInstanceId][partId] = {
-            ...state.effectsByCardInstance[cardInstanceId][partId],
-            ...effectsMap[partId],
-          };
-          if (effectsMap[partId].animation) {
-            logger.log('visualEffectsSlice', `Reducer applying animation effect for part ${partId} in card ${cardInstanceId}`, { animation: effectsMap[partId].animation });
-          }
-        }
-      }
-      // logger.log('visualEffectsSlice', `Batch set ${Object.keys(effectsMap).length} effects for card ${cardInstanceId}`, { level: 'debug' });
-      // REMOVED: console.log(`%c[visualEffectsSlice] Reducer: State AFTER update for cardInstanceId ${cardInstanceId}:`, 'color: purple; font-weight: bold;', JSON.parse(JSON.stringify(state.effectsByCardInstance[cardInstanceId])));
-      // REMOVED: console.log(`%c[visualEffectsSlice] Reducer: FULL visualEffects state AFTER update:`, 'color: purple; font-weight: bold;', JSON.parse(JSON.stringify(state.effectsByCardInstance)));
+      state.effectsByCardInstance[cardInstanceId] = effectsMap;
+
+      logger.log('visualEffectsSlice', `Replaced effects for card ${cardInstanceId} with new batch.`, { data: { count: Object.keys(effectsMap).length }, level: 'debug' });
     },
 
     clearConditionalPartEffectsForPart(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; partId: number }>) {

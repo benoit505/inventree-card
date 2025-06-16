@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
 import { 
@@ -11,17 +11,22 @@ import {
   initializeWebSocketPlugin,
   processHassEntities,
   initializeGenericHaStatesFromConfig,
-  fetchPartsByPks,
 } from './store/thunks/systemThunks';
 import { initializeRuleDefinitionsThunk } from './store/thunks/conditionalLogicThunks';
 import { fetchConfiguredParameters } from './store/thunks/parameterThunks';
 import { evaluateAndApplyEffectsThunk } from './store/thunks/conditionalLogicThunks';
-import { setConfigAction } from './store/slices/configSlice';
+import { setConfigAction, removeConfigAction } from './store/slices/configSlice';
 import { clearCache } from './store/slices/parametersSlice';
 import { setActionDefinitions } from './store/slices/actionsSlice';
 import { RootState } from './store';
-import { selectCombinedParts, selectRegisteredEntities, removePartsForEntity, selectAllReferencedPartPksFromConfig, selectIsReadyForEvaluation } from './store/slices/partsSlice'; 
+import { 
+  selectCombinedParts, 
+  selectAllReferencedPartPksFromConfig, 
+  selectIsReadyForEvaluation,
+  removeInstance
+} from './store/slices/partsSlice'; 
 import { selectApiInitialized } from './store/slices/apiSlice';
+import { inventreeApi } from './store/apis/inventreeApi';
 import DetailLayout from './components/layouts/DetailLayout';
 import GridLayout from './components/layouts/GridLayout';
 import ListLayout from './components/layouts/ListLayout';
@@ -30,6 +35,16 @@ import VariantLayout from './components/layouts/VariantLayout';
 import TableLayout from './components/layouts/TableLayout';
 import GlobalActionButtons from './components/global/GlobalActionButtons';
 import { registerComponent, removeComponent } from './store/slices/componentSlice';
+import { usePrefetchApiParts } from './store/hooks';
+
+// Helper hook to get the previous value of a prop or state.
+const usePrevious = <T,>(value: T): T | undefined => {
+  const ref = useRef<T>();
+  useEffect(() => {
+    ref.current = value;
+  });
+  return ref.current;
+};
 
 const generateSimpleId = () => Math.random().toString(36).substring(2, 15);
 
@@ -44,29 +59,42 @@ const logger = Logger.getInstance();
 const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JSX.Element | null => {
   const renderCount = React.useRef(0);
   renderCount.current += 1;
-  console.log(`%c[InventreeCard] Render #${renderCount.current}`, 'color: green; font-weight: bold;');
+  logger.log('InventreeCard', `Render #${renderCount.current}`, { cardInstanceId, level: 'verbose' });
 
   const dispatch = useDispatch<any>();
 
   // Create a stable, stringified version of the config for use in dependency arrays
   const stringifiedConfig = useMemo(() => JSON.stringify(config), [config]);
 
+  // --- HOOKS ---
+  const apiInitialized = useSelector((state: RootState) => selectApiInitialized(state));
+  logger.log('InventreeCard', `apiInitialized: ${apiInitialized}`, { cardInstanceId, level: 'debug' });
+
+  const allPksToPrefetch = useSelector((state: RootState) => {
+    if (!cardInstanceId) return [];
+    const pks = selectAllReferencedPartPksFromConfig(state, cardInstanceId);
+    logger.log('InventreeCard', `selectAllReferencedPartPksFromConfig for card ${cardInstanceId} found PKs:`, { pks, cardInstanceId, level: 'debug' });
+    return pks;
+  });
+
+  logger.log('InventreeCard', `Calling usePrefetchApiParts with ${allPksToPrefetch.length} PKs and apiInitialized=${apiInitialized}`, { cardInstanceId, level: 'debug' });
+  const apiPartPrefetchers = usePrefetchApiParts(allPksToPrefetch, apiInitialized);
+
   // --- SELECTORS ---
-  const apiInitialized = useSelector(selectApiInitialized);
-  const configInitialized = useSelector((state: RootState) => !!state.config.configInitialized);
-  const previousRegisteredEntities = useSelector<RootState, string[]>(selectRegisteredEntities);
+  const configInitialized = useSelector((state: RootState) => !!(cardInstanceId && state.config.configsByInstance[cardInstanceId]?.configInitialized));
 
-  // Memoize a stable, stringified version of the entity list to use as a dependency.
-  const stringifiedPreviousRegisteredEntities = useMemo(() => {
-    // Sorting ensures that the order of keys doesn't cause unnecessary changes.
-    return JSON.stringify([...previousRegisteredEntities].sort());
-  }, [previousRegisteredEntities]);
+  const parts = useSelector((state: RootState) => {
+    if (!cardInstanceId) return [];
+    return selectCombinedParts(state, cardInstanceId);
+  });
 
-  const allPksToPrefetch = useSelector((state: RootState) => selectAllReferencedPartPksFromConfig(state, config));
+  logger.log('InventreeCard', `Part data for cardInstanceId: ${cardInstanceId}`, {
+    partsCount: parts.length,
+    partNames: parts.map(p => p.name).join(', '),
+    level: 'debug',
+  });
 
-  const parts = useSelector(selectCombinedParts);
-
-  const isReadyForEvaluation = useSelector((state: RootState) => selectIsReadyForEvaluation(state, config));
+  const isReadyForEvaluation = useSelector((state: RootState) => cardInstanceId ? selectIsReadyForEvaluation(state, cardInstanceId) : false);
 
   const selectedItem = useSelector((state: RootState) => {
     if (!config || !parts || parts.length === 0) return undefined;
@@ -82,40 +110,47 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
   useEffect(() => {
     if (!cardInstanceId) return; // Don't register if ID is not yet available
     dispatch(registerComponent(cardInstanceId));
-    console.log(`%c[InventreeCard] Mount Effect Fired for card ${cardInstanceId}`, 'color: blue;');
+    logger.log('InventreeCard', `Mount Effect Fired for card ${cardInstanceId}`, { cardInstanceId, level: 'verbose' });
     return () => {
       dispatch(removeComponent(cardInstanceId));
+      dispatch(removeConfigAction({ cardInstanceId }));
+      dispatch(removeInstance({ cardInstanceId })); // Also remove from parts slice
     };
   }, [cardInstanceId, dispatch]);
 
   // Main Initialization Effect
   useEffect(() => {
-    console.log('%c[InventreeCard] Initialization Effect Fired', 'color: blue;');
-    if (!stringifiedConfig) {
-      console.log('[InventreeCard] Init Effect: Bailing out, no stringifiedConfig yet.');
+    logger.log('InventreeCard', `Initialization Effect Fired for card ${cardInstanceId}`, { cardInstanceId, level: 'debug' });
+    if (!stringifiedConfig || !cardInstanceId) {
+      logger.log('InventreeCard', `Bailing from Initialization for card ${cardInstanceId}: no stringifiedConfig or cardInstanceId yet.`, { cardInstanceId, level: 'debug' });
       return;
     }
     const config = JSON.parse(stringifiedConfig);
 
     const initialize = async () => {
+        // --- STAGE 0: Cache Reset ---
+        // On any config change, wipe the API cache and HASS parts cache
+        // to ensure stale data is removed.
+        dispatch(inventreeApi.util.resetApiState());
+
         // --- STAGE 1: Synchronous State Setup ---
         // These actions update the Redux state immediately.
         logger.setDebugConfig(config);
-        dispatch(setConfigAction(config));
+        dispatch(setConfigAction({ config, cardInstanceId }));
         dispatch(clearCache()); 
         if (config.actions) {
             dispatch(setActionDefinitions(config.actions));
         }
         // CRITICAL: Set up the rules BEFORE any async operation that might trigger an evaluation.
-        dispatch(initializeRuleDefinitionsThunk(config.conditional_logic?.definedLogics || []));
+        dispatch(initializeRuleDefinitionsThunk({ logics: config.conditional_logic?.definedLogics || [], cardInstanceId }));
 
         // --- STAGE 2: Asynchronous API Initialization ---
         if (config.direct_api?.enabled) {
             if (config.direct_api.url && config.direct_api.api_key) {
-                await dispatch(initializeDirectApi({ directApiConfig: config.direct_api, logger }));
+                await dispatch(initializeDirectApi({ directApiConfig: config.direct_api, logger, cardInstanceId }));
                 
                 if (config.direct_api.method !== 'hass' && (config.direct_api.url || config.direct_api.websocket_url)) {
-                    dispatch(initializeWebSocketPlugin({ directApiConfig: config.direct_api, cardDebugWebSocket: config.debug_websocket, logger }));
+                    dispatch(initializeWebSocketPlugin({ directApiConfig: config.direct_api, cardDebugWebSocket: config.debug_websocket, logger, cardInstanceId }));
                 }
             } else {
                 logger.warn('InventreeCard.tsx', '⚠️ Direct API URL or API Key missing.');
@@ -124,16 +159,7 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
     };
 
     initialize();
-  }, [stringifiedConfig, dispatch]);
-
-  // Effect to dispatch the thunk to fetch parts by PKs whenever the list changes or API becomes available.
-  useEffect(() => {
-    console.log(`%c[InventreeCard] PK Fetch Effect Fired. API Initialized: ${apiInitialized}, PKs to fetch: ${allPksToPrefetch.length}`, 'color: blue;');
-    if (apiInitialized && allPksToPrefetch.length > 0) {
-      console.log('[InventreeCard] PK Fetch Effect: Dispatching fetchPartsByPks with PKs:', allPksToPrefetch);
-      dispatch(fetchPartsByPks(allPksToPrefetch));
-    }
-  }, [apiInitialized, allPksToPrefetch, dispatch]);
+  }, [stringifiedConfig, cardInstanceId, dispatch]);
 
   // The new, intelligent evaluation effect, guarded by our "gatekeeper" selector.
   useEffect(() => {
@@ -144,7 +170,7 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
   }, [isReadyForEvaluation, cardInstanceId, dispatch]);
 
   const hassSensorEntitiesFromConfig = useMemo((): string[] => {
-    console.log('%c[InventreeCard] Recalculating hassSensorEntitiesFromConfig', 'color: orange;');
+    logger.log('InventreeCard', 'Recalculating hassSensorEntitiesFromConfig', { cardInstanceId, level: 'debug' });
     if (!stringifiedConfig) return [];
     const config = JSON.parse(stringifiedConfig);
     const sensors = config?.data_sources?.inventree_hass_sensors;
@@ -155,24 +181,30 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
     return [...new Set(filteredSensors)];
   }, [stringifiedConfig]);
 
+  const prevHassSensorEntities = usePrevious(hassSensorEntitiesFromConfig);
+
   useEffect(() => {
-    console.log(`%c[InventreeCard] HASS Process Effect Fired. Sensor count: ${hassSensorEntitiesFromConfig.length}`, 'color: blue;');
-    if (!hass) return;
-
-    const entitiesToRemove = previousRegisteredEntities.filter((e: string) => !hassSensorEntitiesFromConfig.includes(e));
-    if (entitiesToRemove.length > 0) {
-      entitiesToRemove.forEach((entityId: string) => {
-        dispatch(removePartsForEntity({ entityId }));
-      });
+    logger.log('InventreeCard', `HASS Processing Effect Fired for card ${cardInstanceId}.`, { cardInstanceId, hasHass: !!hass, configInitialized, sensorCount: hassSensorEntitiesFromConfig.length, level: 'debug' });
+    
+    // GUARD: Do not proceed until both HASS and the config for this instance are ready.
+    if (!hass) {
+      logger.log('InventreeCard', `Bailing from HASS processing for card ${cardInstanceId}: No HASS object.`, { cardInstanceId, level: 'debug' });
+      return;
+    }
+    if (!configInitialized) {
+      logger.log('InventreeCard', `Bailing from HASS processing for card ${cardInstanceId}: Config not initialized.`, { cardInstanceId, level: 'debug' });
+      return;
     }
 
-    if (hassSensorEntitiesFromConfig.length > 0) {
-      dispatch(processHassEntities({ entityIds: hassSensorEntitiesFromConfig, hass, logger }));
+    if (cardInstanceId) {
+      logger.log('InventreeCard', `Dispatching processHassEntities for card ${cardInstanceId}.`, { cardInstanceId, level: 'verbose' });
+      // We now pass all relevant sensors. If the list is empty, the thunk will handle clearing the state for this instance.
+      dispatch(processHassEntities({ entityIds: hassSensorEntitiesFromConfig, hass, logger, cardInstanceId }));
     }
-  }, [hass, hassSensorEntitiesFromConfig, dispatch, stringifiedPreviousRegisteredEntities]);
+  }, [hass, configInitialized, hassSensorEntitiesFromConfig, dispatch, cardInstanceId]);
 
   const genericHaEntitiesFromConfig = useMemo(() => {
-    console.log('%c[InventreeCard] Recalculating genericHaEntitiesFromConfig', 'color: orange;');
+    logger.log('InventreeCard', 'Recalculating genericHaEntitiesFromConfig', { cardInstanceId, level: 'debug' });
     if (!stringifiedConfig) return [];
     const config = JSON.parse(stringifiedConfig);
     if (!config?.data_sources?.ha_entities) return [];
@@ -180,26 +212,26 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
   }, [stringifiedConfig]);
 
   useEffect(() => {
-    console.log(`%c[InventreeCard] Generic HASS Effect Fired. Entity count: ${genericHaEntitiesFromConfig.length}`, 'color: blue;');
-    if (!hass || genericHaEntitiesFromConfig.length === 0) return;
-    dispatch(initializeGenericHaStatesFromConfig({ hass, logger }));
-  }, [hass, genericHaEntitiesFromConfig, dispatch]);
+    logger.log('InventreeCard', `Generic HASS Effect Fired. Entity count: ${genericHaEntitiesFromConfig.length}`, { cardInstanceId, level: 'debug' });
+    if (!hass || genericHaEntitiesFromConfig.length === 0 || !cardInstanceId) return;
+    dispatch(initializeGenericHaStatesFromConfig({ hass, logger, cardInstanceId }));
+  }, [hass, genericHaEntitiesFromConfig, dispatch, cardInstanceId]);
 
   const parametersToFetchFromConfig = useMemo(() => {
-    console.log('%c[InventreeCard] Recalculating parametersToFetchFromConfig', 'color: orange;');
+    logger.log('InventreeCard', 'Recalculating parametersToFetchFromConfig', { cardInstanceId, level: 'debug' });
     if (!stringifiedConfig) return [];
     const config = JSON.parse(stringifiedConfig);
     return config?.data_sources?.inventreeParametersToFetch || [];
   }, [stringifiedConfig]);
 
   useEffect(() => {
-    console.log(`%c[InventreeCard] Parameter Fetch Effect Fired. Config count: ${parametersToFetchFromConfig.length}`, 'color: blue;');
-    if (!apiInitialized || parametersToFetchFromConfig.length === 0) return;
-    dispatch(fetchConfiguredParameters(parametersToFetchFromConfig));
-  }, [apiInitialized, parametersToFetchFromConfig, dispatch]);
+    logger.log('InventreeCard', `Parameter Fetch Effect Fired for card ${cardInstanceId}.`, { cardInstanceId, apiInitialized, configCount: parametersToFetchFromConfig.length, level: 'debug' });
+    if (!apiInitialized || parametersToFetchFromConfig.length === 0 || !cardInstanceId) return;
+    dispatch(fetchConfiguredParameters({ configs: parametersToFetchFromConfig, cardInstanceId }));
+  }, [apiInitialized, parametersToFetchFromConfig, dispatch, cardInstanceId]);
 
   const idleRenderInterval = useMemo(() => {
-    console.log('%c[InventreeCard] Recalculating idleRenderInterval', 'color: orange;');
+    logger.log('InventreeCard', 'Recalculating idleRenderInterval', { cardInstanceId, level: 'debug' });
     if (!stringifiedConfig) return 5000;
     const config = JSON.parse(stringifiedConfig);
     return config?.performance?.rendering?.idleRenderInterval ?? 5000;
@@ -240,6 +272,7 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
 
   return (
     <div className="inventree-card-wrapper" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px', boxSizing: 'border-box' }}>
+      {apiPartPrefetchers}
       <GlobalActionButtons />
       <div style={{ flex: 1 }}>
         {configInitialized ? renderLayout() : <div style={{ padding: '16px' }}>Initializing configuration...</div>}

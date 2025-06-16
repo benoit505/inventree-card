@@ -3,7 +3,7 @@ import { RootState } from "../store";
 import { Logger } from "../core/logger";
 import { selectGenericHaEntityActualState, selectGenericHaEntityAttribute } from "../store/slices/genericHaStateSlice";
 import { selectParameterValue } from "../store/slices/parametersSlice";
-import { selectPartByPk, selectPartLoadingStatus } from "../store/slices/partsSlice";
+import { selectPartById } from "../store/slices/partsSlice";
 import { InventreeItem } from "../types"; // For partContext
 import { inventreeApi } from "../store/apis/inventreeApi"; // Import the API slice
 import memoizeOne from 'memoize-one';
@@ -17,13 +17,15 @@ import memoizeOne from 'memoize-one';
  * @param partContext Optional: The current InvenTree part item to evaluate against.
  * @param globalContext Full Redux state for accessing HA states, other parameters, etc.
  * @param logger Logger instance.
+ * @param cardInstanceId The ID of the card instance.
  * @returns boolean - True if the conditions are met, false otherwise.
  */
 export const evaluateExpression = (
     ruleGroup: RuleGroupType,
     partContext: InventreeItem | null,
     globalContext: RootState,
-    logger: Logger // Logger is passed but console.log is used for directness during debug
+    logger: Logger, // Logger is passed but console.log is used for directness during debug
+    cardInstanceId: string
 ): boolean => {
     if (!ruleGroup || !ruleGroup.rules || ruleGroup.rules.length === 0) {
         logger.warn('evaluateExpression', 'Empty or invalid rule group provided. ID: ' + (ruleGroup?.id || 'undefined'));
@@ -33,10 +35,10 @@ export const evaluateExpression = (
     const results: boolean[] = [];
     for (const ruleOrGroup of ruleGroup.rules) {
         if ('combinator' in ruleOrGroup) { // It's a nested RuleGroupType
-            const nestedResult = evaluateExpression(ruleOrGroup as RuleGroupType, partContext, globalContext, logger);
+            const nestedResult = evaluateExpression(ruleOrGroup as RuleGroupType, partContext, globalContext, logger, cardInstanceId);
             results.push(nestedResult);
         } else { // It's a RuleType
-            const ruleResult = evaluateRule(ruleOrGroup as RuleType, partContext, globalContext, logger);
+            const ruleResult = evaluateRule(ruleOrGroup as RuleType, partContext, globalContext, logger, cardInstanceId);
             results.push(ruleResult);
         }
     }
@@ -61,7 +63,8 @@ const getActualValue = (
     field: string, 
     partContext: InventreeItem | null, 
     globalContext: RootState,
-    logger: Logger
+    logger: Logger,
+    cardInstanceId: string
 ): any => {
     let valueToReturn: any = undefined;
 
@@ -82,7 +85,7 @@ const getActualValue = (
         }
 
         // --- FALLBACK: Check old partsById slice ---
-        const part = selectPartByPk(globalContext, pk);
+        const part = selectPartById(globalContext, cardInstanceId, pk);
         if (part && attribute in part) {
             return (part as any)[attribute];
         }
@@ -210,8 +213,9 @@ const evaluateRule = (
     rule: RuleType,
     partContext: InventreeItem | null,
     globalContext: RootState,
-    logger: Logger
+    logger: Logger,
+    cardInstanceId: string
 ): boolean => {
-    const actualValue = getActualValue(rule.field, partContext, globalContext, logger);
+    const actualValue = getActualValue(rule.field, partContext, globalContext, logger, cardInstanceId);
     return memoizedInternalEvaluateRule(rule, actualValue, logger);
 }; 

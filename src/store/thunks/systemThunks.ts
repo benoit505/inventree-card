@@ -6,14 +6,14 @@ import { trackUsage } from '../../utils/metrics-tracker';
 import { WebSocketPlugin } from '../../services/websocket-plugin';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeItem } from '../../types';
-import { setParts, registerEntity, removePartsForEntity } from '../slices/partsSlice';
+import { setParts } from '../slices/partsSlice';
 import { selectAllReferencedPartPksFromConfig } from '../slices/partsSlice';
 import { RootState, AppDispatch } from '../index';
 import { setWebSocketStatus } from '../slices/websocketSlice';
 import { inventreeApiService } from '../../services/inventree-api-service';
 import { store } from '../../store';
 import { fetchHaEntityStatesThunk } from './genericHaStateThunks';
-import { selectFullConfig } from '../slices/configSlice';
+import { selectConfigForInstance } from '../slices/configSlice';
 import { inventreeApi } from '../apis/inventreeApi';
 import { selectApiInitialized, selectApiUrl, selectApiKey } from '../slices/apiSlice';
 import { evaluateAndApplyEffectsThunk } from './conditionalLogicThunks';
@@ -23,17 +23,17 @@ const logger = Logger.getInstance();
 // Thunk to initialize the Direct API
 export const initializeDirectApi = createAsyncThunk(
   'system/initializeDirectApi',
-  async (args: { directApiConfig: DirectApiConfig; logger: Logger }, { dispatch, getState }) => {
+  async (args: { directApiConfig: DirectApiConfig; logger: Logger; cardInstanceId: string }, { dispatch }) => {
     const { directApiConfig, logger } = args;
     try {
-      logger.log('SystemThunks', 'Initializing Direct API...', directApiConfig);
+      logger.log('SystemThunks', 'Initializing Direct API...', { ...directApiConfig, instanceId: args.cardInstanceId });
       
       const throttleSec = directApiConfig.performance?.api?.throttle;
       let throttleDelayMs = 200; 
       if (typeof throttleSec === 'number' && throttleSec >= 0) {
         throttleDelayMs = throttleSec * 1000;
       } else if (throttleSec !== undefined) {
-        logger.warn('SystemThunks', `Invalid API throttle value: ${throttleSec}, using default ${throttleDelayMs}ms`);
+        logger.warn('SystemThunks', `Invalid API throttle value: ${throttleSec}, using default ${throttleDelayMs}ms`, { instanceId: args.cardInstanceId });
       }
 
       const cacheLifetimeSec = directApiConfig.performance?.api?.cacheLifetime;
@@ -48,16 +48,16 @@ export const initializeDirectApi = createAsyncThunk(
           failedRequestRetryDelaySeconds: failedRetryDelaySec
         }));
         dispatch(apiInitializationSuccess());
-        logger.log('SystemThunks', 'Direct API Initialized');
+        logger.log('SystemThunks', 'Direct API Initialized', { instanceId: args.cardInstanceId });
         trackUsage('api', 'initialize', { success: true, method: 'direct' });
         return true;
       } else {
-        logger.error('SystemThunks', 'Direct API Initialization Failed: Missing URL or API key');
+        logger.error('SystemThunks', 'Direct API Initialization Failed: Missing URL or API key', { instanceId: args.cardInstanceId });
         dispatch(apiInitializationError('Missing URL or API key'));
         return false;
       }
     } catch (error: any) {
-      logger.error('SystemThunks', 'Direct API Initialization Failed:', error.message);
+      logger.error('SystemThunks', 'Direct API Initialization Failed:', { message: error.message, instanceId: args.cardInstanceId });
       dispatch(apiInitializationError(error.message || 'Unknown API initialization error'));
       return false;
     }
@@ -122,7 +122,7 @@ export const updateDataSources = createAsyncThunk(
     // --- Generic HA Entity Processing ---
     const genericHaEntities = config.data_sources?.ha_entities || [];
     if (genericHaEntities.length > 0) {
-      await dispatch(fetchHaEntityStatesThunk({ entityIds: genericHaEntities, hass, logger }));
+      await dispatch(fetchHaEntityStatesThunk({ entityIds: genericHaEntities, hass }));
     }
   }
 );
@@ -131,33 +131,31 @@ export const updateDataSources = createAsyncThunk(
 // Thunk to initialize the WebSocket plugin
 export const initializeWebSocketPlugin = createAsyncThunk(
   'system/initializeWebSocketPlugin',
-  async (args: { directApiConfig?: DirectApiConfig; cardDebugWebSocket?: boolean; logger: Logger }, { dispatch, getState }) => {
-    const { directApiConfig, cardDebugWebSocket, logger } = args; 
+  async (args: { directApiConfig?: DirectApiConfig; cardDebugWebSocket?: boolean; logger: Logger; cardInstanceId: string }, { dispatch }) => {
+    const { directApiConfig, logger, cardInstanceId } = args; 
 
     if (!directApiConfig) {
-      logger.warn('Thunk:initializeWebSocketPlugin', 'Direct API config not provided, skipping WebSocket plugin initialization.');
+      logger.warn('Thunk:initializeWebSocketPlugin', 'Direct API config not provided, skipping WebSocket plugin initialization.', { instanceId: cardInstanceId });
       return;
     }
 
     const plugin = WebSocketPlugin.getInstance();
 
-    logger.log('Thunk:initializeWebSocketPlugin', 'Configuring WebSocket Plugin with settings', { data: directApiConfig });
-    // Corrected: Assuming configure only takes directApiConfig. 
-    // cardDebugWebSocket and dispatch are not passed here based on the linter error.
+    logger.log('Thunk:initializeWebSocketPlugin', 'Configuring WebSocket Plugin with settings', { data: directApiConfig, instanceId: cardInstanceId });
     plugin.configure(directApiConfig);
-    logger.log('Thunk:initializeWebSocketPlugin', 'WebSocket Plugin configured.');
+    logger.log('Thunk:initializeWebSocketPlugin', 'WebSocket Plugin configured.', { instanceId: cardInstanceId });
 
     if (directApiConfig.enabled && (directApiConfig.url || directApiConfig.websocket_url)) {
-      logger.log('Thunk:initializeWebSocketPlugin', 'Attempting to connect WebSocket plugin...');
+      logger.log('Thunk:initializeWebSocketPlugin', 'Attempting to connect WebSocket plugin...', { instanceId: cardInstanceId });
       try {
         await plugin.connect();
-        logger.log('Thunk:initializeWebSocketPlugin', 'WebSocket plugin connected successfully.');
+        logger.log('Thunk:initializeWebSocketPlugin', 'WebSocket plugin connected successfully.', { instanceId: cardInstanceId });
       } catch (error) {
-        logger.error('Thunk:initializeWebSocketPlugin', 'WebSocket plugin connection failed:', { error });
+        logger.error('Thunk:initializeWebSocketPlugin', 'WebSocket plugin connection failed:', { error, instanceId: cardInstanceId });
         dispatch(setWebSocketStatus('disconnected'));
       }
     } else {
-      logger.warn('Thunk:initializeWebSocketPlugin', 'WebSocket plugin not connected: Direct API not enabled or URL/WebSocket URL is missing in config.');
+      logger.warn('Thunk:initializeWebSocketPlugin', 'WebSocket plugin not connected: Direct API not enabled or URL/WebSocket URL is missing in config.', { instanceId: cardInstanceId });
       dispatch(setWebSocketStatus('disconnected'));
     }
   }
@@ -165,7 +163,7 @@ export const initializeWebSocketPlugin = createAsyncThunk(
 
 export const processHassEntities = createAsyncThunk<
   { processedCount: number; errors: number }, // Return type
-  { hass: HomeAssistant; entityIds: string[]; logger: Logger }, // Argument type
+  { hass: HomeAssistant; entityIds: string[]; logger: Logger; cardInstanceId: string }, // Argument type
   { state: RootState; dispatch: AppDispatch; rejectValue: string } // ThunkAPI config
 >(
   'system/processHassEntities',
@@ -173,39 +171,24 @@ export const processHassEntities = createAsyncThunk<
     args,
     { dispatch, getState }
   ) => {
-    const { hass, entityIds, logger } = args;
-    const state = getState() as RootState;
+    const { hass, entityIds, logger, cardInstanceId } = args;
     let processedCount = 0;
-
-    // --- START: Stale Entity Cleanup ---
-    const existingEntityIds = Object.keys(state.parts.partsByEntity);
-    const newEntityIdSet = new Set(entityIds);
     
-    const staleEntityIds = existingEntityIds.filter(id => !newEntityIdSet.has(id));
-
-    if (staleEntityIds.length > 0) {
-      logger.log('Thunk:processHassEntities', `Found ${staleEntityIds.length} stale HASS entities to remove.`, { staleEntityIds });
-      staleEntityIds.forEach(staleId => {
-        dispatch(removePartsForEntity({ entityId: staleId }));
-      });
-    }
-    // --- END: Stale Entity Cleanup ---
-
     if (!entityIds || entityIds.length === 0) {
-      logger.warn('Thunk:processHassEntities', 'No entities configured for HASS processing.');
-      trackUsage('redux', 'thunk:processHassEntities:noentities');
+      logger.warn('Thunk:processHassEntities', 'No entities configured for HASS processing.', { instanceId: cardInstanceId });
+      dispatch(setParts({ parts: [], cardInstanceId }));
       return { processedCount: 0, errors: 0 };
     }
 
-    logger.log('Thunk:processHassEntities', `Processing HASS state for entities: ${entityIds.join(', ')}`);
-    trackUsage('redux', 'thunk:processHassEntities:attempt', { count: entityIds.length });
+    logger.log('Thunk:processHassEntities', `Processing HASS state for entities: ${entityIds.join(', ')}`, { instanceId: cardInstanceId });
 
     let errorCount = 0;
+    const allPartsFromInstanceSensors: InventreeItem[] = [];
 
     for (const entityId of entityIds) {
       const entityState = hass.states[entityId];
       if (!entityState) {
-        logger.warn('Thunk:processHassEntities', `Entity ${entityId} not found in HASS states.`);
+        logger.warn('Thunk:processHassEntities', `Entity ${entityId} not found in HASS states.`, { instanceId: cardInstanceId });
         errorCount++;
         continue;
       }
@@ -213,27 +196,23 @@ export const processHassEntities = createAsyncThunk<
       const items = entityState.attributes?.items as InventreeItem[] | undefined;
 
       if (items && Array.isArray(items)) {
-        const parts: InventreeItem[] = items.map(item => ({ ...item, source: `hass:${entityId}` }));
-        const partIds = parts.map(p => p.pk);
-
-        if (parts.length > 0) {
-          logger.log('Thunk:processHassEntities', `Dispatching setParts for ${entityId} with ${parts.length} items.`);
-          dispatch(setParts({ entityId, parts }));
-          dispatch(registerEntity(entityId));
-          processedCount++;
-        } else {
-          logger.log('Thunk:processHassEntities', `No items found for entity ${entityId} after processing.`);
-          dispatch(setParts({ entityId, parts: [] }));
-          dispatch(registerEntity(entityId));
-        }
+        const partsFromThisSensor: InventreeItem[] = items.map(item => ({ ...item, source: `hass:${entityId}` }));
+        allPartsFromInstanceSensors.push(...partsFromThisSensor);
+        processedCount++;
       } else {
-        logger.warn('Thunk:processHassEntities', `No 'items' attribute or not an array for entity ${entityId}.`, { attributes: entityState.attributes });
-        dispatch(setParts({ entityId, parts: [] }));
-        dispatch(registerEntity(entityId));
+        logger.warn('Thunk:processHassEntities', `No 'items' attribute or not an array for entity ${entityId}.`, { attributes: entityState.attributes, instanceId: cardInstanceId });
         errorCount++;
       }
     }
-    trackUsage('redux', `thunk:processHassEntities:${errorCount > 0 ? 'partial_success' : 'success'}`, { processed: processedCount, errors: errorCount });
+
+    console.log(`%c[Thunk:processHassEntities DEBUG]`, 'color: orange; font-weight: bold;', {
+      cardInstanceId,
+      entityIds,
+      totalFoundItems: allPartsFromInstanceSensors.length,
+      partPks: allPartsFromInstanceSensors.map(p => p.pk)
+    });
+
+    dispatch(setParts({ parts: allPartsFromInstanceSensors, cardInstanceId }));
     
     return { processedCount, errors: errorCount };
   }
@@ -242,68 +221,32 @@ export const processHassEntities = createAsyncThunk<
 // NEW THUNK: Initializes generic HA entity states based on card configuration
 export const initializeGenericHaStatesFromConfig = createAsyncThunk<
   void, // Return type
-  { hass: HomeAssistant; logger: Logger }, // Argument type
+  { hass: HomeAssistant; logger: Logger; cardInstanceId: string }, // Argument type
   { state: RootState; rejectValue: string }
 >(
   'system/initializeGenericHaStatesFromConfig',
-  async ({ hass, logger }, { dispatch, getState, rejectWithValue }) => {
-    logger.log('SystemThunks', 'Initializing generic HA states from config...');
+  async ({ hass, logger, cardInstanceId }, { dispatch, getState, rejectWithValue }) => {
+    logger.log('SystemThunks', 'Initializing generic HA states from config...', { instanceId: cardInstanceId });
     const state = getState();
-    const config = selectFullConfig(state); // Assuming selectFullConfig selector exists in configSlice
-
+    const config = selectConfigForInstance(state, cardInstanceId);
+    
     if (!config) {
-      const errorMsg = 'Card configuration not found in state.';
-      logger.error('SystemThunks', errorMsg);
-      return rejectWithValue(errorMsg);
+        logger.warn('SystemThunks', 'No config found for instance, skipping generic HA states initialization.', { instanceId: cardInstanceId });
+        return;
     }
     
-    const entityIds = config.data_sources?.ha_entities;
-    if (entityIds && entityIds.length > 0) {
-      logger.log('SystemThunks', `Fetching states for ${entityIds.length} generic HA entities.`);
-      await dispatch(fetchHaEntityStatesThunk({ entityIds, hass }));
+    const genericHaEntities = config.data_sources?.ha_entities || [];
+    
+    if (genericHaEntities.length > 0) {
+        logger.log('SystemThunks', `Found ${genericHaEntities.length} generic HA entities to process.`, { entities: genericHaEntities, instanceId: cardInstanceId });
+        try {
+            await dispatch(fetchHaEntityStatesThunk({ entityIds: genericHaEntities, hass }));
+            logger.log('SystemThunks', 'Successfully dispatched fetchHaEntityStatesThunk.', { instanceId: cardInstanceId });
+        } catch (error) {
+            logger.error('SystemThunks', 'Error dispatching fetchHaEntityStatesThunk:', { error, instanceId: cardInstanceId });
+        }
     } else {
-      logger.log('SystemThunks', 'No generic HA entities configured to fetch.');
-    }
-  }
-);
-
-export const fetchPartsByPks = createAsyncThunk<
-  InventreeItem[], // Return type: an array of parts
-  number[], // Argument type: an array of part PKs
-  { state: RootState; dispatch: AppDispatch; rejectValue: string }
->(
-  'system/fetchPartsByPks',
-  async (pks, { getState, dispatch, rejectWithValue }) => {
-    try {
-      const state = getState();
-      const apiUrl = selectApiUrl(state);
-      const apiKey = selectApiKey(state);
-
-      if (!apiUrl || !apiKey) {
-        return rejectWithValue('API URL or Key not configured.');
-      }
-
-      // Use RTK Query's cache policies by initiating individual 'getPart' queries
-      const partPromises = pks.map(pk =>
-        dispatch(inventreeApi.endpoints.getPart.initiate(pk)).unwrap()
-      );
-      
-      // Wait for all fetches to settle
-      const results = await Promise.allSettled(partPromises);
-      
-      // Filter for fulfilled promises and extract the data
-      const parts = results
-        .filter(r => r.status === 'fulfilled' && r.value)
-        .map(r => (r as PromiseFulfilledResult<InventreeItem>).value);
-
-      logger.log('Thunk:fetchPartsByPks', `Successfully fetched data for ${parts.length} out of ${pks.length} requested parts.`);
-      
-      // The evaluation trigger is now removed from here.
-      
-      return parts; // Always return the fetched parts to satisfy the thunk's type.
-    } catch (error: any) {
-      logger.error('fetchPartsByPks Thunk', `Failed to fetch parts by PKs: ${error.message}`);
-      return rejectWithValue('Failed to fetch parts by PKs.');
+        logger.log('SystemThunks', 'No generic HA entities to process for this instance.', { instanceId: cardInstanceId });
     }
   }
 );

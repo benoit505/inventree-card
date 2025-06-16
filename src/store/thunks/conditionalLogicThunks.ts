@@ -26,14 +26,14 @@ export const evaluateAndApplyEffectsThunk = createAsyncThunk<
 >('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId }, { dispatch, getState }) => {
   console.log(`[Thunk:evaluateAndApplyEffects] Running for card instance: ${cardInstanceId}`);
   const state = getState();
-  const logicItems = selectDefinedLogicItems(state);
+  const logicItems = selectDefinedLogicItems(state, cardInstanceId);
   const engine = new ConditionalEffectsEngine(dispatch, getState);
   try {
-    console.log(`[Thunk:evaluateAndApplyEffects] About to call engine.evaluateAndApplyEffects with ${logicItems.length} logic items.`);
+    console.log(`[Thunk:evaluateAndApplyEffects] About to call engine.evaluateAndApplyEffects with ${logicItems.length} logic items for instance ${cardInstanceId}.`);
     await engine.evaluateAndApplyEffects(cardInstanceId, false, logicItems);
-    console.log(`[Thunk:evaluateAndApplyEffects] Engine finished evaluation.`);
+    console.log(`[Thunk:evaluateAndApplyEffects] Engine finished evaluation for instance ${cardInstanceId}.`);
   } catch (error) {
-    logger.error('evaluateAndApplyEffectsThunk', 'An error occurred during conditional logic evaluation:', { data: error });
+    logger.error('evaluateAndApplyEffectsThunk', `An error occurred during conditional logic evaluation for instance ${cardInstanceId}:`, { data: error });
     // Optionally re-throw or handle as needed
   }
 });
@@ -60,17 +60,13 @@ export const evaluateEffectsForAllActiveCardsThunk = createAsyncThunk<
 
 export const initializeRuleDefinitionsThunk = createAsyncThunk<
   void,
-  ConditionalLogicItem[], // Expects the new structure
-  { dispatch: AppDispatch; /* state: RootState // getState not needed here anymore */ }
->('conditionalLogic/initializeRuleDefinitions', async (logicItems, { dispatch }) => {
-  logger.debug('initializeRuleDefinitionsThunk', 'Initializing rule definitions (now ConditionalLogicItems with logicPairs)...', { data: logicItems });
+  { logics: ConditionalLogicItem[], cardInstanceId: string }, // Expects the new structure with instance ID
+  { dispatch: AppDispatch; }
+>('conditionalLogic/initializeRuleDefinitions', async ({ logics, cardInstanceId }, { dispatch }) => {
+  logger.debug('initializeRuleDefinitionsThunk', `Initializing rule definitions for instance ${cardInstanceId}...`, { data: logics });
   
-  // Directly store the received logicItems (which should have the new structure)
-  dispatch(setDefinedLogicItems(logicItems || []));
+  // Dispatch the instance-aware action
+  dispatch(setDefinedLogicItems({ logics: logics || [], cardInstanceId }));
 
-  logger.debug('initializeRuleDefinitionsThunk', `Stored ${logicItems?.length || 0} defined logic items.`);
-  
-  // No more transformation to ProcessedCondition here.
-  // REMOVED: Initial evaluation should not be triggered from here.
-  // dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: 'undefined_card', forceReevaluation: true }));
+  logger.debug('initializeRuleDefinitionsThunk', `Stored ${logics?.length || 0} defined logic items for instance ${cardInstanceId}.`);
 });

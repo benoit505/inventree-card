@@ -84,10 +84,10 @@ try {
         constructor() {
             super();
             this._cardInstanceId = `inventree-card-${Math.random().toString(36).substring(2, 15)}`; // Create stable ID
-            console.log(`[DEBUG] inventree-card.ts: constructor() called. Stable ID created: ${this._cardInstanceId}`);
+            this.logger = Logger.getInstance();
+            this.logger.log('InventreeCard', `constructor() called. Stable ID created: ${this._cardInstanceId}`);
             this.config = { type: 'custom:inventree-card' }; // FIX LINTER ERROR
             this.hass = {} as HomeAssistant;
-            this.logger = Logger.getInstance();
             this.logger.log('InventreeCard', 'Creating InventreeCard instance (Lit Wrapper)', {
                 category: 'card',
                 subsystem: 'lifecycle'
@@ -172,14 +172,14 @@ try {
         }
 
         public setConfig(config: InventreeCardConfig): void {
-            console.log('[DEBUG] inventree-card.ts: setConfig() called.');
+            this.logger.log('InventreeCard', 'setConfig() called.');
             if (!config) {
-                console.error('[DEBUG] inventree-card.ts: setConfig() called with null or undefined config.');
+                this.logger.error('InventreeCard', 'setConfig() called with null or undefined config.');
                 throw new Error('You need to define a configuration.');
             }
             this.config = config;
             this.logger.setDebugConfig(config);
-            console.log('[DEBUG] inventree-card.ts: setConfig() finished.');
+            this.logger.log('InventreeCard', 'setConfig() finished.');
             this.logger.info('Card', 'Setting configuration', {
                 category: 'card',
                 subsystem: 'config',
@@ -243,8 +243,7 @@ try {
 
         // Render only the container for React
         protected render(): TemplateResult | void {
-            console.log('[DEBUG] inventree-card.ts: render() called.');
-            this.logger.log("InventreeCardLit", "render() called, creating react-root-container div.");
+            this.logger.log('InventreeCard', 'render() called.');
             return html`<div id="react-root-container"></div>`;
         }
 
@@ -298,7 +297,7 @@ try {
         // Mount/Update React app
         protected firstUpdated(_changedProperties: PropertyValues): void {
             super.firstUpdated(_changedProperties);
-            console.log('[DEBUG] inventree-card.ts: firstUpdated() called.');
+            this.logger.log('InventreeCard', 'firstUpdated() called.');
             // *** CRITICAL: Get the mount point here and store it ***
             if (this.shadowRoot) {
                 this._reactMountPoint = this.shadowRoot.getElementById('react-root-container') as HTMLDivElement;
@@ -329,7 +328,7 @@ try {
         }
 
         private _mountOrUpdateReactApp(): void {
-            console.log('[DEBUG] inventree-card.ts: _mountOrUpdateReactApp() called.');
+            this.logger.log('InventreeCard', '_mountOrUpdateReactApp() called.');
             // *** Use the cached _reactMountPoint ***
             if (!this._reactMountPoint) {
                 this.logger.error('InventreeCardLit', 'Cannot mount React app: _reactMountPoint is not set. Attempting to find it again.');

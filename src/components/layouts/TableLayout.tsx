@@ -110,6 +110,7 @@ const TableLayout: React.FC<TableLayoutProps> = ({ hass, parts, layoutConfig, ca
         }
 
         const value = get(part, col.content);
+        console.log(`[TableLayout Cell Render] Part PK: ${part.pk}, Column: ${col.id}, Content Key: ${col.content}, Value:`, value);
         return value !== null && value !== undefined ? String(value) : null;
       },
     }));

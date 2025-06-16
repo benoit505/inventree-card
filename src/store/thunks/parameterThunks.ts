@@ -191,30 +191,32 @@ export const updateParameterValue = createAsyncThunk<
 // NEW Thunk: Fetches parameters based on declarative configuration passed as argument
 export const fetchConfiguredParameters = createAsyncThunk<
   void, // Return type
-  InventreeParameterFetchConfig[], // Argument type: the configuration itself
+  { configs: InventreeParameterFetchConfig[]; cardInstanceId: string }, // Argument type: the configuration itself
   { state: RootState; rejectValue: string }
 >(
   'parameters/fetchConfigured',
-  async (parametersToFetchConfig, { dispatch, getState, rejectWithValue }) => { // Changed first arg
-    logger.log('ParameterThunk', 'Fetching parameters based on config.dataSources.inventreeParametersToFetch...');
+  async ({ configs, cardInstanceId }, { dispatch, getState, rejectWithValue }) => {
+    logger.log('ParameterThunk', `Fetching configured parameters for instance ${cardInstanceId}...`);
     const state = getState();
     const apiInitialized = selectApiInitialized(state);
     if (!apiInitialized) {
-      logger.warn('ParameterThunk', 'API not initialized. Cannot fetch configured parameters.');
+      logger.warn('ParameterThunk', 'API not initialized. Cannot fetch configured parameters.', { instanceId: cardInstanceId });
       return;
     }
 
-    const allLoadedParts = selectCombinedParts(state);
+    // This selector needs to be made instance-aware in the future if parts become instance-specific.
+    // For now, it combines all parts from all sources.
+    const allLoadedParts = selectCombinedParts(state, cardInstanceId);
     const allLoadedPartIds = allLoadedParts.map(p => p.pk);
 
-    if (!parametersToFetchConfig || parametersToFetchConfig.length === 0) {
-      logger.log('ParameterThunk', 'No inventreeParametersToFetch configured. Skipping proactive parameter fetch.');
+    if (!configs || configs.length === 0) {
+      logger.log('ParameterThunk', 'No inventreeParametersToFetch configured. Skipping proactive parameter fetch.', { instanceId: cardInstanceId });
       return;
     }
 
     const partIdsToFetchSet = new Set<number>();
 
-    parametersToFetchConfig.forEach((configEntry: InventreeParameterFetchConfig) => { 
+    configs.forEach((configEntry: InventreeParameterFetchConfig) => { 
       if (configEntry.targetPartIds === 'all_loaded') {
         allLoadedPartIds.forEach(id => partIdsToFetchSet.add(id));
       } else if (Array.isArray(configEntry.targetPartIds)) {
@@ -232,15 +234,15 @@ export const fetchConfiguredParameters = createAsyncThunk<
     const uniquePartIdsArray = Array.from(partIdsToFetchSet);
 
     if (uniquePartIdsArray.length > 0) {
-      logger.log('ParameterThunk', `Dispatching fetchParametersForReferencedParts for configured part IDs: ${uniquePartIdsArray.join(', ')}`);
+      logger.log('ParameterThunk', `Dispatching fetchParametersForReferencedParts for configured part IDs: ${uniquePartIdsArray.join(', ')}`, { instanceId: cardInstanceId });
       try {
         await dispatch(fetchParametersForReferencedParts(uniquePartIdsArray)).unwrap();
-        logger.log('ParameterThunk', `Successfully initiated fetch for configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`);
+        logger.log('ParameterThunk', `Successfully initiated fetch for configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`, { instanceId: cardInstanceId });
       } catch (error) {
-        logger.error('ParameterThunk', `Failed to fetch some configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`, { error });
+        logger.error('ParameterThunk', `Failed to fetch some configured parameters. Parts: ${uniquePartIdsArray.join(', ')}`, { error, instanceId: cardInstanceId });
       }
     } else {
-      logger.log('ParameterThunk', 'No specific part IDs derived from inventreeParametersToFetch configuration.');
+      logger.log('ParameterThunk', 'No specific part IDs derived from inventreeParametersToFetch configuration.', { instanceId: cardInstanceId });
     }
   }
 );

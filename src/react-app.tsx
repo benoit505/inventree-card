@@ -1,4 +1,4 @@
-console.log('[DEBUG] STEP 2: react-app.tsx executing');
+// console.log('[DEBUG] STEP 2: react-app.tsx executing');
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';

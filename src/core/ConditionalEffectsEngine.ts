@@ -141,6 +141,14 @@ export class ConditionalEffectsEngine {
     ): Promise<void> {
         this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED (two-pass). cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItemsToEvaluate}`);
         const state = this.getState();
+        
+        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects for cardInstanceId: ${cardInstanceId}`, {
+            data: {
+                logicItems: logicItemsToEvaluate,
+                configExists: !!state.config.configsByInstance[cardInstanceId],
+                level: 'debug'
+            }
+        });
 
         if (!logicItemsToEvaluate || logicItemsToEvaluate.length === 0) {
             this.dispatch(clearConditionalPartEffectsForCard({ cardInstanceId }));
@@ -148,7 +156,7 @@ export class ConditionalEffectsEngine {
         }
 
         const effectsToApply: Record<number, VisualEffect> = {};
-        const allParts = selectCombinedParts(state);
+        const allParts = selectCombinedParts(state, cardInstanceId);
         const haStates = selectAllGenericHaStates(state);
         const globalContext: GlobalContext = { ha_states: haStates };
 
@@ -157,7 +165,7 @@ export class ConditionalEffectsEngine {
             for (const pair of logicItem.logicPairs) {
                 if (isRuleGroupGeneric(pair.conditionRules)) {
                     try {
-                        if (evaluateExpression(pair.conditionRules, null, state, this.logger)) {
+                        if (evaluateExpression(pair.conditionRules, null, state, this.logger, cardInstanceId)) {
                             this.applyEffectsToTargets(pair.effects, effectsToApply, allParts);
                         }
                     } catch (e: any) {
@@ -173,7 +181,7 @@ export class ConditionalEffectsEngine {
                 for (const pair of logicItem.logicPairs) {
                     if (!isRuleGroupGeneric(pair.conditionRules)) {
                         try {
-                            if (evaluateExpression(pair.conditionRules, part, state, this.logger)) {
+                            if (evaluateExpression(pair.conditionRules, part, state, this.logger, cardInstanceId)) {
                                 this.applyEffectsToTargets(pair.effects, effectsToApply, allParts, part.pk);
                             }
                         } catch (e: any) {
@@ -184,7 +192,7 @@ export class ConditionalEffectsEngine {
             }
         }
 
-        this.logger.debug('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, effectsToApply);
+        this.logger.log('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, { data: { effectsToApply, level: 'silly' } });
         this.dispatch(setConditionalPartEffectsBatch({ cardInstanceId: cardInstanceId, effectsMap: effectsToApply }));
         this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects END for cardInstanceId: ${cardInstanceId}`);
     }

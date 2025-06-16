@@ -208,6 +208,15 @@ const PartView: React.FC<PartViewProps> = ({ partId, config, hass, cardInstanceI
     return undefined;
   }, [config?.actions, partData, hass, logger]);
 
+  console.log('%c[PartView Debug]', 'color: red; font-weight: bold;', {
+    partId,
+    partData,
+    visualEffect,
+    parametersData,
+    parametersError,
+    config
+  });
+
   return (
     <div style={partContainerStyle} className={itemClasses}>
       {shouldShowHeader && (

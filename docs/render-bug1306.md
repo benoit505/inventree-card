@@ -33,3 +33,4 @@ The core issue is that our primary `useEffect` hook is trying to fire based on a
 ## The Path Forward
 
 The solution is not to find the perfect set of dependencies for a single, unified effect. The solution is to **decouple our logic** and respect the independent nature of the data sources. Future architectural changes must be based on this principle.
+

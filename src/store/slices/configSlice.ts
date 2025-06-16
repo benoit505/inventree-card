@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction, current } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
 import { 
     InventreeCardConfig, 
@@ -45,118 +45,109 @@ const isObject = (item: any): boolean => {
   return (item && typeof item === 'object' && !Array.isArray(item));
 };
 
-export interface ConfigState extends InventreeCardConfig {
-  configInitialized?: boolean;
-  _configLastUpdated?: number;
+export interface InstanceConfigState {
+  config: InventreeCardConfig;
+  cardInstanceId: string;
+  configInitialized: boolean;
+  _configLastUpdated: number;
 }
 
-// Initial state for the slice, now directly using DEFAULT_CONFIG
+export interface ConfigState {
+  configsByInstance: Record<string, InstanceConfigState>;
+}
+
 const initialState: ConfigState = {
-  ...(DEFAULT_CONFIG as InventreeCardConfig), // Ensure DEFAULT_CONFIG is fully cast to InventreeCardConfig
-  // Explicitly ensure all InventreeCardConfig properties are present even if DEFAULT_CONFIG is Partial
-  type: DEFAULT_CONFIG.type || 'custom:inventree-card', // Assuming a default type
-  name: DEFAULT_CONFIG.name || 'InvenTree Card',
-  view_type: DEFAULT_CONFIG.view_type || 'detail',
-  data_sources: DEFAULT_CONFIG.data_sources || { inventree_hass_sensors: [], ha_entities: [], inventree_pks: [], inventree_parameters: [], inventreeParametersToFetch: [] },
-  layout_options: DEFAULT_CONFIG.layout_options || { columns: 3, grid_spacing: 8, item_height: 170 },
-  display: DEFAULT_CONFIG.display || { show_header: true, show_image: true, show_name: true, show_stock: true, show_buttons: true, show_parameters: true },
-  direct_api: DEFAULT_CONFIG.direct_api || { enabled: false, url: '', api_key: '' },
-  parameters: DEFAULT_CONFIG.parameters || { enabled: true, show_section: true },
-  conditional_logic: DEFAULT_CONFIG.conditional_logic || { definedLogics: [] },
-  style: DEFAULT_CONFIG.style || { background: 'var(--ha-card-background, var(--card-background-color, white))' },
-  interactions: DEFAULT_CONFIG.interactions || { buttons: [] },
-  performance: DEFAULT_CONFIG.performance || { rendering: {}, api: {}, websocket: {}, parameters: {} },
-  debug: DEFAULT_CONFIG.debug || false,
-  debug_verbose: DEFAULT_CONFIG.debug_verbose || false,
-  show_debug: DEFAULT_CONFIG.show_debug || false,
-  // Initialize other InventreeCardConfig fields if they have defaults or are mandatory
-  configInitialized: false,
-  _configLastUpdated: undefined,
+  configsByInstance: {},
 };
 
 const configSlice = createSlice({
   name: 'config',
   initialState,
   reducers: {
-    setConfigAction(state: ConfigState, action: PayloadAction<InventreeCardConfig>) {
-      const newConfigPayload = action.payload;
-      const mergedConfig = mergeDeep(current(state), newConfigPayload);
-      Object.assign(state, mergedConfig);
-      state._configLastUpdated = Date.now();
-      state.configInitialized = true;
+    setConfigAction(state: ConfigState, action: PayloadAction<{ cardInstanceId: string; config: InventreeCardConfig }>) {
+      const { cardInstanceId, config } = action.payload;
+      const currentConfig = state.configsByInstance[cardInstanceId]?.config || DEFAULT_CONFIG;
+      const mergedConfig = mergeDeep(currentConfig, config);
+      
+      state.configsByInstance[cardInstanceId] = {
+          config: mergedConfig,
+          cardInstanceId: cardInstanceId,
+          configInitialized: true,
+          _configLastUpdated: Date.now(),
+      };
+
+      logger.log('configSlice', `Set config for instance ${cardInstanceId}`, { instanceId: cardInstanceId });
     },
+    removeConfigAction(state: ConfigState, action: PayloadAction<{ cardInstanceId: string }>) {
+        delete state.configsByInstance[action.payload.cardInstanceId];
+        logger.log('configSlice', `Removed config for instance ${action.payload.cardInstanceId}`);
+    }
   },
 });
 
-export const { setConfigAction } = configSlice.actions;
+export const { setConfigAction, removeConfigAction } = configSlice.actions;
 
-export const selectFullConfig = (state: RootState): ConfigState => state.config;
+// --- Instance-Aware Selectors ---
 
-export const selectPresentationConfig = (state: RootState): InventreeCardConfig['presentation'] => {
-  return state.config.presentation || { viewType: 'detail', display: {}, layout: {}, styling: {}, conditionalRules: {} };
+export const selectConfigForInstance = (state: RootState, cardInstanceId: string): InventreeCardConfig | undefined => {
+  return state.config.configsByInstance[cardInstanceId]?.config;
 };
 
-export const selectApiConfigFromCardConfig = (state: RootState): DirectApiConfig | undefined => {
-  return state.config.direct_api;
+export const selectApiConfigFromCardConfig = (state: RootState, cardInstanceId: string): DirectApiConfig | undefined => {
+  return selectConfigForInstance(state, cardInstanceId)?.direct_api;
 };
 
-export const selectInteractionsConfig = (state: RootState): InventreeCardConfig['interactions'] => {
-  const interactions = state.config.interactions;
-  if (interactions && Array.isArray(interactions.buttons)) {
-    return interactions;
-  }
-  return { buttons: [] }; 
+export const selectInteractionsConfig = (state: RootState, cardInstanceId: string): InventreeCardConfig['interactions'] => {
+  const interactions = selectConfigForInstance(state, cardInstanceId)?.interactions;
+  return interactions || { buttons: [] }; 
 };
 
-export const selectConditionalLogicRules = (state: RootState): ConditionRuleDefinition[] => {
-  return state.config.conditional_logic?.rules || [];
+export const selectConditionalLogicRules = (state: RootState, cardInstanceId: string): ConditionRuleDefinition[] => {
+  return selectConfigForInstance(state, cardInstanceId)?.conditional_logic?.rules || [];
 };
 
-export const selectConditionalDefinedLogics = (state: RootState): ConditionalLogicItem[] => {
-    return state.config.conditional_logic?.definedLogics || [];
+export const selectConditionalDefinedLogics = (state: RootState, cardInstanceId: string): ConditionalLogicItem[] => {
+    return selectConfigForInstance(state, cardInstanceId)?.conditional_logic?.definedLogics || [];
 };
 
-export const selectInventreeParametersToFetch = (state: RootState): InventreeParameterFetchConfig[] => {
-    return state.config.data_sources?.inventreeParametersToFetch || [];
+export const selectInventreeParametersToFetch = (state: RootState, cardInstanceId: string): InventreeParameterFetchConfig[] => {
+    return selectConfigForInstance(state, cardInstanceId)?.data_sources?.inventreeParametersToFetch || [];
 };
 
 export const selectDisplaySetting = <K extends keyof DisplayConfig>(
   state: RootState,
+  cardInstanceId: string,
   key: K
 ): DisplayConfig[K] | undefined => {
-  return state.config.presentation?.display?.[key];
+  return selectConfigForInstance(state, cardInstanceId)?.display?.[key];
 };
 
-export const selectLayoutOptions = (state: RootState) => {
-    return state.config.presentation?.layout || {};
+export const selectLayoutOptions = (state: RootState, cardInstanceId: string) => {
+    return selectConfigForInstance(state, cardInstanceId)?.layout_options || {};
 };
 
-export const selectCardStyling = (state: RootState) => {
-    return state.config.presentation?.styling || {};
+export const selectCardStyling = (state: RootState, cardInstanceId: string) => {
+    return selectConfigForInstance(state, cardInstanceId)?.style || {};
 };
 
-export const selectPerformanceSettings = (state: RootState): PerformanceConfig | undefined => {
-  return state.config.system?.performance;
+export const selectPerformanceSettings = (state: RootState, cardInstanceId: string): PerformanceConfig | undefined => {
+  return selectConfigForInstance(state, cardInstanceId)?.performance;
 };
 
-export const selectDebugSettings = (state: RootState): InventreeCardConfig['system']['debug'] => {
-  return state.config.system?.debug || { enabled: false, verbose: false, hierarchical: {} };
+export const selectDebugSettings = (state: RootState, cardInstanceId: string): InventreeCardConfig['debug'] => {
+  return selectConfigForInstance(state, cardInstanceId)?.debug || false;
 };
 
-export const selectAllDataSources = (state: RootState): DataSourceConfig | undefined => {
-    return state.config.data_sources;
+export const selectAllDataSources = (state: RootState, cardInstanceId: string): DataSourceConfig | undefined => {
+    return selectConfigForInstance(state, cardInstanceId)?.data_sources;
 };
 
-export const selectPrimaryEntityId = (state: RootState): string | undefined | null => {
-    return state.config.entity;
+export const selectPrimaryEntityId = (state: RootState, cardInstanceId: string): string | undefined | null => {
+    return selectConfigForInstance(state, cardInstanceId)?.entity;
 };
 
-export const selectDirectApiEnabled = (state: RootState): boolean => {
-    return state.config.direct_api?.enabled || false;
-};
-
-export const selectConfig = (state: RootState): InventreeCardConfig => {
-    return state.config as InventreeCardConfig; // Ensure it returns the full config state
+export const selectDirectApiEnabled = (state: RootState, cardInstanceId: string): boolean => {
+    return selectConfigForInstance(state, cardInstanceId)?.direct_api?.enabled || false;
 };
 
 export default configSlice.reducer; 

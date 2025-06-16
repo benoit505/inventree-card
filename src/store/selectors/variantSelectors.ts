@@ -71,7 +71,7 @@ const groupVariants = (parts: InventreeItem[], config: InventreeCardConfig | nul
 
 export const selectProcessedVariants = createSelector(
     [
-        (state: RootState): InventreeItem[] => selectCombinedParts(state), // Correct: Pass state to selectCombinedParts
+        (state: RootState, cardInstanceId: string): InventreeItem[] => selectCombinedParts(state, cardInstanceId),
     ],
     (allParts: InventreeItem[]): ProcessedVariant[] => {
         // Add default return value for empty parts
@@ -87,7 +87,7 @@ export const selectProcessedVariants = createSelector(
 // This assumes we need the config for some variant processing, which might not be the case.
 // If config is needed, it must be passed as an argument or derived differently.
 export const selectVariantGroups = createSelector(
-    [selectCombinedParts], // Removed selectCardConfig from input selectors
+    [(state: RootState, cardInstanceId: string) => selectCombinedParts(state, cardInstanceId)],
     (parts) => { // Removed config from result function arguments
         // Group parts by variant_of or is_template status
         const groups: Record<string, InventreeItem[]> = {};

@@ -27,7 +27,15 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const [customActionId, setCustomActionId] = useState<string | undefined>(undefined);
   const [targetPartPksInput, setTargetPartPksInput] = useState<string>('');
   
-  const layoutColumns = useSelector((state: RootState) => state.config.layout?.columns || []);
+  const layoutColumns = useSelector((state: RootState) => {
+    // In the editor, we don't have a single card instance.
+    // We'll take the layout from the first available configured card instance.
+    const firstInstanceId = Object.keys(state.config.configsByInstance)[0];
+    if (firstInstanceId) {
+      return state.config.configsByInstance[firstInstanceId].config?.layout?.columns || [];
+    }
+    return [];
+  });
   const allActionDefinitions = useSelector((state: RootState) => state.actions.actionDefinitions);
   
   const availableActions = useMemo(() => {
