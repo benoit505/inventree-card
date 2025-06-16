@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import React from 'react';
 import { RootState } from '../index';
 import { Logger } from '../../utils/logger';
 import { VisualModifiers, DisplayConfigKey } from '../../types';
@@ -21,6 +22,7 @@ export interface VisualEffect extends VisualModifiers {
     whileHover?: object;
     whileTap?: object;
   };
+  cellStyles?: Record<string, React.CSSProperties>; // NEW: For cell-specific styling
 }
 
 // Interface for the state of this slice

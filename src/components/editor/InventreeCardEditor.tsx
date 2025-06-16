@@ -11,7 +11,7 @@ import HaEntitiesSection from './HaEntitiesSection';
 import InventreePkSection from './InventreePkSection';
 import InventreeParametersToFetchSection from './InventreeParametersToFetchSection';
 import InventreeApiConfigSection from './InventreeApiConfigSection';
-import LayoutSelectionSection, { LayoutOptions } from './LayoutSelectionSection';
+import LayoutSelectionSection from './LayoutSelectionSection';
 import ElementVisibilitySection from './ElementVisibilitySection';
 import CardStylingSection from './CardStylingSection';
 import ConfigurableActionsSection from './ConfigurableActionsSection';
@@ -158,22 +158,19 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
     handleConfigPartChanged('direct_api', newApiConfig);
   }, [handleConfigPartChanged]);
 
-  const handleLayoutConfigChanged = useCallback((newViewType: ViewType, newLayoutOptions: LayoutOptions) => {
+  const handleLayoutConfigChanged = useCallback((newLayoutConfig: LayoutConfig) => {
     setCurrentEditorConfig(prev => {
-        const updatedLayout: LayoutConfig = { 
-            viewType: newViewType,
-            columns: newLayoutOptions.columns ?? prev.layout?.columns,
-            grid_spacing: newLayoutOptions.grid_spacing ?? prev.layout?.grid_spacing,
-            item_height: newLayoutOptions.item_height ?? prev.layout?.item_height,
-        };
-
+        // This function now receives the entire layout object,
+        // which could include updates to viewType, columns, etc.
         const newConfig = { 
-            ...prev, 
-            view_type: newViewType,
-            columns: newLayoutOptions.columns ?? prev.columns,
-            grid_spacing: newLayoutOptions.grid_spacing ?? prev.grid_spacing,
-            item_height: newLayoutOptions.item_height ?? prev.item_height,
-            layout: updatedLayout,
+            ...prev,
+            // Persist the whole layout object
+            layout: newLayoutConfig,
+            // Also update legacy top-level fields for compatibility for now
+            view_type: newLayoutConfig.viewType,
+            columns: newLayoutConfig.legacy_columns,
+            grid_spacing: newLayoutConfig.grid_spacing,
+            item_height: newLayoutConfig.item_height,
         };
         onConfigChanged(newConfig as InventreeCardConfig);
         return newConfig;
@@ -271,13 +268,10 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
       <section className="editor-section">
         <h3>Presentation</h3>
         <LayoutSelectionSection 
-          viewType={editorData.view_type || 'detail'}
-          layoutOptions={{
-            columns: editorData.columns,
-            grid_spacing: editorData.grid_spacing,
-            item_height: editorData.item_height,
-          }}
+          hass={hass}
+          layoutConfig={editorData.layout}
           onLayoutConfigChanged={handleLayoutConfigChanged}
+          actions={editorData.actions || []}
         />
         <ElementVisibilitySection 
           displayConfig={editorData.display}

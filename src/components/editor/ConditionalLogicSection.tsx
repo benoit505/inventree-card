@@ -225,11 +225,15 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
   allParameterValues
 }) => {
   const [definedLogics, setDefinedLogics] = useState<ConditionalLogicItem[]>([]);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const dynamicFields = useMemo(() => 
     generateFieldsFromDataSources(configuredDataSources, hass, directApiConfig, allParameterValues), 
     [configuredDataSources, hass, directApiConfig, allParameterValues]
   );
+
+  // Memoize a stringified version of the logic config to use as a stable dependency
+  const stringifiedLogicConfig = useMemo(() => JSON.stringify(conditionalLogicConfig?.definedLogics), [conditionalLogicConfig?.definedLogics]);
 
   useEffect(() => {
     const initialLogics = conditionalLogicConfig?.definedLogics || [];
@@ -245,7 +249,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       })) : [getNewLogicPair()],
     }));
     setDefinedLogics(sanitizedLogics);
-  }, [conditionalLogicConfig?.definedLogics]);
+  }, [stringifiedLogicConfig]);
 
   const handleAddLogicBlock = () => {
     const newLogicItem: ConditionalLogicItem = {
@@ -253,38 +257,38 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       name: `New Logic Block ${definedLogics.length + 1}`,
       logicPairs: [getNewLogicPair()],
     };
-    const newDefinedLogics = [...definedLogics, newLogicItem];
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    const updatedLogics = [...definedLogics, newLogicItem];
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
+  };
+  
+  const toggleCollapse = (logicItemId: string) => {
+    setCollapsedSections(prev => ({ ...prev, [logicItemId]: !prev[logicItemId] }));
   };
 
   const handleLogicItemNameChange = (logicItemId: string, newName: string) => {
-    const newDefinedLogics = definedLogics.map(item => 
-      item.id === logicItemId ? { ...item, name: newName } : item
-    );
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    const updatedLogics = definedLogics.map(item => item.id === logicItemId ? { ...item, name: newName } : item);
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleRemoveLogicBlock = (logicItemId: string) => {
-    const newDefinedLogics = definedLogics.filter(item => item.id !== logicItemId);
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    const updatedLogics = definedLogics.filter(item => item.id !== logicItemId);
+    setDefinedLogics(updatedLogics); // Make the UI update instantly
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleAddLogicPair = (logicItemId: string) => {
-    const newDefinedLogics = definedLogics.map(item => {
+    setDefinedLogics(prev => prev.map(item => {
       if (item.id === logicItemId) {
         return { ...item, logicPairs: [...item.logicPairs, getNewLogicPair()] };
       }
       return item;
-    });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    }));
   };
 
   const handleLogicPairNameChange = (logicItemId: string, pairId: string, newName: string) => {
-    const newDefinedLogics = definedLogics.map(item => {
+    const updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
@@ -295,36 +299,36 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleLogicPairQueryChange = (logicItemId: string, pairId: string, queryFromBuilder: RQBRuleGroupType) => {
-    const newQuery = transformToInternalRuleGroup(queryFromBuilder);
-    const newDefinedLogics = definedLogics.map(item => {
+    const updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
           logicPairs: item.logicPairs.map(pair =>
-            pair.id === pairId ? { ...pair, conditionRules: newQuery } : pair
+            pair.id === pairId ? { ...pair, conditionRules: transformToInternalRuleGroup(queryFromBuilder) } : pair
           )
         };
       }
       return item;
     });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleLogicPairAddEffect = (logicItemId: string, pairId: string) => {
     const newEffect: EffectDefinition = {
       id: uuidv4(),
-      type: 'set_style', // Default type
-      styleProperty: 'highlight',
-      styleValue: '#FFFF00',
-      targetPartPks: 'all_loaded'
+      type: 'set_style',
+      styleTarget: 'Row', // Default to 'Row'
+      styleProperty: '',
+      styleValue: '',
     };
-    const newDefinedLogics = definedLogics.map(item => {
+
+    const updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
@@ -338,12 +342,12 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleLogicPairUpdateEffect = (logicItemId: string, pairId: string, updatedEffect: EffectDefinition) => {
-    const newDefinedLogics = definedLogics.map(item => {
+    const updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
@@ -362,12 +366,12 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleLogicPairRemoveEffect = (logicItemId: string, pairId: string, effectId: string) => {
-    const newDefinedLogics = definedLogics.map(item => {
+    const updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return {
           ...item,
@@ -381,89 +385,145 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleRemoveLogicPair = (logicItemId: string, pairId: string) => {
-    const newDefinedLogics = definedLogics.map(item => {
+    let updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return { ...item, logicPairs: item.logicPairs.filter(pair => pair.id !== pairId) };
       }
       return item;
     });
-    setDefinedLogics(newDefinedLogics);
-    onConfigChanged({ definedLogics: newDefinedLogics });
-  };
 
-  const commonStyles = {
-    container: { marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' },
-    header: { marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    input: { width: 'calc(100% - 120px)', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' },
-    button: { padding: '8px 12px', border: 'none', borderRadius: '4px', cursor: 'pointer', marginLeft: '10px' },
-    removeButton: { backgroundColor: '#f44336', color: 'white' },
-    addButton: { backgroundColor: '#4CAF50', color: 'white', marginTop: '10px', display: 'block', width: '100%' },
-    subSection: { marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #ccc' },
-    subHeader: { marginBottom: '10px', fontWeight: 'bold', fontSize: '0.9em' },
-    pairContainer: { marginLeft: '15px', borderLeft: '3px solid #4CAF50', paddingLeft: '15px', marginTop:'10px', marginBottom:'10px' },
+    // Clean up any logic blocks that now have no pairs
+    updatedLogics = updatedLogics.filter(item => item.logicPairs.length > 0);
+    setDefinedLogics(updatedLogics);
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   return (
-    <div>
-      <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>Conditional Logic</h3>
-      {definedLogics.map((logicItem, itemIndex) => (
-        <div key={logicItem.id} style={commonStyles.container}>
-          <div style={commonStyles.header}>
-            <input
-              type="text"
-              value={logicItem.name}
-              onChange={(e) => handleLogicItemNameChange(logicItem.id, e.target.value)}
-              placeholder={`Logic Block ${itemIndex + 1} Name`}
-              style={commonStyles.input}
-            />
-            <button onClick={() => handleRemoveLogicBlock(logicItem.id)} style={{...commonStyles.button, ...commonStyles.removeButton}}>Remove Block</button>
-          </div>
-          
-          {logicItem.logicPairs.map((pair, pairIndex) => (
-            <div key={pair.id} style={commonStyles.pairContainer}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <input
-                  type="text"
-                  value={pair.name}
-                  onChange={(e) => handleLogicPairNameChange(logicItem.id, pair.id, e.target.value)}
-                  placeholder={`Rule-Effect Pair ${pairIndex + 1} Name (Optional)`}
-                  style={{ ...commonStyles.input, width: 'calc(100% - 130px)', fontSize: '0.9em' }}
-                />
-                <button onClick={() => handleRemoveLogicPair(logicItem.id, pair.id)} style={{ ...commonStyles.button, ...commonStyles.removeButton, fontSize: '0.8em', padding: '6px 10px' }}>Remove Pair</button>
+    <div className="sub-section-container" style={{ borderTop: '1px solid #ddd', marginTop: '16px', paddingTop: '16px' }}>
+      <h4 className="sub-section-title">Conditional Logic</h4>
+      <p style={{ fontSize: '0.9em', color: 'gray', marginTop: '-10px', marginBottom: '15px' }}>
+        Define rules to dynamically change the card's appearance based on part data or Home Assistant states.
+      </p>
+
+      {definedLogics.map(logicItem => {
+        const isCollapsed = collapsedSections[logicItem.id];
+        return (
+          <div key={logicItem.id} style={{
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            backgroundColor: '#f9f9f9',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+            transition: 'all 0.3s ease-in-out',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 15px',
+              borderBottom: '1px solid #ddd',
+              backgroundColor: '#f1f1f1',
+              borderRadius: '8px 8px 0 0',
+            }}>
+              <input
+                type="text"
+                value={logicItem.name}
+                onChange={(e) => handleLogicItemNameChange(logicItem.id, e.target.value)}
+                placeholder="Logic Block Name"
+                style={{ flexGrow: 1, border: 'none', background: 'none', fontWeight: 'bold', fontSize: '1.1em' }}
+              />
+              <div>
+                <button onClick={() => toggleCollapse(logicItem.id)} style={styles.iconButton}>
+                  {isCollapsed ? '▶' : '▼'}
+                </button>
+                <button onClick={() => handleRemoveLogicBlock(logicItem.id)} style={{...styles.iconButton, ...styles.dangerButton}}>
+                  🗑️
+                </button>
               </div>
-              
-              <div style={commonStyles.subHeader}>IF (Conditions for this Pair):</div>
-              <QueryBuilder
-                fields={dynamicFields}
-                query={pair.conditionRules as RQBRuleGroupType}
-                onQueryChange={(q) => handleLogicPairQueryChange(logicItem.id, pair.id, q)}
-              />
-              
-              <div style={{ ...commonStyles.subHeader, marginTop: '15px' }}>THEN (Effects for this Pair):</div>
-              <EffectsConfiguration
-                effects={pair.effects}
-                logicBlockId={pair.id}
-                onAddEffect={() => handleLogicPairAddEffect(logicItem.id, pair.id)}
-                onUpdateEffect={(effectToUpdate: EffectDefinition) => 
-                  handleLogicPairUpdateEffect(logicItem.id, pair.id, effectToUpdate)
-                }
-                onRemoveEffect={(effectId: string) => 
-                  handleLogicPairRemoveEffect(logicItem.id, pair.id, effectId)
-                }
-              />
             </div>
-          ))}
-          <button onClick={() => handleAddLogicPair(logicItem.id)} style={{...commonStyles.button, backgroundColor: '#2196F3', color: 'white', marginTop: '15px' }}>Add Rule-Effect Pair to Block</button>
-        </div>
-      ))}
-      <button onClick={handleAddLogicBlock} style={commonStyles.addButton}>Add New Conditional Logic Block</button>
+
+            {!isCollapsed && (
+              <div style={{ padding: '15px' }}>
+                {logicItem.logicPairs.map((pair, pairIndex) => (
+                  <div key={pair.id} style={{
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '6px',
+                    padding: '15px',
+                    marginBottom: '15px',
+                    backgroundColor: 'white',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                       <h5 style={{ margin: 0 }}>
+                         Condition & Effects Pair {pairIndex + 1}
+                       </h5>
+                       {logicItem.logicPairs.length > 1 && (
+                         <button onClick={() => handleRemoveLogicPair(logicItem.id, pair.id)} style={{...styles.iconButton, ...styles.dangerButton, fontSize: '0.9em'}}>
+                           Remove Pair
+                         </button>
+                       )}
+                    </div>
+                    
+                    <h6 style={{ marginTop: '10px', marginBottom: '5px', color: '#333' }}>IF... (Condition)</h6>
+                    <div className="query-builder-container" style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}>
+                        <QueryBuilder
+                          fields={dynamicFields}
+                          query={pair.conditionRules as RQBRuleGroupType}
+                          onQueryChange={q => handleLogicPairQueryChange(logicItem.id, pair.id, q)}
+                        />
+                    </div>
+                    
+                    <h6 style={{ marginTop: '15px', marginBottom: '5px', color: '#333' }}>THEN... (Effects)</h6>
+                    <EffectsConfiguration
+                      effects={pair.effects}
+                      logicBlockId={pair.id}
+                      onAddEffect={() => handleLogicPairAddEffect(logicItem.id, pair.id)}
+                      onUpdateEffect={(effect) => handleLogicPairUpdateEffect(logicItem.id, pair.id, effect)}
+                      onRemoveEffect={(effectId) => handleLogicPairRemoveEffect(logicItem.id, pair.id, effectId)}
+                    />
+                  </div>
+                ))}
+                <button onClick={() => handleAddLogicPair(logicItem.id)} style={styles.primaryButton}>
+                  + Add Condition/Effect Pair
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      <button onClick={handleAddLogicBlock} style={{...styles.primaryButton, marginTop: '10px' }}>
+        + Add New Logic Block
+      </button>
     </div>
   );
+};
+
+const styles = {
+  iconButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '5px',
+    fontSize: '1.2em',
+    lineHeight: 1,
+  },
+  dangerButton: {
+    color: '#d9534f',
+  },
+  primaryButton: {
+    padding: '8px 12px',
+    border: '1px solid #007bff',
+    background: '#007bff',
+    color: 'white',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '0.9em',
+  }
 };
 
 export default ConditionalLogicSection; 

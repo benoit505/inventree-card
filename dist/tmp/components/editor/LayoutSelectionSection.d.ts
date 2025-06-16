@@ -1,14 +1,11 @@
 import React from 'react';
-import { ViewType } from '../../types';
-export interface LayoutOptions {
-    columns?: number | undefined;
-    grid_spacing?: number | undefined;
-    item_height?: number | undefined;
-}
+import { HomeAssistant } from 'custom-card-helpers';
+import { LayoutConfig, ActionDefinition } from '../../types';
 interface LayoutSelectionSectionProps {
-    viewType?: ViewType;
-    layoutOptions?: LayoutOptions;
-    onLayoutConfigChanged: (newViewType: ViewType, newLayoutOptions: LayoutOptions) => void;
+    hass?: HomeAssistant;
+    layoutConfig: LayoutConfig;
+    onLayoutConfigChanged: (newLayoutConfig: LayoutConfig) => void;
+    actions: ActionDefinition[];
 }
 declare const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps>;
 export default LayoutSelectionSection;

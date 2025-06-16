@@ -1,3 +1,4 @@
+import React from 'react';
 import { RootState } from '../index';
 import { VisualModifiers, DisplayConfigKey } from '../../types';
 export interface VisualEffect extends VisualModifiers {
@@ -11,6 +12,7 @@ export interface VisualEffect extends VisualModifiers {
         whileHover?: object;
         whileTap?: object;
     };
+    cellStyles?: Record<string, React.CSSProperties>;
 }
 export interface VisualEffectsState {
     effectsByCardInstance: Record<string, Record<number, VisualEffect>>;
@@ -122,6 +124,7 @@ export declare const selectVisualEffectForPart: ((state: {
         whileHover?: object;
         whileTap?: object;
     };
+    cellStyles?: Record<string, React.CSSProperties>;
     highlight?: string;
     textColor?: string;
     border?: string;
@@ -152,6 +155,7 @@ export declare const selectVisualEffectForPart: ((state: {
             whileHover?: object;
             whileTap?: object;
         };
+        cellStyles?: Record<string, React.CSSProperties>;
         highlight?: string;
         textColor?: string;
         border?: string;
@@ -178,6 +182,7 @@ export declare const selectVisualEffectForPart: ((state: {
             whileHover?: object;
             whileTap?: object;
         };
+        cellStyles?: Record<string, React.CSSProperties>;
         highlight?: string;
         textColor?: string;
         border?: string;
@@ -208,6 +213,7 @@ export declare const selectVisualEffectForPart: ((state: {
             whileHover?: object;
             whileTap?: object;
         };
+        cellStyles?: Record<string, React.CSSProperties>;
         highlight?: string;
         textColor?: string;
         border?: string;

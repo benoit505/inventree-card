@@ -27,6 +27,7 @@ import GridLayout from './components/layouts/GridLayout';
 import ListLayout from './components/layouts/ListLayout';
 import PartsLayout from './components/layouts/PartsLayout';
 import VariantLayout from './components/layouts/VariantLayout';
+import TableLayout from './components/layouts/TableLayout';
 import GlobalActionButtons from './components/global/GlobalActionButtons';
 import { registerComponent, removeComponent } from './store/slices/componentSlice';
 
@@ -212,9 +213,9 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
   }, [idleRenderInterval, logger]);
 
   const renderLayout = (): JSX.Element | null => {
-    if (!config) return null;
+    if (!config || !config.layout) return null; // Guard against missing config or layout
     const commonLayoutProps: any = { hass, config, cardInstanceId };
-    switch (config.view_type) {
+    switch (config.layout.viewType) {
       case 'detail':
         return React.createElement(DetailLayout, { ...commonLayoutProps, selectedPartId: selectedItem?.pk });
       case 'grid':
@@ -226,13 +227,19 @@ const InventreeCard = ({ hass, config, cardInstanceId }: InventreeCardProps): JS
         return React.createElement(PartsLayout, { ...commonLayoutProps, parts });
       case 'variants':
         return React.createElement(VariantLayout, { ...commonLayoutProps, selectedPart: selectedItem });
+      case 'custom':
+        return React.createElement(TableLayout, { ...commonLayoutProps, parts, layoutConfig: config.layout });
       default:
+        // Default to the new TableLayout if columns are defined, otherwise fallback to PartsLayout
+        if (config.layout.columns && config.layout.columns.length > 0) {
+          return React.createElement(TableLayout, { ...commonLayoutProps, parts, layoutConfig: config.layout });
+        }
         return React.createElement(PartsLayout, { ...commonLayoutProps, parts });
     }
   };
 
   return (
-    <div className="inventree-card-wrapper" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="inventree-card-wrapper" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px', boxSizing: 'border-box' }}>
       <GlobalActionButtons />
       <div style={{ flex: 1 }}>
         {configInitialized ? renderLayout() : <div style={{ padding: '16px' }}>Initializing configuration...</div>}

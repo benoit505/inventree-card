@@ -424,34 +424,44 @@ export interface ProcessedCondition {
 }
 
 // --- Conditional Logic Structures ---
-export interface EffectDefinition {
+import { AnimationProps } from 'framer-motion';
+import { VisualEffect } from './store/slices/visualEffectsSlice';
+
+export type EffectDefinition = {
   id: string; // Unique ID for this specific effect
-  type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action' | 'set_thumbnail_style' | 'animate_style';
-  targetElement?: string; // CSS selector for custom elements OR a predefined key for standard card areas (e.g., 'part_image_container', 'part_name_text')
-  targetDisplayKey?: DisplayConfigKey; // NEW: Specifically for type 'set_visibility' to target a standard display element (e.g., 'show_name')
-  targetPartPks?: number[] | string; // NEW: Which parts this specific effect applies to (e.g., [1,2], "all_loaded", "1,2,3")
-  // For set_visibility
-  isVisible?: boolean;
-  // For set_style
-  styleProperty?: string; // e.g., 'backgroundColor', 'border', 'color'
-  styleValue?: string;
-  // For animate_style
-  animation?: {
-    animate?: any;
-    transition?: any;
-    whileHover?: any;
-    whileTap?: any;
-  };
-  // For set_thumbnail_style (NEW)
-  thumbnailFilter?: string; // e.g., 'grayscale(100%) blur(2px)'
-  thumbnailOpacity?: number; // e.g., 0.5
-  // For call_ha_service
-  service?: string;
-  service_data?: Record<string, any>;
-  // For trigger_custom_action
-  customActionId?: string; // ID of a CustomAction defined in the Interactions section
-  preset?: string; // NEW: To store the name of the preset, e.g., "shake"
-}
+} & (
+  {
+    type: 'set_visibility';
+    isVisible: boolean;
+    targetDisplayKey?: DisplayConfigKey;
+    targetPartPks?: number[] | 'all_loaded';
+  } | {
+    type: 'set_style';
+    styleTarget: 'Row' | string; // 'Row' or a column ID
+    styleProperty: keyof VisualEffect | string; // keyof VisualEffect for Row, string for Cell
+    styleValue: any;
+    targetPartPks?: number[] | 'all_loaded';
+  } | {
+    type: 'animate_style';
+    animation?: Partial<AnimationProps>;
+    preset?: string;
+    targetPartPks?: number[] | 'all_loaded';
+  } | {
+    type: 'trigger_custom_action';
+    customActionId: string;
+    targetPartPks?: number[] | 'all_loaded';
+  } | {
+    type: 'set_thumbnail_style';
+    thumbnailFilter?: string;
+    thumbnailOpacity?: number;
+    targetPartPks?: number[] | 'all_loaded';
+  } | {
+    type: 'call_ha_service',
+    service?: string,
+    service_data?: Record<string, any>,
+    targetPartPks?: number[] | 'all_loaded';
+  }
+);
 
 export interface LogicPair {
   id: string; // Unique ID for this specific rule-effect pairing
@@ -800,12 +810,35 @@ declare global {
 // export {}; 
 
 // --- Layout Configuration --- 
-export interface LayoutConfig { // Added export
+export interface LayoutConfig {
   viewType: ViewType;
-  columns?: number;
-  grid_spacing?: number; // Added
-  item_height?: number;  // Added
-} 
+  columns?: LayoutColumn[]; // NEW: Array to define dynamic columns
+  enableFiltering?: boolean; // Optional: Show a global filter input
+  rowHeight?: number;
+  // Legacy options, can be deprecated over time
+  legacy_columns?: number;
+  grid_spacing?: number;
+  item_height?: number;
+}
+
+export interface ButtonColumnItem {
+  id: string; // For React keys in the editor
+  actionId: string;
+  targetPartPks?: number[];
+}
+
+export interface LayoutColumn {
+  id: string;
+  content: 'name' | 'thumbnail' | 'description' | 'in_stock' | 'pk' | 'IPN' | 'SKU' | 'category_detail.name' | 'location_detail.name' | 'buttons' | 'attribute' | 'template';
+  header?: string;
+  width?: string;
+  // For 'buttons' content
+  buttons?: ButtonColumnItem[]; // Replaces buttonActionId and targetPartPks
+  // For 'attribute' or 'custom' content
+  attributeName?: string;
+  // For 'template' content
+  template?: string;
+}
 
 export interface ActionRuntimeState {
   status: 'idle' | 'pending' | 'success' | 'error';

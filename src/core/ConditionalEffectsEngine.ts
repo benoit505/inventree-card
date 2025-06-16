@@ -40,6 +40,20 @@ const mapStylePropertyToVisualEffectKey = (styleProperty: string): keyof VisualE
     }
 };
 
+const isRuleGroupGeneric = (ruleGroup?: RuleGroupType): boolean => {
+    if (!ruleGroup || !ruleGroup.rules) return true;
+    for (const ruleOrGroup of ruleGroup.rules) {
+        if ('combinator' in ruleOrGroup) {
+            if (!isRuleGroupGeneric(ruleOrGroup as RuleGroupType)) return false;
+        } else {
+            if (ruleOrGroup.field?.startsWith('part_') || ruleOrGroup.field?.startsWith('inv_param_')) {
+                return false;
+            }
+        }
+    }
+    return true;
+};
+
 export class ConditionalEffectsEngine {
     private dispatch: AppDispatch;
     private getState: () => RootState;
@@ -52,18 +66,83 @@ export class ConditionalEffectsEngine {
         this.logger.log('ConditionalEffectsEngine', 'CONSTRUCTOR CALLED. Instance created.');
     }
 
+    private applyEffectsToTargets(
+        effects: EffectDefinition[],
+        effectsToApply: Record<number, VisualEffect>,
+        allParts: InventreeItem[],
+        contextPartPk?: number
+    ) {
+        for (const effect of effects) {
+            let targetPksForThisEffect: number[] = [];
+
+            if (effect.targetPartPks && Array.isArray(effect.targetPartPks)) {
+                targetPksForThisEffect = effect.targetPartPks;
+            } else if (effect.targetPartPks === 'all_loaded') {
+                targetPksForThisEffect = allParts.map(p => p.pk);
+            } else if (contextPartPk) {
+                targetPksForThisEffect = [contextPartPk];
+            }
+
+            for (const pk of targetPksForThisEffect) {
+                if (!effectsToApply[pk]) effectsToApply[pk] = {};
+                const currentPartVisualEffects = effectsToApply[pk];
+
+                switch (effect.type) {
+                    case 'set_visibility':
+                        currentPartVisualEffects.isVisible = effect.isVisible;
+                        break;
+                    case 'set_style':
+                        if (effect.styleTarget === 'Row') {
+                            const visualEffectKey = mapStylePropertyToVisualEffectKey(effect.styleProperty);
+                            if (visualEffectKey && effect.styleValue !== undefined) {
+                                (currentPartVisualEffects as any)[visualEffectKey] = effect.styleValue;
+                            }
+                        } else {
+                            const columnId = effect.styleTarget;
+                            if (columnId && effect.styleProperty && effect.styleValue !== undefined) {
+                                if (!currentPartVisualEffects.cellStyles) currentPartVisualEffects.cellStyles = {};
+                                if (!currentPartVisualEffects.cellStyles[columnId]) currentPartVisualEffects.cellStyles[columnId] = {};
+                                (currentPartVisualEffects.cellStyles[columnId] as any)[effect.styleProperty] = effect.styleValue;
+                            }
+                        }
+                        break;
+                    case 'animate_style':
+                        const presetKey = effect.preset?.toLowerCase(); // Make the check case-insensitive
+                        if (presetKey === 'none') {
+                            delete currentPartVisualEffects.animation;
+                        } else if (presetKey && ANIMATION_PRESETS[presetKey]) {
+                            currentPartVisualEffects.animation = {
+                                ...(currentPartVisualEffects.animation || {}),
+                                ...ANIMATION_PRESETS[presetKey].animation,
+                            };
+                        } else if (effect.animation) { 
+                            currentPartVisualEffects.animation = {
+                                ...(currentPartVisualEffects.animation || {}),
+                                ...(effect.animation as any),
+                            };
+                        }
+                        break;
+                    case 'set_thumbnail_style':
+                        if (!currentPartVisualEffects.thumbnailStyle) currentPartVisualEffects.thumbnailStyle = {};
+                        if (effect.thumbnailFilter) currentPartVisualEffects.thumbnailStyle.filter = effect.thumbnailFilter;
+                        if (typeof effect.thumbnailOpacity === 'number') currentPartVisualEffects.thumbnailStyle.opacity = effect.thumbnailOpacity;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+    }
+
     public async evaluateAndApplyEffects(
         cardInstanceId: string, 
-        forceReevaluation: boolean = false, // Not used in this implementation, but kept for API consistency
+        forceReevaluation: boolean = false, 
         logicItemsToEvaluate?: ConditionalLogicItem[]  
     ): Promise<void> {
-        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED (part-first). cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItemsToEvaluate}, Count: ${logicItemsToEvaluate?.length}`);
-        console.log(`[ConditionalEffectsEngine] Starting evaluation for card: ${cardInstanceId}`);
-
+        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED (two-pass). cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItemsToEvaluate}`);
         const state = this.getState();
 
         if (!logicItemsToEvaluate || logicItemsToEvaluate.length === 0) {
-            this.logger.log('ConditionalEffectsEngine', `No logic items provided for card ${cardInstanceId}. Clearing its visual effects.`);
             this.dispatch(clearConditionalPartEffectsForCard({ cardInstanceId }));
             return;
         }
@@ -73,124 +152,40 @@ export class ConditionalEffectsEngine {
         const haStates = selectAllGenericHaStates(state);
         const globalContext: GlobalContext = { ha_states: haStates };
 
-        console.log('[ConditionalEffectsEngine] Evaluation context:', {
-            partCount: allParts.length,
-            logicItemCount: logicItemsToEvaluate.length,
-        });
-
-        // --- "Part-First" Architecture ---
-        // 1. Iterate through each part.
-        for (const part of allParts) {
-            effectsToApply[part.pk] = {}; // Initialize an empty effects object for the part.
-            
-            // 2. For each part, iterate through all logic rules.
-            for (const logicItem of logicItemsToEvaluate) {
-                for (const pair of logicItem.logicPairs) {
-                    let conditionResult = false;
+        // --- Pass 1: Evaluate Generic Conditions ---
+        for (const logicItem of logicItemsToEvaluate) {
+            for (const pair of logicItem.logicPairs) {
+                if (isRuleGroupGeneric(pair.conditionRules)) {
                     try {
-                        // --- NEW LOGIC: Check for part-specific rules ---
-                        let isRulePartSpecific = false;
-                        let specificPartId = -1;
-
-                        const findSpecificPartId = (rules: any) => {
-                            for (const rule of rules) {
-                                if (rule.field && typeof rule.field === 'string') {
-                                    const match = rule.field.match(/^part_(\d+)_/);
-                                    if (match && match[1]) {
-                                        isRulePartSpecific = true;
-                                        specificPartId = parseInt(match[1], 10);
-                                        return; // Found it, stop searching
-                                    }
-                                }
-                                if (rule.rules) {
-                                    findSpecificPartId(rule.rules);
-                                    if (isRulePartSpecific) return; // Propagate the find
-                                }
-                            }
-                        };
-                        
-                        if (pair.conditionRules?.rules) {
-                           findSpecificPartId(pair.conditionRules.rules);
-                        }
-
-                        // If the rule is for a specific part, and it's not the current part, skip evaluation.
-                        if (isRulePartSpecific && specificPartId !== part.pk) {
-                            conditionResult = false;
-                        } else {
-                            // 3. Evaluate the condition WITH the current part as context. This fixes the "partContext Lie".
-                            conditionResult = evaluateExpression(pair.conditionRules, part, state, this.logger);
+                        if (evaluateExpression(pair.conditionRules, null, state, this.logger)) {
+                            this.applyEffectsToTargets(pair.effects, effectsToApply, allParts);
                         }
                     } catch (e: any) {
-                        this.logger.error('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] ERROR evaluating condition for pair ${pair.id} on part ${part.pk}: ${e.message}`, {data: {stack: e.stack, ruleGroup: pair.conditionRules}});
-                        conditionResult = false;
+                        this.logger.error('ConditionalEffectsEngine', `[Generic] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
                     }
+                }
+            }
+        }
 
-                    // 4. If the condition is true for this part, apply the effects.
-                    if (conditionResult) {
-                        this.logger.log('ConditionalEffectsEngine', `[CEE ${cardInstanceId}] Condition MET for pair ${pair.id} on part ${part.pk}. Applying ${pair.effects.length} effects.`);
-                        console.log(`[ConditionalEffectsEngine] Part ${part.pk} met condition for logic pair ${pair.id}`);
-
-                        for (const effect of pair.effects) {
-                            // The targetPartPks check is now redundant for part-specific visual effects, as we are already in a part's loop.
-                            // However, we can keep it as an additional filter if needed, or for non-visual effects that might still target other parts.
-                            // For simplicity in this refactor, we assume the effect applies to the current `part`.
-
-                            const currentPartVisualEffects = effectsToApply[part.pk];
-
-                            switch (effect.type) {
-                                case 'set_visibility':
-                                    currentPartVisualEffects.isVisible = effect.isVisible;
-                                    break;
-                                case 'set_style':
-                                    if (effect.styleProperty && effect.styleValue !== undefined) {
-                                        const visualEffectKey = mapStylePropertyToVisualEffectKey(effect.styleProperty);
-                                        if (visualEffectKey) {
-                                            (currentPartVisualEffects as any)[visualEffectKey] = effect.styleValue;
-                                        }
-                                    }
-                                    break;
-                                case 'animate_style':
-                                    // NEW: Handle presets first
-                                    if (effect.preset && ANIMATION_PRESETS[effect.preset]) {
-                                        currentPartVisualEffects.animation = {
-                                            ...(currentPartVisualEffects.animation || {}),
-                                            ...ANIMATION_PRESETS[effect.preset].animation,
-                                        };
-                                    } 
-                                    // Keep support for legacy raw animation for now
-                                    else if (effect.animation) { 
-                                        currentPartVisualEffects.animation = {
-                                            ...(currentPartVisualEffects.animation || {}),
-                                            ...(effect.animation as any),
-                                        };
-                                    }
-                                    break;
-                                case 'set_thumbnail_style':
-                                    if (!currentPartVisualEffects.thumbnailStyle) {
-                                        currentPartVisualEffects.thumbnailStyle = {};
-                                    }
-                                    if (effect.thumbnailFilter) {
-                                        currentPartVisualEffects.thumbnailStyle.filter = effect.thumbnailFilter;
-                                    }
-                                    if (typeof effect.thumbnailOpacity === 'number') {
-                                        currentPartVisualEffects.thumbnailStyle.opacity = effect.thumbnailOpacity;
-                                    }
-                                    break;
-                                default:
-                                    // Non-visual effects would be handled here or in a separate engine.
-                                    break;
+        // --- Pass 2: Evaluate Part-Specific Conditions ---
+        for (const part of allParts) {
+            for (const logicItem of logicItemsToEvaluate) {
+                for (const pair of logicItem.logicPairs) {
+                    if (!isRuleGroupGeneric(pair.conditionRules)) {
+                        try {
+                            if (evaluateExpression(pair.conditionRules, part, state, this.logger)) {
+                                this.applyEffectsToTargets(pair.effects, effectsToApply, allParts, part.pk);
                             }
+                        } catch (e: any) {
+                            this.logger.error('ConditionalEffectsEngine', `[Part ${part.pk}] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
                         }
-                    } // End if (conditionResult)
-                } // End loop logicPairs
-            } // End loop logicItems
-        } // End loop allParts
+                    }
+                }
+            }
+        }
 
         this.logger.debug('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, effectsToApply);
-
-        console.log(`[ConditionalEffectsEngine] Evaluation complete for card ${cardInstanceId}. Final effects to apply:`, effectsToApply);
         this.dispatch(setConditionalPartEffectsBatch({ cardInstanceId: cardInstanceId, effectsMap: effectsToApply }));
-        
         this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects END for cardInstanceId: ${cardInstanceId}`);
     }
 }
