@@ -1,12 +1,12 @@
-import { createSlice, PayloadAction, ActionReducerMapBuilder, current } from '@reduxjs/toolkit';
-import { ParameterAction, InventreeCardConfig, InventreeItem, ParameterDetail, ParameterConfig, ParameterOperator, ParameterActionType, ParameterCondition } from '../../types';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { InventreeCardConfig, InventreeItem, ParameterDetail, ParameterCondition } from '../../types';
 import { RootState } from '../index';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('parametersSlice');
+ConditionalLoggerEngine.getInstance().registerCategory('parametersSlice', { enabled: false, level: 'info' });
 
 export interface ParametersState {
-  actions: Record<string, ParameterAction[]>;
   parameterValues: Record<number, Record<string, ParameterDetail>>;
   parameterLoadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
   parameterError: Record<number, string | null>;
@@ -21,7 +21,6 @@ export interface ParametersState {
 }
 
 const initialState: ParametersState = {
-  actions: {},
   parameterValues: {},
   parameterLoadingStatus: {},
   parameterError: {},
@@ -39,10 +38,6 @@ const parametersSlice = createSlice({
   name: 'parameters',
   initialState,
   reducers: {
-    setActions(state: ParametersState, action: PayloadAction<{ entityId: string, actions: ParameterAction[] }>) {
-      const { entityId, actions } = action.payload;
-      state.actions[entityId] = actions;
-    },
     setConfig(state: ParametersState, action: PayloadAction<InventreeCardConfig>) {
       state.config = action.payload;
     },
@@ -52,7 +47,7 @@ const parametersSlice = createSlice({
     clearConditionCache(state: ParametersState) {
       state.cache.conditionResults = {};
       state.cache.lastCleared = Date.now();
-      logger.log('parametersSlice', 'Condition cache cleared.', { level: 'debug' });
+      logger.debug('clearConditionCache', 'Condition cache cleared.');
     },
     clearCache(state: ParametersState) {
       state.cache.conditionResults = {};
@@ -61,7 +56,7 @@ const parametersSlice = createSlice({
       state.parameterLoadingStatus = {};
       state.parameterError = {};
       state.recentlyChanged = [];
-      logger.info('parametersSlice', 'Full parameter cache cleared (values, status, errors, conditions, recent).');
+      logger.info('clearCache', 'Full parameter cache cleared (values, status, errors, conditions, recent).');
     },
     checkCondition(state: ParametersState, action: PayloadAction<{ part: InventreeItem, condition: ParameterCondition }>) {
       // This action doesn't actually modify state, it's used for tracking only
@@ -71,7 +66,7 @@ const parametersSlice = createSlice({
       
       if (!state.parameterValues[partId]) {
         state.parameterValues[partId] = {};
-        logger.log('parametersSlice', `Created parameter entry for part ${partId} during updateValue.`, { level: 'debug' });
+        logger.debug('updateValue', `Created parameter entry for part ${partId}.`);
       }
       
       if (!state.parameterValues[partId][paramName]) {
@@ -86,18 +81,15 @@ const parametersSlice = createSlice({
               description: '',
               checkbox: false,
               choices: '',
-              selectionlist: null
            },
            data: value,
            data_numeric: null,
         };
-        logger.log('parametersSlice', `Created parameter entry for ${paramName} on part ${partId} during updateValue.`, { level: 'debug' });
+        logger.debug('updateValue', `Created parameter entry for ${paramName} on part ${partId}.`);
       } else {
          state.parameterValues[partId][paramName].data = value;
       }
 
-      // Ensure loading status is updated if this is the first time we get a value
-      // However, for WebSocket updates, it's usually better to assume it's 'succeeded' if data arrives
       if (state.parameterLoadingStatus[partId] !== 'succeeded') {
         state.parameterLoadingStatus[partId] = 'succeeded';
         state.parameterError[partId] = null;
@@ -110,12 +102,11 @@ const parametersSlice = createSlice({
           state.recentlyChanged = state.recentlyChanged.slice(-100);
         }
       }
-       logger.log('parametersSlice', `Updated value for ${key} to '${value}' (Source: ${source || 'Unknown'}). Status set to succeeded.`, { level: 'debug' });
+       logger.debug('updateValue', `Updated value for ${key} to '${value}'.`, {source: source || 'Unknown'});
     },
     webSocketUpdateReceived(state: ParametersState, action: PayloadAction<{ partId: number; parameterName: string; value: any; source?: string }>) {
       const { partId, parameterName, value, source } = action.payload;
-      logger.log('parametersSlice', `[Reducer START] webSocketUpdateReceived`, {
-        level: 'info',
+      logger.info('webSocketUpdateReceived', 'Reducer processing update', {
         partId,
         parameterName,
         receivedValue: value,
@@ -125,11 +116,11 @@ const parametersSlice = createSlice({
 
       if (!state.parameterValues[partId]) {
         state.parameterValues[partId] = {};
-        logger.log('parametersSlice', `Created parameter structure for part ${partId} during WebSocket update.`, { level: 'debug' });
+        logger.debug('webSocketUpdateReceived', `Created parameter structure for part ${partId}.`);
       }
 
       const beforeValue = state.parameterValues[partId]?.[parameterName]?.data;
-      logger.log('parametersSlice', `Value before update for ${partId}:${parameterName}: ${beforeValue}`, { level: 'debug' });
+      logger.debug('webSocketUpdateReceived', `Value before update for ${partId}:${parameterName} was: ${beforeValue}`);
 
       if (!state.parameterValues[partId][parameterName]) {
         state.parameterValues[partId][parameterName] = {
@@ -143,19 +134,18 @@ const parametersSlice = createSlice({
             description: '',
             checkbox: typeof value === 'boolean',
             choices: '',
-            selectionlist: null
           },
           data: String(value), 
           data_numeric: typeof value === 'number' ? value : null,
         };
-        logger.log('parametersSlice', `Created new parameter entry for ${parameterName} on part ${partId} via WebSocket. New data: ${String(value)}`, { level: 'debug' });
+        logger.debug('webSocketUpdateReceived', `Created new parameter entry for ${parameterName} on part ${partId}.`, {data: String(value)});
       } else {
         state.parameterValues[partId][parameterName].data = String(value);
-        logger.log('parametersSlice', `Updated existing parameter ${parameterName} for part ${partId} via WebSocket. New data: ${String(value)}`, { level: 'debug' });
+        logger.debug('webSocketUpdateReceived', `Updated existing parameter ${parameterName} for part ${partId}.`, {data: String(value)});
       }
 
       const afterValue = state.parameterValues[partId]?.[parameterName]?.data;
-      logger.log('parametersSlice', `Value AFTER update for ${partId}:${parameterName}: ${afterValue}`, { level: 'debug' });
+      logger.debug('webSocketUpdateReceived', `Value AFTER update for ${partId}:${parameterName} is: ${afterValue}`);
 
       state.parameterLoadingStatus[partId] = 'succeeded';
       state.parameterError[partId] = null;
@@ -167,7 +157,7 @@ const parametersSlice = createSlice({
           state.recentlyChanged = state.recentlyChanged.slice(-100);
         }
       }
-      logger.log('parametersSlice', `[Reducer END] Value for ${key} processed via WebSocket. Status set to succeeded. Final data in store: ${afterValue}`, { level: 'info' });
+      logger.info('webSocketUpdateReceived', `Finished processing for ${key}.`, { finalData: afterValue });
     },
     markChanged(state: ParametersState, action: PayloadAction<{ parameterId: string }>) {
       const { parameterId } = action.payload;
@@ -192,19 +182,18 @@ const parametersSlice = createSlice({
         const paramIndex = partParams.findIndex(p => p.template_detail?.name === parameterName);
         if (paramIndex !== -1) {
           partParams[paramIndex] = { ...partParams[paramIndex], data: value }; 
-          logger.log('ParameterSlice', `Updated parameter '${parameterName}' for part ${partId} to value: ${value}`, {level: 'debug'});
+          logger.debug('updateParameterForPart', `Updated parameter '${parameterName}' for part ${partId}.`, {value});
         } else {
-          logger.warn('ParameterSlice', `Parameter '${parameterName}' not found for part ${partId} during update.`);
+          logger.warn('updateParameterForPart', `Parameter '${parameterName}' not found for part ${partId}.`);
         }
       } else {
-        logger.warn('ParameterSlice', `Part ${partId} not found in parametersByPartId during update.`);
+        logger.warn('updateParameterForPart', `Part ${partId} not found in parametersByPartId.`);
       }
     },
   },
 });
 
 export const { 
-  setActions, 
   setConfig,
   setStrictWebSocketMode,
   clearConditionCache,
@@ -216,8 +205,6 @@ export const {
   addParametersForPart,
   updateParameterForPart
 } = parametersSlice.actions;
-
-export const selectActions = (state: RootState, entityId: string) => state.parameters.actions[entityId] || [];
 
 export const selectParameterLoadingStatus = (state: RootState, partId: number): 'idle' | 'loading' | 'succeeded' | 'failed' => {
   return state.parameters.parameterLoadingStatus[partId] ?? 'idle';
@@ -244,4 +231,6 @@ export const selectParameterValue = (state: RootState, partId: number, paramName
     return partParams?.[paramName]?.data ?? null;
 };
 
-export default parametersSlice.reducer; 
+export default parametersSlice.reducer;
+
+export { parametersSlice }; 

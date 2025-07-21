@@ -1,82 +1,65 @@
-import { UnknownAction } from '@reduxjs/toolkit';
-import { InventreeItem, EnhancedStockItemEventData, ParameterDetail, ConditionalLogicItem, InventreeCardConfig } from '../../types';
-import { HomeAssistant } from 'custom-card-helpers';
+import { PayloadAction } from '@reduxjs/toolkit';
+import { InventreeItem, EnhancedStockItemEventData } from '../../types';
 import { RootState } from '../index';
-export interface PartsState {
+export interface InstancePartsState {
     partsById: Record<number, InventreeItem>;
-    partsByEntity: Record<string, number[]>;
-    loadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
-    loading: boolean;
-    error: string | null;
     locatingPartId: number | null;
     adjustingStockPartId: number | null;
     adjustmentError: string | null;
 }
-export declare const fetchPartDetails: import("@reduxjs/toolkit").AsyncThunk<InventreeItem, number, {
-    state: RootState;
-    rejectValue: string;
-    dispatch?: import("redux-thunk").ThunkDispatch<unknown, unknown, UnknownAction> | undefined;
-    extra?: unknown;
-    serializedErrorType?: unknown;
-    pendingMeta?: unknown;
-    fulfilledMeta?: unknown;
-    rejectedMeta?: unknown;
-}>;
-export declare const locatePartById: import("@reduxjs/toolkit").AsyncThunk<void, {
-    partId: number;
-    hass: HomeAssistant;
-}, {
-    state: RootState;
-    rejectValue: string;
-    dispatch?: import("redux-thunk").ThunkDispatch<unknown, unknown, UnknownAction> | undefined;
-    extra?: unknown;
-    serializedErrorType?: unknown;
-    pendingMeta?: unknown;
-    fulfilledMeta?: unknown;
-    rejectedMeta?: unknown;
-}>;
-export declare const adjustPartStock: import("@reduxjs/toolkit").AsyncThunk<{
-    partId: number;
-    newTotalStock: number | undefined;
-}, {
-    partId: number;
-    amount: number;
-    locationId?: number;
-    notes?: string;
-    hass?: HomeAssistant;
-}, {
-    state: RootState;
-    rejectValue: string;
-    dispatch?: import("redux-thunk").ThunkDispatch<unknown, unknown, UnknownAction> | undefined;
-    extra?: unknown;
-    serializedErrorType?: unknown;
-    pendingMeta?: unknown;
-    fulfilledMeta?: unknown;
-    rejectedMeta?: unknown;
-}>;
+export interface PartsState {
+    partsByInstance: Record<string, InstancePartsState>;
+    loadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
+    loading: boolean;
+    error: string | null;
+}
+declare const partsSlice: import("@reduxjs/toolkit").Slice<PartsState, {
+    setParts(state: import("immer").WritableDraft<PartsState>, action: PayloadAction<{
+        parts: InventreeItem[];
+        cardInstanceId: string;
+    }>): void;
+    removeInstance(state: import("immer").WritableDraft<PartsState>, action: PayloadAction<{
+        cardInstanceId: string;
+    }>): void;
+    updatePart(state: PartsState, action: PayloadAction<{
+        part: InventreeItem;
+        cardInstanceId: string;
+    }>): void;
+    updatePartStock(state: PartsState, action: PayloadAction<{
+        partId: number;
+        newStock: number;
+        cardInstanceId: string;
+    }>): void;
+    partStockUpdateFromWebSocket(state: import("immer").WritableDraft<PartsState>, action: PayloadAction<Partial<EnhancedStockItemEventData> & {
+        partId: number;
+    }>): void;
+    setLocatingPartId(state: import("immer").WritableDraft<PartsState>, action: PayloadAction<{
+        partId: number | null;
+        cardInstanceId: string;
+    }>): void;
+}, "parts", "parts", import("@reduxjs/toolkit").SliceSelectors<PartsState>>;
 export declare const setParts: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
-    entityId: string;
     parts: InventreeItem[];
-}, "parts/setParts">, removePartsForEntity: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
-    entityId: string;
-}, "parts/removePartsForEntity">, updatePart: import("@reduxjs/toolkit").ActionCreatorWithPayload<InventreeItem, "parts/updatePart">, updatePartStock: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    cardInstanceId: string;
+}, "parts/setParts">, removeInstance: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    cardInstanceId: string;
+}, "parts/removeInstance">, updatePart: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    part: InventreeItem;
+    cardInstanceId: string;
+}, "parts/updatePart">, updatePartStock: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     partId: number;
     newStock: number;
-}, "parts/updatePartStock">, clearParts: import("@reduxjs/toolkit").ActionCreatorWithPayload<string, "parts/clearParts">, registerEntity: import("@reduxjs/toolkit").ActionCreatorWithPayload<string, "parts/registerEntity">, partStockUpdateFromWebSocket: import("@reduxjs/toolkit").ActionCreatorWithPayload<Partial<EnhancedStockItemEventData> & {
+    cardInstanceId: string;
+}, "parts/updatePartStock">, partStockUpdateFromWebSocket: import("@reduxjs/toolkit").ActionCreatorWithPayload<Partial<EnhancedStockItemEventData> & {
     partId: number;
-}, "parts/partStockUpdateFromWebSocket">, setLocatingPartId: import("@reduxjs/toolkit").ActionCreatorWithPayload<number | null, "parts/setLocatingPartId">;
-export declare const selectPartsLoading: (state: RootState) => boolean;
-export declare const selectPartsError: (state: RootState) => string | null;
-export declare const selectLocatingPartId: (state: RootState) => number | null;
-export declare const selectAdjustingStockPartId: (state: RootState) => number | null;
-export declare const selectAdjustmentError: (state: RootState) => string | null;
-export declare const selectPartLoadingStatus: (state: RootState, partId: number) => "idle" | "loading" | "succeeded" | "failed";
-export declare const selectCombinedParts: ((state: {
-    api: import("./apiSlice").ApiState;
+}, "parts/partStockUpdateFromWebSocket">, setLocatingPartId: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    partId: number | null;
+    cardInstanceId: string;
+}, "parts/setLocatingPartId">;
+export declare const selectAllReferencedPartPksFromConfig: ((state: {
     components: import("./componentSlice").ComponentState;
     conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
     config: import("./configSlice").ConfigState;
-    counter: import("./counterSlice").CounterState;
     genericHaStates: import("./genericHaStateSlice").GenericHaStates;
     metrics: import("./metricsSlice").MetricsState;
     parameters: import("./parametersSlice").ParametersState;
@@ -85,71 +68,72 @@ export declare const selectCombinedParts: ((state: {
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
     actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-        getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
         updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             parameterPk: number;
-            value: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
         getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
             partId: number;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
         addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             quantity: number;
             locationId?: number;
             notes?: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
             pk: number;
             name: string;
             thumbnail?: string;
         }[], "inventreeApi", unknown>;
     }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-}) => InventreeItem[]) & {
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}, cardInstanceId: string) => number[]) & {
     clearCache: () => void;
     resultsCount: () => number;
     resetResultsCount: () => void;
 } & {
-    resultFunc: (resultFuncArgs_0: Record<number, InventreeItem>, resultFuncArgs_1: Record<number, InventreeItem>) => InventreeItem[];
-    memoizedResultFunc: ((resultFuncArgs_0: Record<number, InventreeItem>, resultFuncArgs_1: Record<number, InventreeItem>) => InventreeItem[]) & {
+    resultFunc: (resultFuncArgs_0: {
+        inventree_parts: any;
+        part_id: any;
+        entities: any;
+    }, resultFuncArgs_1: import("../../types").ConditionalLogicItem[], resultFuncArgs_2: string) => number[];
+    memoizedResultFunc: ((resultFuncArgs_0: {
+        inventree_parts: any;
+        part_id: any;
+        entities: any;
+    }, resultFuncArgs_1: import("../../types").ConditionalLogicItem[], resultFuncArgs_2: string) => number[]) & {
         clearCache: () => void;
         resultsCount: () => number;
         resetResultsCount: () => void;
     };
-    lastResult: () => InventreeItem[];
-    dependencies: [(state: RootState) => Record<number, InventreeItem>, ((state: {
-        api: import("./apiSlice").ApiState;
+    lastResult: () => number[];
+    dependencies: [((state: {
         components: import("./componentSlice").ComponentState;
         conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
         config: import("./configSlice").ConfigState;
-        counter: import("./counterSlice").CounterState;
         genericHaStates: import("./genericHaStateSlice").GenericHaStates;
         metrics: import("./metricsSlice").MetricsState;
         parameters: import("./parametersSlice").ParametersState;
@@ -158,72 +142,458 @@ export declare const selectCombinedParts: ((state: {
         visualEffects: import("./visualEffectsSlice").VisualEffectsState;
         websocket: import("./websocketSlice").WebSocketState;
         actions: import("./actionsSlice").ActionsState;
+        logging: import("./loggingSlice").LoggingState;
+        layout: import("./layoutSlice").LayoutState;
         inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-            getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+            getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                pk: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
             updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
                 partId: number;
                 parameterPk: number;
-                value: string;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+                value: any;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
             getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
                 partId: number;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
             addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
                 partId: number;
                 quantity: number;
                 locationId?: number;
                 notes?: string;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                searchText: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
                 pk: number;
                 name: string;
                 thumbnail?: string;
             }[], "inventreeApi", unknown>;
         }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-    }) => Record<number, InventreeItem>) & {
+        loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+            addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        }, "LogEntry", "loggingApi">;
+    }, cardInstanceId: string) => {
+        inventree_parts: any;
+        part_id: any;
+        entities: any;
+    }) & {
         clearCache: () => void;
         resultsCount: () => number;
         resetResultsCount: () => void;
     } & {
-        resultFunc: (resultFuncArgs_0: {
-            [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-        }) => Record<number, InventreeItem>;
-        memoizedResultFunc: ((resultFuncArgs_0: {
-            [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-        }) => Record<number, InventreeItem>) & {
+        resultFunc: (resultFuncArgs_0: import("../../types").InventreeCardConfig) => {
+            inventree_parts: any;
+            part_id: any;
+            entities: any;
+        };
+        memoizedResultFunc: ((resultFuncArgs_0: import("../../types").InventreeCardConfig) => {
+            inventree_parts: any;
+            part_id: any;
+            entities: any;
+        }) & {
             clearCache: () => void;
             resultsCount: () => number;
             resetResultsCount: () => void;
         };
-        lastResult: () => Record<number, InventreeItem>;
-        dependencies: [(state: RootState) => {
-            [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-        }];
+        lastResult: () => {
+            inventree_parts: any;
+            part_id: any;
+            entities: any;
+        };
+        dependencies: [(state: RootState, cardInstanceId: string) => import("../../types").InventreeCardConfig];
+        recomputations: () => number;
+        resetRecomputations: () => void;
+        dependencyRecomputations: () => number;
+        resetDependencyRecomputations: () => void;
+    } & {
+        memoize: typeof import("reselect").weakMapMemoize;
+        argsMemoize: typeof import("reselect").weakMapMemoize;
+    }, (state: RootState, cardInstanceId: string) => import("../../types").ConditionalLogicItem[], (state: RootState, cardInstanceId: string) => string];
+    recomputations: () => number;
+    resetRecomputations: () => void;
+    dependencyRecomputations: () => number;
+    resetDependencyRecomputations: () => void;
+} & {
+    memoize: typeof import("reselect").weakMapMemoize;
+    argsMemoize: typeof import("reselect").weakMapMemoize;
+};
+export declare const selectCombinedParts: ((state: {
+    components: import("./componentSlice").ComponentState;
+    conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+    config: import("./configSlice").ConfigState;
+    genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+    metrics: import("./metricsSlice").MetricsState;
+    parameters: import("./parametersSlice").ParametersState;
+    parts: PartsState;
+    ui: import("./uiSlice").UiState;
+    visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+    websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
+    inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+        updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            parameterPk: number;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+        getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+        addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            quantity: number;
+            locationId?: number;
+            notes?: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            pk: number;
+            name: string;
+            thumbnail?: string;
+        }[], "inventreeApi", unknown>;
+    }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}, cardInstanceId: string) => InventreeItem[]) & {
+    clearCache: () => void;
+    resultsCount: () => number;
+    resetResultsCount: () => void;
+} & {
+    resultFunc: (resultFuncArgs_0: InstancePartsState, resultFuncArgs_1: Record<number, InventreeItem>, resultFuncArgs_2: string) => InventreeItem[];
+    memoizedResultFunc: ((resultFuncArgs_0: InstancePartsState, resultFuncArgs_1: Record<number, InventreeItem>, resultFuncArgs_2: string) => InventreeItem[]) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    };
+    lastResult: () => InventreeItem[];
+    dependencies: [((state: {
+        components: import("./componentSlice").ComponentState;
+        conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+        config: import("./configSlice").ConfigState;
+        genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+        metrics: import("./metricsSlice").MetricsState;
+        parameters: import("./parametersSlice").ParametersState;
+        parts: PartsState;
+        ui: import("./uiSlice").UiState;
+        visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+        websocket: import("./websocketSlice").WebSocketState;
+        actions: import("./actionsSlice").ActionsState;
+        logging: import("./loggingSlice").LoggingState;
+        layout: import("./layoutSlice").LayoutState;
+        inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                pk: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+            updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                parameterPk: number;
+                value: any;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+            getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                quantity: number;
+                locationId?: number;
+                notes?: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                searchText: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                pk: number;
+                name: string;
+                thumbnail?: string;
+            }[], "inventreeApi", unknown>;
+        }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+        loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+            addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        }, "LogEntry", "loggingApi">;
+    }, cardInstanceId: string) => InstancePartsState) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    } & {
+        resultFunc: (resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState;
+        memoizedResultFunc: ((resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState) & {
+            clearCache: () => void;
+            resultsCount: () => number;
+            resetResultsCount: () => void;
+        };
+        lastResult: () => InstancePartsState;
+        dependencies: [(state: RootState) => Record<string, InstancePartsState>, (_state: RootState, cardInstanceId: string) => string];
+        recomputations: () => number;
+        resetRecomputations: () => void;
+        dependencyRecomputations: () => number;
+        resetDependencyRecomputations: () => void;
+    } & {
+        memoize: typeof import("reselect").weakMapMemoize;
+        argsMemoize: typeof import("reselect").weakMapMemoize;
+    }, (state: RootState, cardInstanceId: string) => Record<number, InventreeItem>, (_state: RootState, cardInstanceId: string) => string];
+    recomputations: () => number;
+    resetRecomputations: () => void;
+    dependencyRecomputations: () => number;
+    resetDependencyRecomputations: () => void;
+} & {
+    memoize: typeof import("reselect").weakMapMemoize;
+    argsMemoize: typeof import("reselect").weakMapMemoize;
+};
+export declare const selectIsReadyForEvaluation: ((state: {
+    components: import("./componentSlice").ComponentState;
+    conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+    config: import("./configSlice").ConfigState;
+    genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+    metrics: import("./metricsSlice").MetricsState;
+    parameters: import("./parametersSlice").ParametersState;
+    parts: PartsState;
+    ui: import("./uiSlice").UiState;
+    visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+    websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
+    inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+        updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            parameterPk: number;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+        getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+        addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            quantity: number;
+            locationId?: number;
+            notes?: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            pk: number;
+            name: string;
+            thumbnail?: string;
+        }[], "inventreeApi", unknown>;
+    }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}) => boolean) & {
+    clearCache: () => void;
+    resultsCount: () => number;
+    resetResultsCount: () => void;
+} & {
+    resultFunc: (resultFuncArgs_0: boolean, resultFuncArgs_1: {
+        [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
+    }) => boolean;
+    memoizedResultFunc: ((resultFuncArgs_0: boolean, resultFuncArgs_1: {
+        [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
+    }) => boolean) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    };
+    lastResult: () => boolean;
+    dependencies: [(state: RootState) => boolean, (state: RootState) => {
+        [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
+    }];
+    recomputations: () => number;
+    resetRecomputations: () => void;
+    dependencyRecomputations: () => number;
+    resetDependencyRecomputations: () => void;
+} & {
+    memoize: typeof import("reselect").weakMapMemoize;
+    argsMemoize: typeof import("reselect").weakMapMemoize;
+};
+export declare const selectArePartsLoading: (state: RootState) => boolean;
+export declare const selectPartsError: (state: RootState) => string | null;
+export declare const selectLocatingPartId: ((state: {
+    components: import("./componentSlice").ComponentState;
+    conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+    config: import("./configSlice").ConfigState;
+    genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+    metrics: import("./metricsSlice").MetricsState;
+    parameters: import("./parametersSlice").ParametersState;
+    parts: PartsState;
+    ui: import("./uiSlice").UiState;
+    visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+    websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
+    inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+        updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            parameterPk: number;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+        getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+        addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            quantity: number;
+            locationId?: number;
+            notes?: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            pk: number;
+            name: string;
+            thumbnail?: string;
+        }[], "inventreeApi", unknown>;
+    }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}, cardInstanceId: string) => number | null) & {
+    clearCache: () => void;
+    resultsCount: () => number;
+    resetResultsCount: () => void;
+} & {
+    resultFunc: (resultFuncArgs_0: InstancePartsState) => number | null;
+    memoizedResultFunc: ((resultFuncArgs_0: InstancePartsState) => number | null) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    };
+    lastResult: () => number | null;
+    dependencies: [((state: {
+        components: import("./componentSlice").ComponentState;
+        conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+        config: import("./configSlice").ConfigState;
+        genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+        metrics: import("./metricsSlice").MetricsState;
+        parameters: import("./parametersSlice").ParametersState;
+        parts: PartsState;
+        ui: import("./uiSlice").UiState;
+        visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+        websocket: import("./websocketSlice").WebSocketState;
+        actions: import("./actionsSlice").ActionsState;
+        logging: import("./loggingSlice").LoggingState;
+        layout: import("./layoutSlice").LayoutState;
+        inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                pk: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+            updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                parameterPk: number;
+                value: any;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+            getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                quantity: number;
+                locationId?: number;
+                notes?: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                searchText: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                pk: number;
+                name: string;
+                thumbnail?: string;
+            }[], "inventreeApi", unknown>;
+        }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+        loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+            addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        }, "LogEntry", "loggingApi">;
+    }, cardInstanceId: string) => InstancePartsState) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    } & {
+        resultFunc: (resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState;
+        memoizedResultFunc: ((resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState) & {
+            clearCache: () => void;
+            resultsCount: () => number;
+            resetResultsCount: () => void;
+        };
+        lastResult: () => InstancePartsState;
+        dependencies: [(state: RootState) => Record<string, InstancePartsState>, (_state: RootState, cardInstanceId: string) => string];
         recomputations: () => number;
         resetRecomputations: () => void;
         dependencyRecomputations: () => number;
@@ -240,12 +610,10 @@ export declare const selectCombinedParts: ((state: {
     memoize: typeof import("reselect").weakMapMemoize;
     argsMemoize: typeof import("reselect").weakMapMemoize;
 };
-export declare const selectRegisteredEntities: ((state: {
-    api: import("./apiSlice").ApiState;
+export declare const selectAdjustingStockPartId: ((state: {
     components: import("./componentSlice").ComponentState;
     conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
     config: import("./configSlice").ConfigState;
-    counter: import("./counterSlice").CounterState;
     genericHaStates: import("./genericHaStateSlice").GenericHaStates;
     metrics: import("./metricsSlice").MetricsState;
     parameters: import("./parametersSlice").ParametersState;
@@ -254,66 +622,135 @@ export declare const selectRegisteredEntities: ((state: {
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
     actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-        getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
         updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             parameterPk: number;
-            value: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
         getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
             partId: number;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
         addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             quantity: number;
             locationId?: number;
             notes?: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
             pk: number;
             name: string;
             thumbnail?: string;
         }[], "inventreeApi", unknown>;
     }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-}) => string[]) & {
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}, cardInstanceId: string) => number | null) & {
     clearCache: () => void;
     resultsCount: () => number;
     resetResultsCount: () => void;
 } & {
-    resultFunc: (resultFuncArgs_0: Record<string, number[]>) => string[];
-    memoizedResultFunc: ((resultFuncArgs_0: Record<string, number[]>) => string[]) & {
+    resultFunc: (resultFuncArgs_0: InstancePartsState) => number | null;
+    memoizedResultFunc: ((resultFuncArgs_0: InstancePartsState) => number | null) & {
         clearCache: () => void;
         resultsCount: () => number;
         resetResultsCount: () => void;
     };
-    lastResult: () => string[];
-    dependencies: [(state: RootState) => Record<string, number[]>];
+    lastResult: () => number | null;
+    dependencies: [((state: {
+        components: import("./componentSlice").ComponentState;
+        conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+        config: import("./configSlice").ConfigState;
+        genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+        metrics: import("./metricsSlice").MetricsState;
+        parameters: import("./parametersSlice").ParametersState;
+        parts: PartsState;
+        ui: import("./uiSlice").UiState;
+        visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+        websocket: import("./websocketSlice").WebSocketState;
+        actions: import("./actionsSlice").ActionsState;
+        logging: import("./loggingSlice").LoggingState;
+        layout: import("./layoutSlice").LayoutState;
+        inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                pk: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+            updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                parameterPk: number;
+                value: any;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+            getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                quantity: number;
+                locationId?: number;
+                notes?: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                searchText: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                pk: number;
+                name: string;
+                thumbnail?: string;
+            }[], "inventreeApi", unknown>;
+        }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+        loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+            addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        }, "LogEntry", "loggingApi">;
+    }, cardInstanceId: string) => InstancePartsState) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    } & {
+        resultFunc: (resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState;
+        memoizedResultFunc: ((resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState) & {
+            clearCache: () => void;
+            resultsCount: () => number;
+            resetResultsCount: () => void;
+        };
+        lastResult: () => InstancePartsState;
+        dependencies: [(state: RootState) => Record<string, InstancePartsState>, (_state: RootState, cardInstanceId: string) => string];
+        recomputations: () => number;
+        resetRecomputations: () => void;
+        dependencyRecomputations: () => number;
+        resetDependencyRecomputations: () => void;
+    } & {
+        memoize: typeof import("reselect").weakMapMemoize;
+        argsMemoize: typeof import("reselect").weakMapMemoize;
+    }];
     recomputations: () => number;
     resetRecomputations: () => void;
     dependencyRecomputations: () => number;
@@ -322,12 +759,10 @@ export declare const selectRegisteredEntities: ((state: {
     memoize: typeof import("reselect").weakMapMemoize;
     argsMemoize: typeof import("reselect").weakMapMemoize;
 };
-export declare const selectAllReferencedPartPksFromConfig: ((state: {
-    api: import("./apiSlice").ApiState;
+export declare const selectAdjustmentError: ((state: {
     components: import("./componentSlice").ComponentState;
     conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
     config: import("./configSlice").ConfigState;
-    counter: import("./counterSlice").CounterState;
     genericHaStates: import("./genericHaStateSlice").GenericHaStates;
     metrics: import("./metricsSlice").MetricsState;
     parameters: import("./parametersSlice").ParametersState;
@@ -336,66 +771,135 @@ export declare const selectAllReferencedPartPksFromConfig: ((state: {
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
     actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-        getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
         updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             parameterPk: number;
-            value: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
         getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
             partId: number;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
         addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             quantity: number;
             locationId?: number;
             notes?: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
             pk: number;
             name: string;
             thumbnail?: string;
         }[], "inventreeApi", unknown>;
     }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-}, config: InventreeCardConfig | undefined) => number[]) & {
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}, cardInstanceId: string) => string | null) & {
     clearCache: () => void;
     resultsCount: () => number;
     resetResultsCount: () => void;
 } & {
-    resultFunc: (resultFuncArgs_0: InventreeCardConfig | undefined, resultFuncArgs_1: ConditionalLogicItem[]) => number[];
-    memoizedResultFunc: ((resultFuncArgs_0: InventreeCardConfig | undefined, resultFuncArgs_1: ConditionalLogicItem[]) => number[]) & {
+    resultFunc: (resultFuncArgs_0: InstancePartsState) => string | null;
+    memoizedResultFunc: ((resultFuncArgs_0: InstancePartsState) => string | null) & {
         clearCache: () => void;
         resultsCount: () => number;
         resetResultsCount: () => void;
     };
-    lastResult: () => number[];
-    dependencies: [(_state: RootState, config: InventreeCardConfig | undefined) => InventreeCardConfig | undefined, (state: RootState) => ConditionalLogicItem[]];
+    lastResult: () => string | null;
+    dependencies: [((state: {
+        components: import("./componentSlice").ComponentState;
+        conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+        config: import("./configSlice").ConfigState;
+        genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+        metrics: import("./metricsSlice").MetricsState;
+        parameters: import("./parametersSlice").ParametersState;
+        parts: PartsState;
+        ui: import("./uiSlice").UiState;
+        visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+        websocket: import("./websocketSlice").WebSocketState;
+        actions: import("./actionsSlice").ActionsState;
+        logging: import("./loggingSlice").LoggingState;
+        layout: import("./layoutSlice").LayoutState;
+        inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                pk: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+            updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                parameterPk: number;
+                value: any;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+            getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+                partId: number;
+                quantity: number;
+                locationId?: number;
+                notes?: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                searchText: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                pk: number;
+                name: string;
+                thumbnail?: string;
+            }[], "inventreeApi", unknown>;
+        }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+        loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+            addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        }, "LogEntry", "loggingApi">;
+    }, cardInstanceId: string) => InstancePartsState) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    } & {
+        resultFunc: (resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState;
+        memoizedResultFunc: ((resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState) & {
+            clearCache: () => void;
+            resultsCount: () => number;
+            resetResultsCount: () => void;
+        };
+        lastResult: () => InstancePartsState;
+        dependencies: [(state: RootState) => Record<string, InstancePartsState>, (_state: RootState, cardInstanceId: string) => string];
+        recomputations: () => number;
+        resetRecomputations: () => void;
+        dependencyRecomputations: () => number;
+        resetDependencyRecomputations: () => void;
+    } & {
+        memoize: typeof import("reselect").weakMapMemoize;
+        argsMemoize: typeof import("reselect").weakMapMemoize;
+    }];
     recomputations: () => number;
     resetRecomputations: () => void;
     dependencyRecomputations: () => number;
@@ -404,12 +908,10 @@ export declare const selectAllReferencedPartPksFromConfig: ((state: {
     memoize: typeof import("reselect").weakMapMemoize;
     argsMemoize: typeof import("reselect").weakMapMemoize;
 };
-export declare const selectPartByPk: ((state: {
-    api: import("./apiSlice").ApiState;
+export declare const selectAllParts: ((state: {
     components: import("./componentSlice").ComponentState;
     conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
     config: import("./configSlice").ConfigState;
-    counter: import("./counterSlice").CounterState;
     genericHaStates: import("./genericHaStateSlice").GenericHaStates;
     metrics: import("./metricsSlice").MetricsState;
     parameters: import("./parametersSlice").ParametersState;
@@ -418,54 +920,124 @@ export declare const selectPartByPk: ((state: {
     visualEffects: import("./visualEffectsSlice").VisualEffectsState;
     websocket: import("./websocketSlice").WebSocketState;
     actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-        getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
         updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             parameterPk: number;
-            value: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
         getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
             partId: number;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
         addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
             partId: number;
             quantity: number;
             locationId?: number;
             notes?: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
             pk: number;
             name: string;
             thumbnail?: string;
         }[], "inventreeApi", unknown>;
     }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-}, pk: number) => InventreeItem | undefined) & {
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}) => InventreeItem[]) & {
+    clearCache: () => void;
+    resultsCount: () => number;
+    resetResultsCount: () => void;
+} & {
+    resultFunc: (resultFuncArgs_0: Record<string, InstancePartsState>) => InventreeItem[];
+    memoizedResultFunc: ((resultFuncArgs_0: Record<string, InstancePartsState>) => InventreeItem[]) & {
+        clearCache: () => void;
+        resultsCount: () => number;
+        resetResultsCount: () => void;
+    };
+    lastResult: () => InventreeItem[];
+    dependencies: [(state: RootState) => Record<string, InstancePartsState>];
+    recomputations: () => number;
+    resetRecomputations: () => void;
+    dependencyRecomputations: () => number;
+    resetDependencyRecomputations: () => void;
+} & {
+    memoize: typeof import("reselect").weakMapMemoize;
+    argsMemoize: typeof import("reselect").weakMapMemoize;
+};
+export declare const selectPartById: ((state: {
+    components: import("./componentSlice").ComponentState;
+    conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
+    config: import("./configSlice").ConfigState;
+    genericHaStates: import("./genericHaStateSlice").GenericHaStates;
+    metrics: import("./metricsSlice").MetricsState;
+    parameters: import("./parametersSlice").ParametersState;
+    parts: PartsState;
+    ui: import("./uiSlice").UiState;
+    visualEffects: import("./visualEffectsSlice").VisualEffectsState;
+    websocket: import("./websocketSlice").WebSocketState;
+    actions: import("./actionsSlice").ActionsState;
+    logging: import("./loggingSlice").LoggingState;
+    layout: import("./layoutSlice").LayoutState;
+    inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+            pk: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
+        updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            parameterPk: number;
+            value: any;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
+        getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
+            partId: number;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+        addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
+            partId: number;
+            quantity: number;
+            locationId?: number;
+            notes?: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+            searchText: string;
+            cardInstanceId: string;
+        }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+            pk: number;
+            name: string;
+            thumbnail?: string;
+        }[], "inventreeApi", unknown>;
+    }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
+    loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+        getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+        addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+    }, "LogEntry", "loggingApi">;
+}, _cardInstanceId: string, partId: number) => InventreeItem | undefined) & {
     clearCache: () => void;
     resultsCount: () => number;
     resetResultsCount: () => void;
@@ -478,11 +1050,9 @@ export declare const selectPartByPk: ((state: {
     };
     lastResult: () => InventreeItem | undefined;
     dependencies: [((state: {
-        api: import("./apiSlice").ApiState;
         components: import("./componentSlice").ComponentState;
         conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
         config: import("./configSlice").ConfigState;
-        counter: import("./counterSlice").CounterState;
         genericHaStates: import("./genericHaStateSlice").GenericHaStates;
         metrics: import("./metricsSlice").MetricsState;
         parameters: import("./parametersSlice").ParametersState;
@@ -491,71 +1061,64 @@ export declare const selectPartByPk: ((state: {
         visualEffects: import("./visualEffectsSlice").VisualEffectsState;
         websocket: import("./websocketSlice").WebSocketState;
         actions: import("./actionsSlice").ActionsState;
+        logging: import("./loggingSlice").LoggingState;
+        layout: import("./layoutSlice").LayoutState;
         inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-            getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+            getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                pk: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                partId: number;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
             updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
                 partId: number;
                 parameterPk: number;
-                value: string;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+                value: any;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
             getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
                 partId: number;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
             addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
                 partId: number;
                 quantity: number;
                 locationId?: number;
                 notes?: string;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                searchText: string;
+                cardInstanceId: string;
+            }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
                 pk: number;
                 name: string;
                 thumbnail?: string;
             }[], "inventreeApi", unknown>;
         }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-    }) => InventreeItem[]) & {
+        loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+            getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+            addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+        }, "LogEntry", "loggingApi">;
+    }, cardInstanceId: string) => InventreeItem[]) & {
         clearCache: () => void;
         resultsCount: () => number;
         resetResultsCount: () => void;
     } & {
-        resultFunc: (resultFuncArgs_0: Record<number, InventreeItem>, resultFuncArgs_1: Record<number, InventreeItem>) => InventreeItem[];
-        memoizedResultFunc: ((resultFuncArgs_0: Record<number, InventreeItem>, resultFuncArgs_1: Record<number, InventreeItem>) => InventreeItem[]) & {
+        resultFunc: (resultFuncArgs_0: InstancePartsState, resultFuncArgs_1: Record<number, InventreeItem>, resultFuncArgs_2: string) => InventreeItem[];
+        memoizedResultFunc: ((resultFuncArgs_0: InstancePartsState, resultFuncArgs_1: Record<number, InventreeItem>, resultFuncArgs_2: string) => InventreeItem[]) & {
             clearCache: () => void;
             resultsCount: () => number;
             resetResultsCount: () => void;
         };
         lastResult: () => InventreeItem[];
-        dependencies: [(state: RootState) => Record<number, InventreeItem>, ((state: {
-            api: import("./apiSlice").ApiState;
+        dependencies: [((state: {
             components: import("./componentSlice").ComponentState;
             conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
             config: import("./configSlice").ConfigState;
-            counter: import("./counterSlice").CounterState;
             genericHaStates: import("./genericHaStateSlice").GenericHaStates;
             metrics: import("./metricsSlice").MetricsState;
             parameters: import("./parametersSlice").ParametersState;
@@ -564,72 +1127,61 @@ export declare const selectPartByPk: ((state: {
             visualEffects: import("./visualEffectsSlice").VisualEffectsState;
             websocket: import("./websocketSlice").WebSocketState;
             actions: import("./actionsSlice").ActionsState;
+            logging: import("./loggingSlice").LoggingState;
+            layout: import("./layoutSlice").LayoutState;
             inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-                getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                    status?: number | "CUSTOM_ERROR";
-                    data?: any;
-                    message?: string;
-                }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-                getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                    status?: number | "CUSTOM_ERROR";
-                    data?: any;
-                    message?: string;
-                }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+                getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
+                    pk: number;
+                    cardInstanceId: string;
+                }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+                getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
+                    partId: number;
+                    cardInstanceId: string;
+                }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail[], "inventreeApi", unknown>;
                 updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
                     partId: number;
                     parameterPk: number;
-                    value: string;
-                }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                    status?: number | "CUSTOM_ERROR";
-                    data?: any;
-                    message?: string;
-                }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+                    value: any;
+                    cardInstanceId: string;
+                }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").ParameterDetail, "inventreeApi", unknown>;
                 getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
                     partId: number;
-                }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                    status?: number | "CUSTOM_ERROR";
-                    data?: any;
-                    message?: string;
-                }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
+                    cardInstanceId: string;
+                }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
                 addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
                     partId: number;
                     quantity: number;
                     locationId?: number;
                     notes?: string;
-                }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                    status?: number | "CUSTOM_ERROR";
-                    data?: any;
-                    message?: string;
-                }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-                searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                    status?: number | "CUSTOM_ERROR";
-                    data?: any;
-                    message?: string;
-                }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+                    cardInstanceId: string;
+                }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
+                searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
+                    searchText: string;
+                    cardInstanceId: string;
+                }, import("@reduxjs/toolkit/query").BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
                     pk: number;
                     name: string;
                     thumbnail?: string;
                 }[], "inventreeApi", unknown>;
             }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-        }) => Record<number, InventreeItem>) & {
+            loggingApi: import("@reduxjs/toolkit/query").CombinedState<{
+                getLogs: import("@reduxjs/toolkit/query").QueryDefinition<import("../apis/loggingApi").LogQueryArgs, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", import("../../types").LogEntry[], "loggingApi", unknown>;
+                addLogEntry: import("@reduxjs/toolkit/query").MutationDefinition<Omit<import("../../types").LogEntry, "id" | "timestamp">, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+                clearLogs: import("@reduxjs/toolkit/query").MutationDefinition<void, import("@reduxjs/toolkit/query").BaseQueryFn<any, unknown, unknown, {}, {}>, "LogEntry", null, "loggingApi", unknown>;
+            }, "LogEntry", "loggingApi">;
+        }, cardInstanceId: string) => InstancePartsState) & {
             clearCache: () => void;
             resultsCount: () => number;
             resetResultsCount: () => void;
         } & {
-            resultFunc: (resultFuncArgs_0: {
-                [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-            }) => Record<number, InventreeItem>;
-            memoizedResultFunc: ((resultFuncArgs_0: {
-                [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-            }) => Record<number, InventreeItem>) & {
+            resultFunc: (resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState;
+            memoizedResultFunc: ((resultFuncArgs_0: Record<string, InstancePartsState>, resultFuncArgs_1: string) => InstancePartsState) & {
                 clearCache: () => void;
                 resultsCount: () => number;
                 resetResultsCount: () => void;
             };
-            lastResult: () => Record<number, InventreeItem>;
-            dependencies: [(state: RootState) => {
-                [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-            }];
+            lastResult: () => InstancePartsState;
+            dependencies: [(state: RootState) => Record<string, InstancePartsState>, (_state: RootState, cardInstanceId: string) => string];
             recomputations: () => number;
             resetRecomputations: () => void;
             dependencyRecomputations: () => number;
@@ -637,7 +1189,7 @@ export declare const selectPartByPk: ((state: {
         } & {
             memoize: typeof import("reselect").weakMapMemoize;
             argsMemoize: typeof import("reselect").weakMapMemoize;
-        }];
+        }, (state: RootState, cardInstanceId: string) => Record<number, InventreeItem>, (_state: RootState, cardInstanceId: string) => string];
         recomputations: () => number;
         resetRecomputations: () => void;
         dependencyRecomputations: () => number;
@@ -645,176 +1197,7 @@ export declare const selectPartByPk: ((state: {
     } & {
         memoize: typeof import("reselect").weakMapMemoize;
         argsMemoize: typeof import("reselect").weakMapMemoize;
-    }, (_state: RootState, pk: number) => number];
-    recomputations: () => number;
-    resetRecomputations: () => void;
-    dependencyRecomputations: () => number;
-    resetDependencyRecomputations: () => void;
-} & {
-    memoize: typeof import("reselect").weakMapMemoize;
-    argsMemoize: typeof import("reselect").weakMapMemoize;
-};
-export declare const selectIsReadyForEvaluation: ((state: {
-    api: import("./apiSlice").ApiState;
-    components: import("./componentSlice").ComponentState;
-    conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
-    config: import("./configSlice").ConfigState;
-    counter: import("./counterSlice").CounterState;
-    genericHaStates: import("./genericHaStateSlice").GenericHaStates;
-    metrics: import("./metricsSlice").MetricsState;
-    parameters: import("./parametersSlice").ParametersState;
-    parts: PartsState;
-    ui: import("./uiSlice").UiState;
-    visualEffects: import("./visualEffectsSlice").VisualEffectsState;
-    websocket: import("./websocketSlice").WebSocketState;
-    actions: import("./actionsSlice").ActionsState;
-    inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-        getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-        getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
-        updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
-            partId: number;
-            parameterPk: number;
-            value: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
-        getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
-            partId: number;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
-        addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
-            partId: number;
-            quantity: number;
-            locationId?: number;
-            notes?: string;
-        }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-        searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-            status?: number | "CUSTOM_ERROR";
-            data?: any;
-            message?: string;
-        }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
-            pk: number;
-            name: string;
-            thumbnail?: string;
-        }[], "inventreeApi", unknown>;
-    }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-}, config: InventreeCardConfig | undefined) => boolean) & {
-    clearCache: () => void;
-    resultsCount: () => number;
-    resetResultsCount: () => void;
-} & {
-    resultFunc: (resultFuncArgs_0: {
-        [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-    }, resultFuncArgs_1: number[]) => boolean;
-    memoizedResultFunc: ((resultFuncArgs_0: {
-        [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-    }, resultFuncArgs_1: number[]) => boolean) & {
-        clearCache: () => void;
-        resultsCount: () => number;
-        resetResultsCount: () => void;
-    };
-    lastResult: () => boolean;
-    dependencies: [(state: RootState) => {
-        [queryCacheKey: string]: import("@reduxjs/toolkit/query").QuerySubState<unknown, unknown> | undefined;
-    }, ((state: {
-        api: import("./apiSlice").ApiState;
-        components: import("./componentSlice").ComponentState;
-        conditionalLogic: import("./conditionalLogicSlice").ConditionalLogicState;
-        config: import("./configSlice").ConfigState;
-        counter: import("./counterSlice").CounterState;
-        genericHaStates: import("./genericHaStateSlice").GenericHaStates;
-        metrics: import("./metricsSlice").MetricsState;
-        parameters: import("./parametersSlice").ParametersState;
-        parts: PartsState;
-        ui: import("./uiSlice").UiState;
-        visualEffects: import("./visualEffectsSlice").VisualEffectsState;
-        websocket: import("./websocketSlice").WebSocketState;
-        actions: import("./actionsSlice").ActionsState;
-        inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
-            getPart: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
-            getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<number, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
-            updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
-                partId: number;
-                parameterPk: number;
-                value: string;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
-            getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
-                partId: number;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem[], "inventreeApi", unknown>;
-            addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
-                partId: number;
-                quantity: number;
-                locationId?: number;
-                notes?: string;
-            }, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", import("../../types").StockItem, "inventreeApi", unknown>;
-            searchParts: import("@reduxjs/toolkit/query").QueryDefinition<string, import("@reduxjs/toolkit/query").BaseQueryFn<import("../apis/inventreeApi").AxiosBaseQueryArgs, unknown, {
-                status?: number | "CUSTOM_ERROR";
-                data?: any;
-                message?: string;
-            }>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
-                pk: number;
-                name: string;
-                thumbnail?: string;
-            }[], "inventreeApi", unknown>;
-        }, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", "inventreeApi">;
-    }, config: InventreeCardConfig | undefined) => number[]) & {
-        clearCache: () => void;
-        resultsCount: () => number;
-        resetResultsCount: () => void;
-    } & {
-        resultFunc: (resultFuncArgs_0: InventreeCardConfig | undefined, resultFuncArgs_1: ConditionalLogicItem[]) => number[];
-        memoizedResultFunc: ((resultFuncArgs_0: InventreeCardConfig | undefined, resultFuncArgs_1: ConditionalLogicItem[]) => number[]) & {
-            clearCache: () => void;
-            resultsCount: () => number;
-            resetResultsCount: () => void;
-        };
-        lastResult: () => number[];
-        dependencies: [(_state: RootState, config: InventreeCardConfig | undefined) => InventreeCardConfig | undefined, (state: RootState) => ConditionalLogicItem[]];
-        recomputations: () => number;
-        resetRecomputations: () => void;
-        dependencyRecomputations: () => number;
-        resetDependencyRecomputations: () => void;
-    } & {
-        memoize: typeof import("reselect").weakMapMemoize;
-        argsMemoize: typeof import("reselect").weakMapMemoize;
-    }];
+    }, (_state: RootState, _cardInstanceId: string, partId: number) => number];
     recomputations: () => number;
     resetRecomputations: () => void;
     dependencyRecomputations: () => number;
@@ -825,3 +1208,4 @@ export declare const selectIsReadyForEvaluation: ((state: {
 };
 declare const _default: import("redux").Reducer<PartsState>;
 export default _default;
+export { partsSlice };

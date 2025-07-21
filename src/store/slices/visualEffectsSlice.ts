@@ -1,34 +1,19 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import React from 'react';
 import { RootState } from '../index';
-import { Logger } from '../../utils/logger';
-import { VisualModifiers, DisplayConfigKey } from '../../types';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
+import { VisualEffect, DisplayConfigKey } from '../../types';
 import { createSelector } from 'reselect';
 
-const logger = Logger.getInstance();
-
-// Interface for a single visual effect applicable to a part
-export interface VisualEffect extends VisualModifiers {
-  // id could be added if individual effects need unique identifiers beyond partId
-  // For now, VisualModifiers covers all style and behavioral properties
-  // Add opacity as an explicit property if it's commonly used
-  opacity?: number; 
-  customClasses?: string[]; // Allow adding custom CSS classes
-  animation?: { // NEW: For Framer Motion
-    variants?: object; // Use object to avoid Immer/RTK issues with complex types
-    initial?: string | boolean;
-    animate?: object; // Allow direct animation objects
-    transition?: object;
-    whileHover?: object;
-    whileTap?: object;
-  };
-  cellStyles?: Record<string, React.CSSProperties>; // NEW: For cell-specific styling
-}
+const logger = ConditionalLoggerEngine.getInstance().getLogger('visualEffectsSlice');
+ConditionalLoggerEngine.getInstance().registerCategory('visualEffectsSlice', { enabled: false, level: 'info' });
 
 // Interface for the state of this slice
 export interface VisualEffectsState {
   effectsByCardInstance: Record<string, Record<number, VisualEffect>>;
   elementVisibilityByCard: Record<string, Partial<Record<DisplayConfigKey, boolean>>>;
+  layoutOverridesByCardInstance: Record<string, Record<string, { w?: number; h?: number; x?: number; y?: number }>>;
+  layoutEffectsByCell: Record<string, Record<string, Partial<React.CSSProperties>>>;
   // Consider adding a global effects record if some effects should apply to all cards
   // globalEffects: Record<number, VisualEffect>; 
 }
@@ -36,6 +21,8 @@ export interface VisualEffectsState {
 const initialState: VisualEffectsState = {
   effectsByCardInstance: {},
   elementVisibilityByCard: {},
+  layoutOverridesByCardInstance: {},
+  layoutEffectsByCell: {},
   // globalEffects: {}
 };
 
@@ -53,14 +40,14 @@ const visualEffectsSlice = createSlice({
         ...(state.effectsByCardInstance[cardInstanceId][partId] || {}),
         ...effect,
       };
-      // logger.log('visualEffectsSlice', `Set visual effect for card ${cardInstanceId}, part ${partId}`, { data: effect, level: 'silly' });
+      // logger.verbose(`Set visual effect for card ${cardInstanceId}, part ${partId}`, undefined, { data: effect });
     },
 
     // Sets a batch of effects for a specific card
     setVisualEffectsBatchForCard(state, action: PayloadAction<{ cardInstanceId: string; effects: Record<number, VisualEffect> }>) {
       const { cardInstanceId, effects } = action.payload;
       state.effectsByCardInstance[cardInstanceId] = effects;
-      // logger.log('visualEffectsSlice', `Set visual effects batch for card ${cardInstanceId}`, { count: Object.keys(effects).length, level: 'debug' });
+      // logger.debug(`Set visual effects batch for card ${cardInstanceId}`, undefined, { count: Object.keys(effects).length });
     },
 
     // Clears any visual effect for a specific part, reverting it to default appearance
@@ -68,7 +55,7 @@ const visualEffectsSlice = createSlice({
       const { cardInstanceId, partId } = action.payload;
       if (state.effectsByCardInstance[cardInstanceId]) {
         delete state.effectsByCardInstance[cardInstanceId][partId];
-        // logger.log('visualEffectsSlice', `Cleared visual effect for card ${cardInstanceId}, part ${partId}`, {level: 'silly'});
+        // logger.verbose(`Cleared visual effect for card ${cardInstanceId}, part ${partId}`);
       }
     },
 
@@ -77,14 +64,16 @@ const visualEffectsSlice = createSlice({
       const { cardInstanceId } = action.payload;
       delete state.effectsByCardInstance[cardInstanceId];
       delete state.elementVisibilityByCard[cardInstanceId];
-      logger.log('visualEffectsSlice', `Cleared all visual effects and element visibility for card ${cardInstanceId}.`, {level: 'debug'});
+      delete state.layoutOverridesByCardInstance[cardInstanceId]; // Also clear layout overrides
+      logger.debug('clearAllVisualEffectsForCard', `Cleared all visual effects and element visibility for card ${cardInstanceId}.`);
     },
 
     // Clears all visual effects for all parts
     clearEffectsForAllCardInstances(state) {
       state.effectsByCardInstance = {};
       state.elementVisibilityByCard = {};
-      logger.log('visualEffectsSlice', 'Cleared all visual effects and element visibilities for ALL card instances.', {level: 'debug'});
+      state.layoutOverridesByCardInstance = {}; // Also clear layout overrides
+      logger.debug('clearEffectsForAllCardInstances', 'Cleared all visual effects and element visibilities for ALL card instances.');
     },
 
     setConditionalPartEffect(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; partId: number; effect: VisualEffect }>) {
@@ -95,12 +84,9 @@ const visualEffectsSlice = createSlice({
       state.effectsByCardInstance[cardInstanceId][partId] = effect;
     },
 
-    setConditionalPartEffectsBatch(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; effectsMap: Record<number, VisualEffect> }>) {
+    setConditionalPartEffectsBatch(state, action: PayloadAction<{ cardInstanceId: string; effectsMap: Record<number, VisualEffect> }>) {
       const { cardInstanceId, effectsMap } = action.payload;
-      
       state.effectsByCardInstance[cardInstanceId] = effectsMap;
-
-      logger.log('visualEffectsSlice', `Replaced effects for card ${cardInstanceId} with new batch.`, { data: { count: Object.keys(effectsMap).length }, level: 'debug' });
     },
 
     clearConditionalPartEffectsForPart(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string; partId: number }>) {
@@ -114,14 +100,8 @@ const visualEffectsSlice = createSlice({
       state.effectsByCardInstance = {};
     },
 
-    clearConditionalPartEffectsForCard(state: VisualEffectsState, action: PayloadAction<{ cardInstanceId: string }>) {
-      const { cardInstanceId } = action.payload;
-      if (state.effectsByCardInstance[cardInstanceId]) {
-        Object.keys(state.effectsByCardInstance[cardInstanceId]).forEach(partIdStr => {
-          state.effectsByCardInstance[cardInstanceId][parseInt(partIdStr, 10)] = {}; // Reset to empty effect
-        });
-        logger.log('visualEffectsSlice', `Cleared all conditional part effects for cardInstanceId: ${cardInstanceId}`);
-      }
+    clearConditionalPartEffectsForCard(state, action: PayloadAction<{ cardInstanceId: string }>) {
+      delete state.effectsByCardInstance[action.payload.cardInstanceId];
     },
 
     // NEW REDUCERS for element visibility
@@ -149,6 +129,20 @@ const visualEffectsSlice = createSlice({
     clearAllElementVisibilities(state) {
       state.elementVisibilityByCard = {};
     },
+
+    setConditionalLayoutEffect(state, action: PayloadAction<{ cardInstanceId: string; cellId: string; layout: Partial<React.CSSProperties> }>) {
+      const { cardInstanceId, cellId, layout } = action.payload;
+      if (!state.layoutEffectsByCell[cardInstanceId]) {
+        state.layoutEffectsByCell[cardInstanceId] = {};
+      }
+      if (!state.layoutEffectsByCell[cardInstanceId][cellId]) {
+        state.layoutEffectsByCell[cardInstanceId][cellId] = {};
+      }
+      state.layoutEffectsByCell[cardInstanceId][cellId] = {
+        ...state.layoutEffectsByCell[cardInstanceId][cellId],
+        ...layout
+      };
+    },
   },
 });
 
@@ -168,6 +162,7 @@ export const {
   setElementVisibilitiesBatch,
   clearElementVisibilitiesForCard,
   clearAllElementVisibilities,
+  setConditionalLayoutEffect,
 } = visualEffectsSlice.actions;
 
 // Input selectors
@@ -176,27 +171,9 @@ const selectCardInstanceId = (_state: RootState, cardInstanceId: string) => card
 const selectPartId = (_state: RootState, _cardInstanceId: string, partId: number) => partId;
 
 // Selectors
-export const selectVisualEffectForPart = createSelector(
-  [selectEffectsByCardInstance, selectCardInstanceId, selectPartId],
-  (effectsByCardInstance, cardInstanceId, partId) => {
-    const instanceEffects = effectsByCardInstance[cardInstanceId]?.[partId];
-    // Check for effects applied to a 'global' or 'undefined_card' instance
-    const globalEffects = effectsByCardInstance['undefined_card']?.[partId];
-
-    if (!instanceEffects && !globalEffects) {
-      return undefined;
-    }
-
-    // Merge global and instance-specific effects, with instance effects taking precedence
-    const finalEffect = {
-      ...(globalEffects || {}),
-      ...(instanceEffects || {}),
-    };
-    
-    // logger.log('selectVisualEffectForPart', `Computed effect for part ${partId} in card ${cardInstanceId}`, { data: finalEffect, level: 'silly' });
-    return finalEffect;
-  }
-);
+export const selectVisualEffectForPart = (state: RootState, cardInstanceId: string, partId: number): VisualEffect | undefined => {
+  return state.visualEffects.effectsByCardInstance[cardInstanceId]?.[partId];
+};
 
 export const selectAllVisualEffectsForCard = (
   state: RootState,
@@ -236,6 +213,10 @@ export const selectAllEffectsByCardInstance = (state: RootState): Record<string,
     return state.visualEffects.effectsByCardInstance;
 };
 
+export const selectLayoutOverridesForCard = (state: RootState, cardInstanceId: string): Record<string, any> | undefined => {
+  return state.visualEffects.layoutOverridesByCardInstance[cardInstanceId];
+};
+
 export const selectVisualEffectsForCard = (state: RootState, cardInstanceId: string): Record<number, VisualEffect> | undefined => {
   return state.visualEffects.effectsByCardInstance[cardInstanceId];
 };
@@ -254,6 +235,10 @@ export const selectAllElementVisibilitiesForCard = (
   cardInstanceId: string
 ): Partial<Record<DisplayConfigKey, boolean>> | undefined => {
   return state.visualEffects.elementVisibilityByCard[cardInstanceId];
+};
+
+export const selectLayoutEffectsForCell = (state: RootState, cardInstanceId: string, cellId: string): Partial<React.CSSProperties> | undefined => {
+    return state.visualEffects.layoutEffectsByCell[cardInstanceId]?.[cellId];
 };
 
 export default visualEffectsSlice.reducer; 

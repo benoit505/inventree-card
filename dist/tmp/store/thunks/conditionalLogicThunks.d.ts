@@ -22,7 +22,10 @@ export declare const evaluateEffectsForAllActiveCardsThunk: import("@reduxjs/too
     fulfilledMeta?: unknown;
     rejectedMeta?: unknown;
 }>;
-export declare const initializeRuleDefinitionsThunk: import("@reduxjs/toolkit").AsyncThunk<void, ConditionalLogicItem[], {
+export declare const initializeRuleDefinitionsThunk: import("@reduxjs/toolkit").AsyncThunk<void, {
+    logics: ConditionalLogicItem[];
+    cardInstanceId: string;
+}, {
     dispatch: AppDispatch;
     state?: unknown;
     extra?: unknown;

@@ -1,8 +1,9 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
 import type { HomeAssistant } from 'custom-card-helpers'; // Keep for potential future use, though not directly used now
-import { Logger } from '../../utils/logger'; // Correct path
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('InventreePkSection');
+ConditionalLoggerEngine.getInstance().registerCategory('InventreePkSection', { enabled: false, level: 'info' });
 
 interface ThumbnailOverride {
   pk: number;
@@ -60,7 +61,7 @@ const InventreePkSection: React.FC<InventreePkSectionProps> = ({
     if (newPksToAdd.length > 0) {
       const combinedPks = [...selectedPks, ...newPksToAdd].sort((a, b) => a - b); // Keep sorted
       onPksChanged(combinedPks);
-      logger.log('Editor:InventreePk', `Added InvenTree PKs: ${newPksToAdd.join(', ')}`, { newPks: combinedPks });
+      logger.info('handleAddPks', `Added InvenTree PKs: ${newPksToAdd.join(', ')}`, { newPks: combinedPks });
     }
     setInputValue(''); // Clear input field
     setError(null);
@@ -69,7 +70,7 @@ const InventreePkSection: React.FC<InventreePkSectionProps> = ({
   const handleRemovePk = useCallback((pkToRemove: number) => {
     const newPks = selectedPks.filter(pk => pk !== pkToRemove);
     onPksChanged(newPks);
-    logger.log('Editor:InventreePk', `Removed InvenTree PK: ${pkToRemove}`, { newPks });
+    logger.info('handleRemovePk', `Removed InvenTree PK: ${pkToRemove}`, { newPks });
 
     // Also remove any associated thumbnail override
     const newOverrides = thumbnailOverrides.filter(ov => ov.pk !== pkToRemove);

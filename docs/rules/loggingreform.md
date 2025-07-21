@@ -1,0 +1,57 @@
+# Logging System Refactor Rules
+
+This document outlines the official rules and conventions for the logging system refactor initiated on June 26, 2025. The goal is to create a fully observable, debuggable, and maintainable codebase.
+
+## Rule 1: All Files Must Be Instrumented
+
+Every `.ts` and `.tsx` file within the `src/` directory that contains executable logic (i.e., not just type definitions or styles) must be equipped with a logger instance from the `ConditionalLoggerEngine`.
+
+```typescript
+import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
+const logger = ConditionalLoggerEngine.getInstance().getLogger('MyComponentOrFile');
+```
+
+The category name (e.g., `'MyComponentOrFile'`) should be the name of the file/component itself, without the extension.
+
+## Rule 2: All Logs Must Be Structured
+
+Every call to a logging method (`debug`, `info`, `warn`, `error`, `verbose`) **must** follow the new structured format.
+
+**New Format:** `logger.<level>(functionName: string, message: string, ...args: unknown[])`
+
+-   `functionName`: The name of the function or method where the log originates. For logs in the body of a React component, use the component's name or the specific `useEffect` hook's purpose (e.g., `'useEffect[onMount]'`).
+-   `message`: A concise, descriptive message of the event being logged.
+-   `...args`: Optional. Any objects, variables, or data to be included with the log for inspection.
+
+**Example:**
+
+```typescript
+// Good
+function handleSaveClick() {
+  logger.info('handleSaveClick', 'User clicked save.', { draftLayouts });
+}
+
+// Bad - Lacks function name
+function handleSaveClick() {
+  logger.info('User clicked save.', { draftLayouts });
+}
+```
+
+## Rule 3: Document As We Go
+
+The process will be tracked in `/docs/codedocumentationrelog.md`. For each file being refactored, the following steps must be taken:
+
+1.  **Analyze and Document:** Before refactoring, add a new section to the document for the file. List all of its functions, methods, and primary functional blocks, along with a brief description of their purpose.
+2.  **Refactor:** Apply the logging changes to the file according to Rules 1 and 2.
+3.  **Mark as Complete:** After refactoring, update the file's section in the document to indicate that the refactor is complete.
+
+## Rule 4: Default to Disabled
+
+When a new logger category is registered, it should be disabled by default to avoid overwhelming the console and the store.
+
+```typescript
+// In getLogger or registerCategory
+ConditionalLoggerEngine.getInstance().getLogger('MyComponent', { enabled: false, level: 'info' });
+```
+
+This ensures that logging is an opt-in experience from the debug panel, providing a clean slate by default and only showing the data we explicitly ask for. 

@@ -1,8 +1,9 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
 import type { HomeAssistant } from 'custom-card-helpers';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('InventreeParametersSection');
+ConditionalLoggerEngine.getInstance().registerCategory('InventreeParametersSection', { enabled: false, level: 'info' });
 
 interface InventreeParametersSectionProps {
   hass?: HomeAssistant;
@@ -57,7 +58,7 @@ const InventreeParametersSection: React.FC<InventreeParametersSectionProps> = ({
     if (newParamsToAdd.length > 0) {
       const combinedParams = [...selectedParameters, ...newParamsToAdd].sort(); // Keep sorted
       onParametersChanged(combinedParams);
-      logger.log('Editor:InventreeParams', `Added InvenTree Parameters: ${newParamsToAdd.join(', ')}`, { newParams: combinedParams });
+      logger.info('handleAddParameters', `Added InvenTree Parameters: ${newParamsToAdd.join(', ')}`, { newParams: combinedParams });
     }
     setInputValue(''); 
     setError(null);
@@ -66,7 +67,7 @@ const InventreeParametersSection: React.FC<InventreeParametersSectionProps> = ({
   const handleRemoveParameter = useCallback((paramToRemove: string) => {
     const newParams = selectedParameters.filter(param => param !== paramToRemove);
     onParametersChanged(newParams);
-    logger.log('Editor:InventreeParams', `Removed InvenTree Parameter: ${paramToRemove}`, { newParams });
+    logger.info('handleRemoveParameter', `Removed InvenTree Parameter: ${paramToRemove}`, { newParams });
   }, [selectedParameters, onParametersChanged]);
 
   return (

@@ -1,30 +1,28 @@
 import { RootState, AppDispatch } from '../store';
-import { Logger } from './logger';
+import { ConditionalLoggerEngine } from './logging/ConditionalLoggerEngine';
 import { 
     ConditionalLogicItem, 
     RuleGroupType, 
-    // RuleType, // No longer directly needed for top-level iteration if evaluateExpression handles RuleGroupType
     EffectDefinition, 
     InventreeItem,
     GlobalContext,
     LogicPair,
-    // ParameterDetail // No longer directly needed here
+    VisualEffect
 } from '../types';
+import { CSSProperties } from 'react';
 import { 
-    VisualEffect,
     setConditionalPartEffectsBatch, 
-    clearConditionalPartEffectsForCard
+    clearConditionalPartEffectsForCard,
+    setConditionalLayoutEffect
 } from '../store/slices/visualEffectsSlice';
 import { selectAllGenericHaStates } from '../store/slices/genericHaStateSlice';
-// import { selectApiConfig } from '../store/slices/apiSlice'; // No longer directly needed here
 import { evaluateExpression } from '../utils/evaluateExpression';
 import { selectCombinedParts } from '../store/slices/partsSlice';
-import { ANIMATION_PRESETS } from './constants'; // Import presets
+import { ANIMATION_PRESETS } from './constants';
 
-// Re-added comment to force re-evaluation of types
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('ConditionalEffectsEngine');
+ConditionalLoggerEngine.getInstance().registerCategory('ConditionalEffectsEngine', { enabled: false, level: 'info' });
 
-// Helper to map styleProperty from EffectDefinition to VisualEffect keys
 const mapStylePropertyToVisualEffectKey = (styleProperty: string): keyof VisualEffect | null => {
     switch (styleProperty) {
         case 'backgroundColor':
@@ -35,7 +33,6 @@ const mapStylePropertyToVisualEffectKey = (styleProperty: string): keyof VisualE
         case 'opacity': return 'opacity';
         case 'icon': return 'icon';
         case 'badge': return 'badge';
-        // Add other mappings as necessary
         default: return null;
     }
 };
@@ -57,17 +54,14 @@ const isRuleGroupGeneric = (ruleGroup?: RuleGroupType): boolean => {
 export class ConditionalEffectsEngine {
     private dispatch: AppDispatch;
     private getState: () => RootState;
-    private logger: Logger;
 
     constructor(dispatch: AppDispatch, getState: () => RootState) {
         this.dispatch = dispatch;
         this.getState = getState;
-        this.logger = Logger.getInstance();
-        this.logger.log('ConditionalEffectsEngine', 'CONSTRUCTOR CALLED. Instance created.');
     }
 
     private applyEffectsToTargets(
-        effects: EffectDefinition[],
+        effects: Exclude<EffectDefinition, { type: 'set_layout' }>[],
         effectsToApply: Record<number, VisualEffect>,
         allParts: InventreeItem[],
         contextPartPk?: number
@@ -75,12 +69,22 @@ export class ConditionalEffectsEngine {
         for (const effect of effects) {
             let targetPksForThisEffect: number[] = [];
 
-            if (effect.targetPartPks && Array.isArray(effect.targetPartPks)) {
-                targetPksForThisEffect = effect.targetPartPks;
-            } else if (effect.targetPartPks === 'all_loaded') {
-                targetPksForThisEffect = allParts.map(p => p.pk);
-            } else if (contextPartPk) {
+            // Ensure incoming target PKs are numbers
+            const specificTargetPks = effect.targetPartPks && Array.isArray(effect.targetPartPks) 
+                ? effect.targetPartPks.map(pk => Number(pk)).filter(pk => !isNaN(pk)) 
+                : [];
+
+            if (specificTargetPks.length > 0) {
+                // Case 1: The effect explicitly defines a list of target parts. Use ONLY these.
+                targetPksForThisEffect = specificTargetPks;
+            } else if (contextPartPk !== undefined) {
+                // Case 2: The condition was evaluated for a specific part (context is available).
+                // Apply the effect only to that part.
                 targetPksForThisEffect = [contextPartPk];
+            } else {
+                // Case 3: A generic condition (no context part) with no specific targets.
+                // Apply to all loaded parts.
+                targetPksForThisEffect = allParts.map(p => p.pk);
             }
 
             for (const pk of targetPksForThisEffect) {
@@ -93,7 +97,7 @@ export class ConditionalEffectsEngine {
                         break;
                     case 'set_style':
                         if (effect.styleTarget === 'Row') {
-                            const visualEffectKey = mapStylePropertyToVisualEffectKey(effect.styleProperty);
+                            const visualEffectKey = mapStylePropertyToVisualEffectKey(String(effect.styleProperty));
                             if (visualEffectKey && effect.styleValue !== undefined) {
                                 (currentPartVisualEffects as any)[visualEffectKey] = effect.styleValue;
                             }
@@ -107,7 +111,7 @@ export class ConditionalEffectsEngine {
                         }
                         break;
                     case 'animate_style':
-                        const presetKey = effect.preset?.toLowerCase(); // Make the check case-insensitive
+                        const presetKey = effect.preset?.toLowerCase();
                         if (presetKey === 'none') {
                             delete currentPartVisualEffects.animation;
                         } else if (presetKey && ANIMATION_PRESETS[presetKey]) {
@@ -139,17 +143,8 @@ export class ConditionalEffectsEngine {
         forceReevaluation: boolean = false, 
         logicItemsToEvaluate?: ConditionalLogicItem[]  
     ): Promise<void> {
-        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects CALLED (two-pass). cardInstanceId: ${cardInstanceId}, LogicItems provided: ${!!logicItemsToEvaluate}`);
         const state = this.getState();
         
-        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects for cardInstanceId: ${cardInstanceId}`, {
-            data: {
-                logicItems: logicItemsToEvaluate,
-                configExists: !!state.config.configsByInstance[cardInstanceId],
-                level: 'debug'
-            }
-        });
-
         if (!logicItemsToEvaluate || logicItemsToEvaluate.length === 0) {
             this.dispatch(clearConditionalPartEffectsForCard({ cardInstanceId }));
             return;
@@ -158,43 +153,61 @@ export class ConditionalEffectsEngine {
         const effectsToApply: Record<number, VisualEffect> = {};
         const allParts = selectCombinedParts(state, cardInstanceId);
         const haStates = selectAllGenericHaStates(state);
-        const globalContext: GlobalContext = { ha_states: haStates };
 
-        // --- Pass 1: Evaluate Generic Conditions ---
         for (const logicItem of logicItemsToEvaluate) {
             for (const pair of logicItem.logicPairs) {
                 if (isRuleGroupGeneric(pair.conditionRules)) {
                     try {
-                        if (evaluateExpression(pair.conditionRules, null, state, this.logger, cardInstanceId)) {
-                            this.applyEffectsToTargets(pair.effects, effectsToApply, allParts);
+                        if (evaluateExpression(pair.conditionRules, null, state, logger, cardInstanceId)) {
+                            const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
+                            this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts);
+                            
+                            for (const effect of pair.effects) {
+                                if (effect.type === 'set_layout') {
+                                    this.dispatch(setConditionalLayoutEffect({
+                                        cardInstanceId,
+                                        cellId: effect.targetCellId,
+                                        layout: { [effect.layoutProperty]: effect.layoutValue },
+                                    }));
+                                }
+                            }
                         }
                     } catch (e: any) {
-                        this.logger.error('ConditionalEffectsEngine', `[Generic] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
+                        logger.error('evaluateAndApplyEffects', `[Generic] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
                     }
                 }
             }
         }
 
-        // --- Pass 2: Evaluate Part-Specific Conditions ---
         for (const part of allParts) {
             for (const logicItem of logicItemsToEvaluate) {
                 for (const pair of logicItem.logicPairs) {
                     if (!isRuleGroupGeneric(pair.conditionRules)) {
                         try {
-                            if (evaluateExpression(pair.conditionRules, part, state, this.logger, cardInstanceId)) {
-                                this.applyEffectsToTargets(pair.effects, effectsToApply, allParts, part.pk);
+                            if (evaluateExpression(pair.conditionRules, part, state, logger, cardInstanceId)) {
+                                const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
+                                this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, part.pk);
+
+                                for (const effect of pair.effects) {
+                                    if (effect.type === 'set_layout') {
+                                        const templatedCellId = effect.targetCellId.replace('%%part.pk%%', String(part.pk));
+                                        this.dispatch(setConditionalLayoutEffect({
+                                            cardInstanceId,
+                                            cellId: templatedCellId,
+                                            layout: { [effect.layoutProperty]: effect.layoutValue },
+                                        }));
+                                    }
+                                }
                             }
                         } catch (e: any) {
-                            this.logger.error('ConditionalEffectsEngine', `[Part ${part.pk}] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
+                            logger.error('evaluateAndApplyEffects', `[Part ${part.pk}] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
                         }
                     }
                 }
             }
         }
 
-        this.logger.log('ConditionalEffectsEngine', `[DEBUG] effectsToApply before dispatch for card ${cardInstanceId}:`, { data: { effectsToApply, level: 'silly' } });
         this.dispatch(setConditionalPartEffectsBatch({ cardInstanceId: cardInstanceId, effectsMap: effectsToApply }));
-        this.logger.log('ConditionalEffectsEngine', `evaluateAndApplyEffects END for cardInstanceId: ${cardInstanceId}`);
     }
 }
 

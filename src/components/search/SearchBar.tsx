@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Logger } from '../../utils/logger'; // Adjust path as necessary
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
+
+const logger = ConditionalLoggerEngine.getInstance().getLogger('SearchBar');
+ConditionalLoggerEngine.getInstance().registerCategory('SearchBar', { enabled: false, level: 'info' });
 
 // Debounce utility (can be moved to a shared utils file)
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -66,7 +69,6 @@ const styles: { [key: string]: React.CSSProperties } = {
 // `;
 
 const SearchBar: React.FC<SearchBarProps> = ({ initialQuery, onSearchChange }) => {
-  const logger = useMemo(() => Logger.getInstance(), []);
   const [inputValue, setInputValue] = useState(initialQuery);
 
   // Update inputValue if initialQuery prop changes from parent
@@ -78,10 +80,10 @@ const SearchBar: React.FC<SearchBarProps> = ({ initialQuery, onSearchChange }) =
 
   const debouncedTriggerSearch = useCallback(
     debounce((query: string) => {
-      logger.log('SearchBar React', `Triggering search for: "${query}" via onSearchChange prop`);
+      logger.debug('debouncedTriggerSearch', `Triggering search for: "${query}" via onSearchChange prop`);
       onSearchChange(query.trim()); // Parent will handle if it's empty or not
     }, 300),
-    [onSearchChange, logger]
+    [onSearchChange]
   );
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,7 +93,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ initialQuery, onSearchChange }) =
   };
 
   const handleClear = () => {
-    logger.log('SearchBar React', 'Clearing search via onSearchChange prop');
+    logger.debug('handleClear', 'Clearing search via onSearchChange prop');
     setInputValue(''); // Clear local input
     onSearchChange(''); // Notify parent
   };
@@ -101,7 +103,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ initialQuery, onSearchChange }) =
     // To cancel a pending debounce, our simple debounce needs enhancement.
     // For now, we directly call onSearchChange, which might cause two calls if debounce is pending.
     // A more robust debounce would return a cancel function.
-    logger.log('SearchBar React', `Submitting search for: "${inputValue}" via onSearchChange prop`);
+    logger.debug('handleSearchSubmit', `Submitting search for: "${inputValue}" via onSearchChange prop`);
     onSearchChange(inputValue.trim()); // Notify parent immediately
   };
 

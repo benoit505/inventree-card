@@ -1,289 +1,204 @@
-import React, { useCallback, useState } from 'react';
-import { LayoutConfig, LayoutColumn, ActionDefinition, ButtonColumnItem } from '../../types';
+import React, { useState, useCallback, ChangeEvent } from 'react';
+import { LayoutColumn, ActionDefinition, ButtonColumnItem } from '../../types';
 
-const AVAILABLE_COLUMNS: { value: LayoutColumn['content'], label: string }[] = [
+// Define the specific type for LayoutColumn content to avoid ambiguity
+type LayoutColumnContent = 'name' | 'thumbnail' | 'description' | 'in_stock' | 'pk' | 'IPN' | 'SKU' | 'category_detail.name' | 'location_detail.name' | 'buttons' | 'attribute' | 'template';
+
+const AVAILABLE_COLUMNS: { value: LayoutColumnContent, label: string }[] = [
   { value: 'name', label: 'Part Name' },
-  { value: 'thumbnail', label: 'Thumbnail' },
   { value: 'description', label: 'Description' },
   { value: 'in_stock', label: 'In Stock' },
   { value: 'pk', label: 'Part ID (PK)' },
   { value: 'IPN', label: 'IPN' },
   { value: 'SKU', label: 'SKU' },
+  { value: 'thumbnail', label: 'Thumbnail' },
   { value: 'category_detail.name', label: 'Category Name' },
-  { value: 'location_detail.name', label: 'Location' },
-  { value: 'buttons', label: 'Action Button' },
-  { value: 'attribute', label: 'Part Attribute' },
+  { value: 'location_detail.name', label: 'Location Name' },
+  { value: 'buttons', label: 'Action Buttons' },
+  { value: 'attribute', label: 'Custom Attribute' },
   { value: 'template', label: 'Custom Template' },
 ];
 
+const CONTENT_TYPE_OPTIONS = AVAILABLE_COLUMNS;
+
 interface LayoutBuilderProps {
-  layoutConfig: LayoutConfig;
-  onLayoutConfigChanged: (newLayoutConfig: LayoutConfig) => void;
+  columns: LayoutColumn[];
+  onColumnsChanged: (newColumns: LayoutColumn[]) => void;
   actions: ActionDefinition[];
 }
 
-const LayoutBuilder: React.FC<LayoutBuilderProps> = ({ layoutConfig, onLayoutConfigChanged, actions }) => {
+const LayoutBuilder: React.FC<LayoutBuilderProps> = ({ columns, onColumnsChanged, actions }) => {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
-  const [draftColumn, setDraftColumn] = useState<LayoutColumn | null>(null);
+  const [newColumnForm, setNewColumnForm] = useState<Omit<LayoutColumn, 'content'> & { content: LayoutColumnContent | string }>({ id: '', header: '', content: 'name' });
 
-  // State for the sub-editor for buttons within a column
-  const [editingButton, setEditingButton] = useState<ButtonColumnItem | null>(null);
-  const [isAddingNewButton, setIsAddingNewButton] = useState<boolean>(false);
+  const handleAddColumn = () => {
+    if (newColumnForm.header && newColumnForm.id) {
+      const finalNewColumn: LayoutColumn = {
+        ...newColumnForm,
+        content: newColumnForm.content as LayoutColumnContent,
+      };
+      onColumnsChanged([...columns, finalNewColumn]);
+      // Reset form
+      setNewColumnForm({ id: '', header: '', content: 'name' });
+    } else {
+      alert('Header and a unique ID are required for a new column.');
+    }
+  };
 
-  const partFooterActions = React.useMemo(() => actions.filter(a => a.trigger?.ui?.placement === 'part_footer'), [actions]);
+  const handleUpdateColumn = (index: number, updatedColumn: LayoutColumn) => {
+    const newColumns = [...columns];
+    newColumns[index] = updatedColumn;
+    onColumnsChanged(newColumns);
+  };
 
-  const handleAddColumn = useCallback(() => {
-    const newColumn: LayoutColumn = {
-      id: `col_${new Date().getTime()}`, // Simple unique ID
-      content: 'name', // Default content
-      header: 'Part Name',
-      width: '1fr',
-    };
+  const handleRemoveColumn = (index: number) => {
+    const newColumns = columns.filter((_, i) => i !== index);
+    onColumnsChanged(newColumns);
+  };
 
-    const newColumns = [...(layoutConfig.columns || []), newColumn];
+  const handleEditColumn = (col: LayoutColumn) => {
+    setEditingColumnId(col.id);
+  };
 
-    onLayoutConfigChanged({
-      ...layoutConfig,
-      columns: newColumns,
-    });
-  }, [layoutConfig, onLayoutConfigChanged]);
-
-  const handleDeleteColumn = useCallback((columnId: string) => {
-    const newColumns = (layoutConfig.columns || []).filter(col => col.id !== columnId);
-    onLayoutConfigChanged({
-      ...layoutConfig,
-      columns: newColumns,
-    });
-  }, [layoutConfig, onLayoutConfigChanged]);
-
-  const handleEditColumn = (column: LayoutColumn) => {
-    setEditingColumnId(column.id);
-    setDraftColumn(column);
+  const handleSaveColumn = (index: number, col: LayoutColumn) => {
+    handleUpdateColumn(index, col);
+    setEditingColumnId(null);
   };
 
   const handleCancelEdit = () => {
     setEditingColumnId(null);
-    setDraftColumn(null);
-  };
-
-  const handleSaveColumn = () => {
-    if (!draftColumn) return;
-    const newColumns = (layoutConfig.columns || []).map(col =>
-      col.id === editingColumnId ? draftColumn : col
-    );
-    onLayoutConfigChanged({ ...layoutConfig, columns: newColumns });
-    setEditingColumnId(null);
-    setDraftColumn(null);
-  };
-
-  const handleDraftChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (!draftColumn) return;
-    const { name, value } = e.target;
-    // This function now only handles top-level column properties like header and width
-    setDraftColumn({ ...draftColumn, [name]: value });
-  };
-
-  const handleToggleFiltering = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onLayoutConfigChanged({
-      ...layoutConfig,
-      enableFiltering: e.target.checked,
-    });
-  };
-
-  // --- Button Sub-Editor Handlers ---
-
-  const handleAddButton = () => {
-    setIsAddingNewButton(true);
-    setEditingButton({ id: `btn_${new Date().getTime()}`, actionId: '' });
-  };
-
-  const handleEditButton = (button: ButtonColumnItem) => {
-    setIsAddingNewButton(false);
-    setEditingButton(button);
-  };
-  
-  const handleCancelEditButton = () => {
-    setEditingButton(null);
-    setIsAddingNewButton(false);
-  };
-  
-  const handleDraftButtonChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (!editingButton) return;
-    const { name, value } = e.target;
-
-    if (name === 'targetPartPks') {
-        const pks = value.split(',')
-                         .map(pk => parseInt(pk.trim(), 10))
-                         .filter(pk => !isNaN(pk));
-        setEditingButton({ ...editingButton, targetPartPks: pks.length > 0 ? pks : undefined });
-    } else {
-        setEditingButton({ ...editingButton, [name]: value });
-    }
-  };
-
-  const handleSaveButton = () => {
-    if (!draftColumn || !editingButton || !editingButton.actionId) return;
-    
-    const existingButtons = draftColumn.buttons || [];
-    let newButtons;
-
-    if (isAddingNewButton) {
-      newButtons = [...existingButtons, editingButton];
-    } else {
-      newButtons = existingButtons.map(btn => btn.id === editingButton.id ? editingButton : btn);
-    }
-    
-    setDraftColumn({ ...draftColumn, buttons: newButtons });
-    handleCancelEditButton();
-  };
-  
-  const handleDeleteButton = (buttonId: string) => {
-      if (!draftColumn) return;
-      const newButtons = (draftColumn.buttons || []).filter(btn => btn.id !== buttonId);
-      setDraftColumn({ ...draftColumn, buttons: newButtons });
   };
 
   return (
-    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ddd' }}>
-      <h4>Layout Builder</h4>
-      <div style={{ padding: '5px 0' }}>
-        <input
-          type="checkbox"
-          id="enableFiltering"
-          checked={!!layoutConfig.enableFiltering}
-          onChange={handleToggleFiltering}
-        />
-        <label htmlFor="enableFiltering" style={{ marginLeft: '8px' }}>
-          Enable Filter/Search Bar
-        </label>
-      </div>
-      <p style={{ fontSize: '0.9em', color: 'gray' }}>
-        Define the columns for your layout. This will replace the static grid options above.
-      </p>
-
-      <div className="layout-columns-list" style={{ margin: '10px 0' }}>
-        {(layoutConfig.columns || []).map((col) => {
+    <div className="layout-builder" style={{ marginTop: '20px' }}>
+      <h5 style={{ marginBottom: '10px' }}>Custom Layout Columns</h5>
+      <div className="columns-list">
+        {columns.map((col, index) => {
           const isEditing = editingColumnId === col.id;
           return (
-            <div key={col.id} style={{ display: 'flex', alignItems: 'center', marginBottom: '5px', padding: '5px', background: isEditing ? '#eef' : '#f9f9f9', borderRadius: '4px' }}>
+            <div key={col.id} style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', gap: '8px' }}>
               {isEditing ? (
                 <>
-                  <input type="text" name="header" value={draftColumn?.header || ''} onChange={handleDraftChange} style={{ flex: 1, marginRight: '10px' }} placeholder="Header Text" />
+                  <input
+                    type="text"
+                    value={col.header}
+                    onChange={(e) => handleUpdateColumn(index, { ...col, header: e.target.value })}
+                    placeholder="Header"
+                  />
                   <select
-                    name="content"
-                    value={draftColumn?.content || ''}
-                    onChange={handleDraftChange}
-                    style={{ flex: 1, marginRight: '10px' }}
+                    value={col.content}
+                    onChange={(e) => handleUpdateColumn(index, { ...col, content: e.target.value as LayoutColumnContent })}
                   >
-                    <option value="" disabled>-- Select Content --</option>
-                    {AVAILABLE_COLUMNS.map(opt => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    {CONTENT_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </select>
-                  {draftColumn?.content === 'buttons' && (
-                    <div className="config-item" style={{ flex: 2, marginRight: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {/* List of current buttons */}
-                        {(draftColumn.buttons || []).map(btn => {
-                            // If this button is being edited, show the form
-                            if (editingButton && editingButton.id === btn.id) {
-                                return (
-                                    <div key={btn.id} style={{ border: '1px solid #007bff', padding: '8px', borderRadius: '4px', background: '#f0f8ff' }}>
-                                        <select name="actionId" value={editingButton.actionId} onChange={handleDraftButtonChange} style={{ width: '100%', marginBottom: '5px' }}>
-                                            <option value="">-- Select Action --</option>
-                                            {partFooterActions.map(action => (
-                                                <option key={action.id} value={action.id}>{action.name || action.id}</option>
-                                            ))}
-                                        </select>
-                                        <input
-                                            type="text" name="targetPartPks"
-                                            value={(editingButton.targetPartPks || []).join(', ')}
-                                            onChange={handleDraftButtonChange}
-                                            placeholder="Target Part PKs (optional)"
-                                            style={{ width: 'calc(100% - 10px)' }}
-                                        />
-                                        <div style={{marginTop: '8px', display: 'flex', justifyContent: 'flex-end', gap: '5px'}}>
-                                            <button type="button" onClick={handleSaveButton}>Save</button>
-                                            <button type="button" onClick={handleCancelEditButton}>Cancel</button>
-                                        </div>
-                                    </div>
-                                );
-                            }
-                            // Otherwise, show the display view
-                            return (
-                                <div key={btn.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: '#f0f0f0', borderRadius: '4px' }}>
-                                    <span style={{flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {actions.find(a => a.id === btn.actionId)?.name || btn.actionId}
-                                    </span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <ha-icon icon="mdi:pencil" onClick={() => handleEditButton(btn)} style={{ cursor: 'pointer' }} title="Edit"></ha-icon>
-                                        <ha-icon icon="mdi:delete" onClick={() => handleDeleteButton(btn.id)} style={{ cursor: 'pointer', color: '#db4437' }} title="Delete"></ha-icon>
-                                    </div>
-                                </div>
-                            );
-                        })}
 
-                        {/* Form for adding a NEW button */}
-                        {isAddingNewButton && (
-                            <div style={{ border: '1px solid #28a745', padding: '8px', borderRadius: '4px', background: '#f0fff4' }}>
-                                <h5 style={{margin: '0 0 8px 0'}}>Add New Button</h5>
-                                <select name="actionId" value={editingButton?.actionId || ''} onChange={handleDraftButtonChange} style={{ width: '100%', marginBottom: '5px' }}>
-                                    <option value="">-- Select Action --</option>
-                                    {partFooterActions.map(action => (
-                                        <option key={action.id} value={action.id}>{action.name || action.id}</option>
-                                    ))}
-                                </select>
-                                <input
-                                    type="text" name="targetPartPks"
-                                    value={(editingButton?.targetPartPks || []).join(', ')}
-                                    onChange={handleDraftButtonChange}
-                                    placeholder="Target Part PKs (optional, e.g. 1, 5)"
-                                    style={{ width: 'calc(100% - 10px)' }}
-                                />
-                                <div style={{marginTop: '8px', display: 'flex', justifyContent: 'flex-end', gap: '5px'}}>
-                                    <button type="button" onClick={handleSaveButton}>Add Button</button>
-                                    <button type="button" onClick={handleCancelEditButton}>Cancel</button>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {!editingButton && <button type="button" onClick={handleAddButton} style={{marginTop: '5px', padding: '4px 8px', fontSize: '0.9em'}}>+ Add Button</button>}
+                  {col.content === 'buttons' && (
+                    <div style={{ marginTop: '10px', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
+                      <h6>Configure Buttons</h6>
+                      {(col.buttons || []).map((buttonItem, btnIndex) => (
+                        <div key={buttonItem.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px', flexWrap: 'wrap' }}>
+                          <select
+                            value={buttonItem.actionId}
+                            onChange={(e) => {
+                              const newButtons = [...(col.buttons || [])];
+                              newButtons[btnIndex] = { ...newButtons[btnIndex], actionId: e.target.value };
+                              handleUpdateColumn(index, { ...col, buttons: newButtons });
+                            }}
+                          >
+                            <option value="">- Select Action -</option>
+                            {actions.filter(a => a.trigger.type.startsWith('ui_')).map(action => (
+                              <option key={action.id} value={action.id}>{action.name}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Override Icon"
+                            value={buttonItem.icon || ''}
+                            onChange={(e) => {
+                              const newButtons = [...(col.buttons || [])];
+                              newButtons[btnIndex] = { ...newButtons[btnIndex], icon: e.target.value };
+                              handleUpdateColumn(index, { ...col, buttons: newButtons });
+                            }}
+                            style={{ flexShrink: 1 }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Override Label"
+                            value={buttonItem.label || ''}
+                            onChange={(e) => {
+                              const newButtons = [...(col.buttons || [])];
+                              newButtons[btnIndex] = { ...newButtons[btnIndex], label: e.target.value };
+                              handleUpdateColumn(index, { ...col, buttons: newButtons });
+                            }}
+                            style={{ flexShrink: 1 }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Target PKs (e.g. 1,2)"
+                            value={buttonItem.targetPartPks?.join(',') || ''}
+                            onChange={(e) => {
+                              const pks = e.target.value.split(',').map(pk => parseInt(pk.trim(), 10)).filter(pk => !isNaN(pk));
+                              const newButtons = [...(col.buttons || [])];
+                              newButtons[btnIndex] = { ...newButtons[btnIndex], targetPartPks: pks.length > 0 ? pks : undefined };
+                              handleUpdateColumn(index, { ...col, buttons: newButtons });
+                            }}
+                            style={{ flexShrink: 1 }}
+                          />
+                          <button onClick={() => {
+                            const newButtons = (col.buttons || []).filter((_, i) => i !== btnIndex);
+                            handleUpdateColumn(index, { ...col, buttons: newButtons });
+                          }}>Remove</button>
+                        </div>
+                      ))}
+                      <button onClick={() => {
+                        const newButton: ButtonColumnItem = { id: `btn-${Date.now()}`, actionId: '' };
+                        const newButtons = [...(col.buttons || []), newButton];
+                        handleUpdateColumn(index, { ...col, buttons: newButtons });
+                      }}>Add Button</button>
                     </div>
                   )}
-                  {draftColumn?.content === 'attribute' && (
-                    <div className="config-item" style={{ flex: 2, marginRight: '10px' }}>
-                        <input type="text" name="attributeName" value={draftColumn?.attributeName || ''} onChange={handleDraftChange} style={{ width: '100%' }} placeholder="e.g. location.name" />
-                    </div>
-                  )}
-                  {draftColumn?.content === 'template' && (
-                    <div className="config-item" style={{ flex: 2, marginRight: '10px' }}>
-                        <input type="text" name="template" value={draftColumn?.template || ''} onChange={handleDraftChange} style={{ width: '100%' }} placeholder="e.g. Stock: %%part.in_stock%%" />
-                    </div>
-                  )}
-                  <input type="text" name="width" value={draftColumn?.width || ''} onChange={handleDraftChange} style={{ width: '80px', marginRight: '10px' }} placeholder="Width (1fr, 150px, 25%)" />
-                  <button onClick={handleSaveColumn}>Save</button>
+
+                  <button onClick={() => handleSaveColumn(index, col)}>Save</button>
                   <button onClick={handleCancelEdit}>Cancel</button>
                 </>
               ) : (
                 <>
-                  <span style={{ flex: 1, marginRight: '10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{col.header}</span>
-                  <code style={{ flex: 1, marginRight: '10px', background: '#eee', padding: '2px 5px', borderRadius: '3px' }}>
-                    {AVAILABLE_COLUMNS.find(opt => opt.value === col.content)?.label || col.content}
-                  </code>
-                  <span style={{ width: '80px', marginRight: '10px' }}>{col.width || 'auto'}</span>
+                  <i className="mdi mdi-drag" style={{ cursor: 'grab' }}></i>
+                  <span style={{ marginLeft: '8px', flexGrow: 1 }}>
+                    {col.header} ({col.id})
+                  </span>
                   <button onClick={() => handleEditColumn(col)}>Edit</button>
-                  <button onClick={() => handleDeleteColumn(col.id)}>Delete</button>
+                  <button onClick={() => handleRemoveColumn(index)}>Delete</button>
                 </>
               )}
             </div>
           );
         })}
       </div>
-
-      <button onClick={handleAddColumn}>
-        Add Column
-      </button>
+      <div className="add-column-form" style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
+        <input
+          type="text"
+          name="id"
+          value={newColumnForm.id}
+          onChange={(e) => setNewColumnForm({ ...newColumnForm, id: e.target.value })}
+          placeholder="New Column ID"
+        />
+        <input
+          type="text"
+          name="header"
+          value={newColumnForm.header}
+          onChange={(e) => setNewColumnForm({ ...newColumnForm, header: e.target.value })}
+          placeholder="New Column Header"
+        />
+        <select
+          name="content"
+          value={newColumnForm.content}
+          onChange={(e) => setNewColumnForm({ ...newColumnForm, content: e.target.value as LayoutColumnContent })}
+        >
+          {CONTENT_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+        </select>
+        <button onClick={handleAddColumn}>Add Column</button>
+      </div>
     </div>
   );
 };

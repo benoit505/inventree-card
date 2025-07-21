@@ -5,7 +5,7 @@
 import { Middleware, MiddlewareAPI, UnknownAction, PayloadAction, Action, AnyAction } from '@reduxjs/toolkit';
 import { RootState, AppDispatch } from '../index';
 import { webSocketMessageReceived } from '../slices/websocketSlice';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { WebSocketEventMessage, EnhancedStockItemEventData, EnhancedParameterEventData, ParameterDetail, InventreeItem } from '../../types';
 import { evaluateAndApplyEffectsThunk, evaluateEffectsForAllActiveCardsThunk } from '../thunks/conditionalLogicThunks';
 import throttle from 'lodash-es/throttle';
@@ -15,7 +15,9 @@ import { setEntityState, setEntityStatesBatch } from '../slices/genericHaStateSl
 // Import selector for active card instances
 import { selectActiveCardInstanceIds } from '../slices/componentSlice';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('websocketMiddleware');
+ConditionalLoggerEngine.getInstance().registerCategory('websocketMiddleware', { enabled: false, level: 'info' });
+
 let throttledEvaluateEffects: (() => void) | null = null;
 
 const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootState>) => {
@@ -27,10 +29,10 @@ const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootS
     return Math.min(min, freq);
   }, 1000); // Default to 1000ms
   
-  logger.log('WebSocketMiddleware', `Initializing/Re-initializing throttledEvaluateEffects with frequency: ${conditionEvalFrequency}ms`);
+  logger.info('initializeThrottledEvaluator', `Initializing/Re-initializing throttledEvaluateEffects with frequency: ${conditionEvalFrequency}ms`);
 
   throttledEvaluateEffects = throttle(() => {
-    logger.log('WebSocketMiddleware', `Dispatching evaluateEffectsForAllActiveCardsThunk (throttled).`);
+    logger.debug('throttledEvaluateEffects', `Dispatching evaluateEffectsForAllActiveCardsThunk (throttled).`);
     storeAPI.dispatch(evaluateEffectsForAllActiveCardsThunk()); 
   }, conditionEvalFrequency, { leading: false, trailing: true });
 };
@@ -45,13 +47,13 @@ export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> =
     const actionWithType = action as { type?: string; payload?: any };
 
     if (actionWithType.type === 'config/setConfigAction') {
-      logger.log('WebSocketMiddleware', 'Config changed, re-initializing throttled evaluator.');
+      logger.info('middleware', 'Config changed, re-initializing throttled evaluator.');
       initializeThrottledEvaluator(storeAPI);
     }
 
     // Check if the action is one of the HA entity state updates
     if (setEntityState.match(actionWithType as Action) || setEntityStatesBatch.match(actionWithType as Action)) {
-      logger.log('WebSocketMiddleware', `HA entity state updated (action: ${actionWithType.type}), triggering (throttled) effects re-evaluation.`);
+      logger.debug('middleware', `HA entity state updated (action: ${actionWithType.type}), triggering (throttled) effects re-evaluation.`);
       if (throttledEvaluateEffects) {
         throttledEvaluateEffects();
       }
@@ -68,7 +70,7 @@ export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> =
             const eventName = message.event;
             const eventData = message.data;
 
-            logger.log('WebSocketMiddleware', `Processing event: ${eventName}`, { eventData, level: 'info' });
+            logger.info('middleware', `Processing event: ${eventName}`, { eventData });
 
             if (eventName.includes('part_partparameter.saved') || eventName.includes('part_partparameter.created')) {
                 const paramData = eventData as EnhancedParameterEventData;
@@ -77,14 +79,17 @@ export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> =
                 const paramValue = paramData.parameter_value;
                 
                 if (partId !== undefined && parameterInstancePk !== undefined && paramValue !== undefined) {
-                    storeAPI.dispatch(
-                        inventreeApi.util.updateQueryData('getPartParameters', Number(partId), (draftParameters: ParameterDetail[]) => {
-                            const paramIndex = draftParameters.findIndex(p => p.pk === parameterInstancePk);
-                            if (paramIndex !== -1) {
-                                draftParameters[paramIndex].data = paramValue;
-                            }
-                        })
-                    );
+                    const activeInstances = selectActiveCardInstanceIds(storeAPI.getState());
+                    activeInstances.forEach(instanceId => {
+                        storeAPI.dispatch(
+                            inventreeApi.util.updateQueryData('getPartParameters', { partId: Number(partId), cardInstanceId: instanceId }, (draftParameters: ParameterDetail[]) => {
+                                const paramIndex = draftParameters.findIndex(p => p.pk === parameterInstancePk);
+                                if (paramIndex !== -1) {
+                                    draftParameters[paramIndex].data = paramValue;
+                                }
+                            })
+                        );
+                    });
                     if (throttledEvaluateEffects) throttledEvaluateEffects();
                 }
             } 
@@ -93,29 +98,32 @@ export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> =
                 const partId = stockData.part_id;
                 
                 if (partId !== undefined) {
-                    storeAPI.dispatch(
-                        inventreeApi.util.updateQueryData('getPart', Number(partId), (draftPart: InventreeItem) => {
-                            if (typeof draftPart.in_stock === 'number' || draftPart.in_stock === undefined) {
-                                const newStock = parseFloat(stockData.quantity);
-                                if (!isNaN(newStock)) {
-                                    draftPart.in_stock = newStock;
+                    const activeInstances = selectActiveCardInstanceIds(storeAPI.getState());
+                    activeInstances.forEach(instanceId => {
+                        storeAPI.dispatch(
+                            inventreeApi.util.updateQueryData('getPart', { pk: Number(partId), cardInstanceId: instanceId }, (draftPart: InventreeItem) => {
+                                if (typeof draftPart.in_stock === 'number' || draftPart.in_stock === undefined) {
+                                    const newStock = parseFloat(stockData.quantity);
+                                    if (!isNaN(newStock)) {
+                                        draftPart.in_stock = newStock;
+                                    }
                                 }
-                            }
-                        })
-                    );
+                            })
+                        );
+                    });
                     if (throttledEvaluateEffects) throttledEvaluateEffects();
                 }
             }
             else {
-                 logger.log('WebSocketMiddleware', `Received unhandled event type: ${eventName}`, { eventData });
+                 logger.debug('middleware', `Received unhandled event type: ${eventName}`, { eventData });
             }
         } else {
-            logger.warn('WebSocketMiddleware', 'Received webSocketMessageReceived action, but payload was not a valid WebSocketEventMessage structure', { payload: message });
+            logger.warn('middleware', 'Received webSocketMessageReceived action, but payload was not a valid WebSocketEventMessage structure', { payload: message });
         }
     } else if (actionWithType.type === 'websocket/connect') {
-        logger.log('WebSocket Middleware', 'Explicit connect action received (currently informational)');
+        logger.debug('middleware', 'Explicit connect action received (currently informational)');
     } else if (actionWithType.type === 'websocket/disconnect') {
-        logger.log('WebSocket Middleware', 'Explicit disconnect action received (currently informational)');
+        logger.debug('middleware', 'Explicit disconnect action received (currently informational)');
     }
 
     return result;

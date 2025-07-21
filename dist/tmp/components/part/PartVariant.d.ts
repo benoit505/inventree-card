@@ -5,6 +5,7 @@ interface PartVariantProps {
     variant?: ProcessedVariant;
     config?: InventreeCardConfig;
     hass?: HomeAssistant;
+    cardInstanceId?: string;
 }
 declare const PartVariant: React.FC<PartVariantProps>;
 export default PartVariant;

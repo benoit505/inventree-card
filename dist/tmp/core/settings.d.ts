@@ -133,6 +133,6 @@ export declare const SETTINGS_SCHEMA: {
         };
     };
 };
-export declare const DEFAULT_CONFIG: Partial<InventreeCardConfig>;
+export declare const DEFAULT_CONFIG: InventreeCardConfig;
 export declare const validateSetting: (setting: string) => boolean;
 export declare const getSettingGroup: (setting: string) => string | null;

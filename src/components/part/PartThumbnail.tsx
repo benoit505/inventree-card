@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { InventreeItem, InventreeCardConfig } from '../../types';
-import { VisualEffect } from '../../store/slices/visualEffectsSlice';
+import { InventreeItem, InventreeCardConfig, VisualEffect } from '../../types';
 import { RootState } from '../../store';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { motion, TargetAndTransition, Transition } from 'framer-motion';
+
+ConditionalLoggerEngine.getInstance().registerCategory('PartThumbnail', { enabled: false, level: 'info' });
 
 interface PartThumbnailProps {
   partData?: InventreeItem;
@@ -15,6 +16,7 @@ interface PartThumbnailProps {
   onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
   style?: React.CSSProperties;
   className?: string;
+  cardInstanceId?: string;
 }
 
 // Define preferred extensions and base path (could be made configurable later)
@@ -31,9 +33,12 @@ const PartThumbnail: React.FC<PartThumbnailProps> = React.memo(({
   onClick,
   style: propStyle,
   className: propClassName,
+  cardInstanceId,
 }) => {
-  const logger = Logger.getInstance();
-  
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('PartThumbnail', cardInstanceId);
+  }, [cardInstanceId]);
+
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [imageToAttempt, setImageToAttempt] = useState<string | null>(null);
 

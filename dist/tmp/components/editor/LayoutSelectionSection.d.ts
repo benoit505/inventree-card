@@ -1,8 +1,8 @@
 import React from 'react';
-import { HomeAssistant } from 'custom-card-helpers';
-import { LayoutConfig, ActionDefinition } from '../../types';
+import { ActionDefinition, LayoutConfig } from '../../types';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 interface LayoutSelectionSectionProps {
-    hass?: HomeAssistant;
     layoutConfig: LayoutConfig;
     onLayoutConfigChanged: (newLayoutConfig: LayoutConfig) => void;
     actions: ActionDefinition[];

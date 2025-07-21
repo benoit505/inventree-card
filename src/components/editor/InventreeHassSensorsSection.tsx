@@ -3,9 +3,10 @@ import type { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig } from '../../types'; // Adjusted path
 // import HaEntityPickerWrapper from './HaEntityPickerWrapper'; // Updated path - REMOVE
 import CustomEntityPicker from './CustomEntityPicker'; // ADD
-import { Logger } from '../../utils/logger'; // Adjusted path
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('InventreeHassSensorsSection');
+ConditionalLoggerEngine.getInstance().registerCategory('InventreeHassSensorsSection', { enabled: false, level: 'info' });
 
 // Define stable array reference for includeDomains
 const SENSOR_DOMAINS = ["sensor"];
@@ -27,14 +28,14 @@ const InventreeHassSensorsSection: React.FC<InventreeHassSensorsSectionProps> = 
     if (entityId && !selectedSensors.includes(entityId)) {
       const newSensors = [...selectedSensors, entityId];
       onSensorsChanged(newSensors);
-      logger.log('Editor:HassSensors', `Added InvenTree HASS sensor: ${entityId}`, { newSensors });
+      logger.info('handleAddSensor', `Added InvenTree HASS sensor: ${entityId}`, { newSensors });
     }
   }, [selectedSensors, onSensorsChanged]);
 
   const handleRemoveSensor = useCallback((entityIdToRemove: string) => {
     const newSensors = selectedSensors.filter(id => id !== entityIdToRemove);
     onSensorsChanged(newSensors);
-    logger.log('Editor:HassSensors', `Removed InvenTree HASS sensor: ${entityIdToRemove}`, { newSensors });
+    logger.info('handleRemoveSensor', `Removed InvenTree HASS sensor: ${entityIdToRemove}`, { newSensors });
   }, [selectedSensors, onSensorsChanged]);
 
   return (

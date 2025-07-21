@@ -1,259 +1,107 @@
-import * as React from 'react';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, VisualModifiers, ParameterCondition, FilterConfig, ParameterDetail, EffectDefinition } from '../../types';
-import { useSelector, useDispatch } from 'react-redux';
+import { InventreeItem, InventreeCardConfig } from '../../types';
+import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
-import { ThunkDispatch } from 'redux-thunk';
-import { AnyAction } from 'redux';
-import { Logger } from '../../utils/logger';
-import { useElementDisplayStatus } from '../../hooks/useElementDisplayStatus';
-
-import { selectLocatingPartId, locatePartById } from '../../store/slices/partsSlice';
-import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
-
-import PartParametersView from '../part/PartParametersView';
-import { useUpdatePartParameterMutation } from '../../store/apis/inventreeApi';
-
 import { useLazySearchPartsQuery } from '../../store/apis/inventreeApi';
-
-import SearchBar from '../../components/search/SearchBar';
-import PartThumbnail from '../part/PartThumbnail';
-import PartButtons from '../part/PartButtons';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
 interface PartsLayoutProps {
-  hass?: HomeAssistant;
-  config?: InventreeCardConfig;
-  parts: InventreeItem[]; 
-  cardInstanceId?: string;
+  parts: InventreeItem[];
+  hass: HomeAssistant;
+  config: InventreeCardConfig;
+  cardInstanceId: string;
 }
 
-const getItemContainerStyle = (modifiers?: VisualModifiers, layoutMode?: 'grid' | 'list', config?: InventreeCardConfig): React.CSSProperties => {
-    const styles: React.CSSProperties = {
-        border: '1px solid #ddd',
-        padding: '8px',
-        cursor: 'pointer',
-        marginBottom: layoutMode === 'list' ? '4px' : '0',
-        display: 'flex',
-        flexDirection: layoutMode === 'list' ? 'row' : 'column',
-        alignItems: layoutMode === 'list' ? 'center' : 'stretch',
-        textAlign: layoutMode === 'grid' ? 'center' : 'left',
-    };
-    if (layoutMode === 'grid') {
-        styles.height = config?.item_height ? `${config.item_height}px` : 'auto';
-        styles.justifyContent = 'space-between';
+ConditionalLoggerEngine.getInstance().registerCategory('PartsLayout', { enabled: false, level: 'info' });
+
+const PartsLayout: React.FC<PartsLayoutProps> = ({ parts, hass, config, cardInstanceId }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('PartsLayout', cardInstanceId);
+  }, [cardInstanceId]);
+
+  logger.verbose('PartsLayout', 'Component rendering', { partCount: parts.length, cardInstanceId });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [triggerSearch, { data: searchResults, isFetching: isSearching }] = useLazySearchPartsQuery();
+  const visualEffects = useSelector((state: RootState) => state.visualEffects.effectsByCardInstance[cardInstanceId] || {});
+
+  const handleSearch = () => {
+    logger.info('handleSearch', `Triggering search with term: "${searchTerm}"`);
+    if (searchTerm) {
+      triggerSearch({ searchText: searchTerm, cardInstanceId });
     }
-    if (modifiers?.highlight) styles.backgroundColor = modifiers.highlight;
-    if (modifiers?.border) styles.border = `2px solid ${modifiers.border}`;
-    return styles;
-};
-
-const getItemTextStyle = (modifiers?: VisualModifiers): React.CSSProperties => {
-  if (!modifiers || !modifiers.textColor) return {};
-  return { color: modifiers.textColor };
-};
-
-const PartsLayout: React.FC<PartsLayoutProps> = ({ hass, config, parts, cardInstanceId }) => {
-  const logger = useMemo(() => Logger.getInstance(), []);
-  const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
-  const fullState = useSelector((state: RootState) => state);
-
-  const [updatePartParameterMutation, { isLoading: isUpdatingParameter, error: updateParameterErrorFromMutation }] = useUpdatePartParameterMutation();
-
-  const locatingPartId = useSelector((state: RootState) => selectLocatingPartId(state));
-  const parameterConfigFromProps = useMemo(() => config?.parameters, [config]);
+  };
   
-  const [triggerSearch, { 
-    data: searchApiResults, 
-    isLoading: isSearchApiLoading, 
-    isFetching: isSearchApiFetching, 
-    error: searchApiError,
-    originalArgs: currentSearchQuery // To get the query string that triggered the current data/loading state
-  }] = useLazySearchPartsQuery();
-
-  const [localSearchQuery, setLocalSearchQuery] = useState('');
-
-  useEffect(() => {
-    if (localSearchQuery.trim().length > 0) {
-      triggerSearch(localSearchQuery.trim());
-    }
-  }, [localSearchQuery, triggerSearch]);
-
   const filteredAndSortedParts = useMemo(() => {
+    logger.debug('useMemo[filteredAndSortedParts]', 'Recalculating parts list.', { initialCount: parts.length, hasSearchResults: !!searchResults });
     let processedParts = [...parts];
-    const currentQuery = currentSearchQuery || localSearchQuery;
 
-    if (currentQuery && currentQuery.trim().length > 0) {
-      if (searchApiResults && searchApiResults.length > 0) {
-        const searchResultPks = new Set(searchApiResults.map(r => r.pk));
-        processedParts = processedParts.filter(part => searchResultPks.has(part.pk));
-      } else if (!isSearchApiLoading && !isSearchApiFetching) {
-        processedParts = [];
-      }
+    if (searchResults) {
+      const searchPks = new Set(searchResults.map(p => p.pk));
+      processedParts = processedParts.filter(p => searchPks.has(p.pk));
+      logger.debug('useMemo[filteredAndSortedParts]', `Filtered down to ${processedParts.length} parts based on search results.`);
     }
-    
+
     processedParts = processedParts.filter(part => {
-      if (!part) return false;
-      const effect = selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', part.pk) as VisualModifiers | undefined;
-      return effect?.isVisible !== false;
+      const effect = visualEffects[part.pk];
+      const isVisible = !effect || effect.isVisible !== false;
+      if (!isVisible) {
+        logger.debug('useMemo[filteredAndSortedParts]', `Filtering out partId ${part.pk} due to isVisible:false effect.`);
+      }
+      return isVisible;
     });
 
     processedParts.sort((a, b) => {
-        const effectA = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', a.pk) as VisualModifiers | undefined) || {};
-        const effectB = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', b.pk) as VisualModifiers | undefined) || {};
+      const effectA = visualEffects[a.pk];
+      const effectB = visualEffects[b.pk];
+      const priorityA = effectA?.priority || 'medium';
+      const priorityB = effectB?.priority || 'medium';
 
-        if (effectA.sort === 'top' && effectB.sort !== 'top') return -1;
-        if (effectA.sort !== 'top' && effectB.sort === 'top') return 1;
-        if (effectA.sort === 'bottom' && effectB.sort !== 'bottom') return 1;
-        if (effectA.sort !== 'bottom' && effectB.sort === 'bottom') return -1;
-        
-        const prioA = effectA.priority === 'high' ? 3 : effectA.priority === 'medium' ? 2 : 1;
-        const prioB = effectB.priority === 'high' ? 3 : effectB.priority === 'medium' ? 2 : 1;
-        if (prioA !== prioB) return prioB - prioA; 
-        
-        return a.name.localeCompare(b.name);
+      if (priorityA === 'high' && priorityB !== 'high') return -1;
+      if (priorityA !== 'high' && priorityB === 'high') return 1;
+
+      const sortA = effectA?.sort || 'default';
+      const sortB = effectB?.sort || 'default';
+
+      if (sortA === 'top' && sortB !== 'top') return -1;
+      if (sortA !== 'top' && sortB === 'top') return 1;
+      if (sortA === 'bottom' && sortB !== 'bottom') return 1;
+      if (sortA !== 'bottom' && sortB === 'bottom') return -1;
+      
+      return 0;
     });
-
+    logger.debug('useMemo[filteredAndSortedParts]', `Final list has ${processedParts.length} parts after filtering and sorting.`);
     return processedParts;
-  }, [parts, currentSearchQuery, localSearchQuery, searchApiResults, isSearchApiLoading, isSearchApiFetching, fullState, cardInstanceId]);
+  }, [parts, searchResults, visualEffects]);
 
-  const handleLocateItem = useCallback((partId: number) => { 
-    if (hass) {
-      dispatch(locatePartById({ partId, hass })); 
-    }
-  }, [dispatch, hass]);
-  
-  const handleParameterAction = useCallback(async (partId: number, action: ParameterAction) => {
-    logger.log('PartsLayout', `handleParameterAction for part ${partId}, action: ${action.label} (param: ${action.parameter}, value: ${action.value})`);
-    
-    const currentPart = parts.find(p => p.pk === partId);
-    if (!currentPart) {
-      logger.error('PartsLayout', `Cannot update parameter: Part ${partId} not found.`);
-      return;
-    }
-
-    logger.warn('PartsLayout', "`handleParameterAction` might need redesign for RTK Query parameter updates if called directly from layout.");
-
-  }, [dispatch, logger, parts, updatePartParameterMutation]);
-
-  const handleSearchChange = useCallback((query: string) => {
-    setLocalSearchQuery(query);
-  }, []);
-
-  if (!config) {
-    return <div className="parts-layout loading"><p>Loading config...</p></div>;
-  }
-  if (parts.length === 0 && (isSearchApiLoading || isSearchApiFetching)) {
-    return <div className="parts-layout no-parts"><p>Searching...</p></div>;
-  }
-  if (parts.length === 0 && searchApiError) {
-    return <div className="parts-layout no-parts"><p>Error searching: {JSON.stringify(searchApiError)}</p></div>;
-  }
-
-  const displayConfig = config.display || {};
-  const viewMode = config.parts_layout_mode || 'grid';
-  const columns = config.layout_options?.columns || 3;
-  const gridSpacing = config.layout_options?.grid_spacing || 8;
-
-  const gridStyles: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: `repeat(${columns}, 1fr)`,
-    gap: `${gridSpacing}px`,
-    padding: '8px',
-  };
-  const listStyles: React.CSSProperties = { padding: '8px' };
-
-  let noPartsMessage = "No parts match the current filters or search.";
-  if (localSearchQuery.trim().length > 0 && filteredAndSortedParts.length === 0 && (isSearchApiLoading || isSearchApiFetching)) {
-    noPartsMessage = `No parts found matching "${localSearchQuery}".`;
-  }
-
-  const renderPartItem = (part: InventreeItem): React.ReactElement | null => {
-    if (!part) return null;
-    const partId = part.pk;
-    const visualModifiers = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partId) as VisualModifiers | undefined) || {};
-    const parameterActionsForPart = parameterConfigFromProps?.actions || [];
-    const isCurrentlyLocating = locatingPartId === partId;
-
-    const shouldShowParametersSection = useElementDisplayStatus(cardInstanceId, 'show_parameters', config?.display);
-
-    const itemContainerStyle = getItemContainerStyle(visualModifiers, viewMode, config);
-    const itemTextStyle = getItemTextStyle(visualModifiers);
-
-    const itemClasses = [
-      viewMode === 'grid' ? 'part-container' : 'list-item',
-      isCurrentlyLocating ? 'locating' : '',
-      visualModifiers?.priority ? `priority-${visualModifiers.priority}` : ''
-    ].filter(Boolean).join(' ');
-
+  const renderPartItem = (part: InventreeItem) => {
+    const effect = visualEffects[part.pk] || {};
+    logger.verbose('renderPartItem', `Rendering item for partId: ${part.pk}`, { effect });
     return (
-      <div
-        key={partId}
-        className={itemClasses}
-        style={itemContainerStyle}
-        onClick={() => handleLocateItem(partId)}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', width:'100%', flexDirection: viewMode === 'grid' ? 'column' : 'row' }}>
-            {displayConfig.show_image && (
-            <div className={viewMode === 'grid' ? "part-thumbnail" : "list-item-image"} 
-                 style={{ 
-                     marginBottom: viewMode === 'grid' ? '8px' : '0', 
-                     marginRight: viewMode === 'list' ? '8px' : '0',
-                     display:'flex', justifyContent:'center', alignItems:'center' 
-                 }}>
-                <PartThumbnail partData={part} config={config} layout={viewMode as ('grid' | 'list')} />
-                {visualModifiers?.icon && <span style={{ fontSize: '0.7em' }}> (Icon: {visualModifiers.icon})</span>} 
-            </div>
-            )}
-            <div className={viewMode === 'grid' ? "part-info" : "list-item-info"} style={{ ...itemTextStyle, flexGrow: 1, textAlign: viewMode === 'grid' ? 'center' : 'left' }}>
-                {displayConfig.show_name && <div className="part-name" style={{ fontWeight: 'bold' }}>{part.name}</div>}
-                {displayConfig.show_stock && <div className="part-stock">Stock: {part.in_stock} {part.units || ''}</div>}
-                {shouldShowParametersSection && (
-                  <PartParametersView 
-                    partId={part.pk} 
-                    config={config} 
-                    parametersDisplayEnabled={shouldShowParametersSection} 
-                  />
-                )}
-            </div>
-            <div className="item-actions-footer" style={{ marginTop: viewMode === 'grid' ? 'auto' : '0', marginLeft: viewMode === 'list' ? 'auto' : '0', paddingTop: '4px' }}>
-                {parameterActionsForPart.length > 0 && (
-                    <div className="parameter-action-buttons" style={{ display:'flex', justifyContent: viewMode === 'grid' ? 'center' : 'flex-start', gap:'4px', marginBottom: '4px' }}>
-                        {parameterActionsForPart.map((action: ParameterAction) => (
-                            <button
-                                key={`${partId}-${action.label}`}
-                                className="param-action-button"
-                                onClick={(e) => { e.stopPropagation(); handleParameterAction(partId, action); }}
-                                title={action.label}
-                                style={{ fontSize: '0.7em', padding: '2px 4px' }}
-                            >
-                                {action.icon ? <span>{action.icon}</span> : action.label}
-                            </button>
-                        ))}
-                    </div>
-                )}
-                {displayConfig.show_buttons && hass && config && (
-                    <PartButtons partItem={part} config={config} hass={hass} />
-                )}
-            </div>
-        </div>
-        {isCurrentlyLocating && <div className="locating-indicator">Locating...</div>}
+      <div key={part.pk} style={{ padding: '8px', border: '1px solid #ccc', margin: '4px', backgroundColor: effect.highlight, color: effect.textColor }}>
+        <h4>{part.name}</h4>
+        <p>Stock: {part.in_stock}</p>
       </div>
     );
   };
 
   return (
-    <div className="parts-layout" style={{ padding: '8px' }}>
-      <SearchBar onSearchChange={handleSearchChange} initialQuery={localSearchQuery} />
-      {(isSearchApiLoading || isSearchApiFetching) && <p>Searching...</p>}
-      {searchApiError && <p style={{color: 'red'}}>Error searching: {JSON.stringify(searchApiError)}</p>}
-      {filteredAndSortedParts.length > 0 ? (
-        <div style={viewMode === 'grid' ? gridStyles : listStyles}>
-          {filteredAndSortedParts.map(part => renderPartItem(part))}
-        </div>
-      ) : (
-        <p>{noPartsMessage}</p>
-      )}
+    <div>
+      <h3>Parts</h3>
+      <div>
+        <input 
+          type="text" 
+          value={searchTerm} 
+          onChange={(e) => setSearchTerm(e.target.value)} 
+          placeholder="Search parts..."
+        />
+        <button onClick={handleSearch} disabled={isSearching}>
+          {isSearching ? 'Searching...' : 'Search'}
+        </button>
+      </div>
+      <div>
+        {filteredAndSortedParts.map(renderPartItem)}
+      </div>
     </div>
   );
 };

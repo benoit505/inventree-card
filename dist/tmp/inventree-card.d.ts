@@ -1,8 +1,22 @@
-import { CustomCardEntry } from './types';
-declare global {
-    interface Window {
-        customCards: CustomCardEntry[];
-    }
+import { HomeAssistant, LovelaceCard, LovelaceCardConfig, LovelaceCardEditor } from 'custom-card-helpers';
+import { LitElement, TemplateResult, PropertyValues } from 'lit';
+export declare class InventreeCard extends LitElement implements LovelaceCard {
+    private logger;
+    constructor();
+    static getConfigElement(): Promise<LovelaceCardEditor>;
+    hass: HomeAssistant;
+    private _config?;
+    private _isInitialized;
+    private reactRoot?;
+    private _cardInstanceId;
+    static styles: import("lit").CSSResult;
+    setConfig(config: LovelaceCardConfig): void;
+    getCardSize(): number;
+    connectedCallback(): void;
+    protected firstUpdated(_changedProperties: PropertyValues): void;
+    protected updated(changedProperties: PropertyValues): void;
+    disconnectedCallback(): void;
+    protected render(): TemplateResult | void;
+    private _mountOrUpdateReactApp;
+    static getStubConfig(): Record<string, unknown>;
 }
-declare let InventreeCard: any;
-export { InventreeCard };

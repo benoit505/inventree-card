@@ -6,7 +6,7 @@ import {
     // RuleGroupType, // No longer directly used here for ProcessedCondition creation
     // RuleType // No longer directly used here for ProcessedCondition creation
 } from '../../types';
-import { Logger } from '../../core/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 // import { generateSimpleId } from '../../utils/generateSimpleId'; // No longer needed here
 import {
   setDefinedLogicItems,
@@ -15,7 +15,8 @@ import {
 import { selectActiveCardInstanceIds } from '../slices/componentSlice';
 import { ConditionalEffectsEngine } from '../../core/ConditionalEffectsEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('conditionalLogicThunks');
+ConditionalLoggerEngine.getInstance().registerCategory('conditionalLogicThunks', { enabled: false, level: 'info' });
 
 // parseSourceString and extractAllRules are no longer needed here as processing moves to the engine
 
@@ -24,17 +25,16 @@ export const evaluateAndApplyEffectsThunk = createAsyncThunk<
   { cardInstanceId: string },
   { state: RootState, dispatch: AppDispatch }
 >('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId }, { dispatch, getState }) => {
-  console.log(`[Thunk:evaluateAndApplyEffects] Running for card instance: ${cardInstanceId}`);
+  logger.debug('evaluateAndApplyEffectsThunk', `Running for card instance: ${cardInstanceId}`);
   const state = getState();
   const logicItems = selectDefinedLogicItems(state, cardInstanceId);
   const engine = new ConditionalEffectsEngine(dispatch, getState);
   try {
-    console.log(`[Thunk:evaluateAndApplyEffects] About to call engine.evaluateAndApplyEffects with ${logicItems.length} logic items for instance ${cardInstanceId}.`);
+    logger.debug('evaluateAndApplyEffectsThunk', `About to call engine.evaluateAndApplyEffects with ${logicItems.length} logic items for instance ${cardInstanceId}.`);
     await engine.evaluateAndApplyEffects(cardInstanceId, false, logicItems);
-    console.log(`[Thunk:evaluateAndApplyEffects] Engine finished evaluation for instance ${cardInstanceId}.`);
+    logger.debug('evaluateAndApplyEffectsThunk', `Engine finished evaluation for instance ${cardInstanceId}.`);
   } catch (error) {
-    logger.error('evaluateAndApplyEffectsThunk', `An error occurred during conditional logic evaluation for instance ${cardInstanceId}:`, { data: error });
-    // Optionally re-throw or handle as needed
+    logger.error('evaluateAndApplyEffectsThunk', `An error occurred during conditional logic evaluation for instance ${cardInstanceId}:`, error as Error);
   }
 });
 

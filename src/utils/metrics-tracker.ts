@@ -1,7 +1,8 @@
-import { Logger } from './logger';
+import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
 
 // Logger instance
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('MetricsTracker');
+ConditionalLoggerEngine.getInstance().registerCategory('MetricsTracker', { enabled: false, level: 'info' });
 
 /**
  * Track usage of a feature for metrics and analytics
@@ -26,16 +27,16 @@ export function trackUsage(
     }
     
     // Only log metrics at debug level to avoid spam
-    logger.log('MetricsTracker', `${category}/${action} [${data.source || 'unknown'}]`, {
+    logger.debug('trackUsage', `${category}/${action} [${data.source || 'unknown'}]`, {
       category: 'metrics',
       subsystem: 'tracking',
       ...data
     });
   } catch (error) {
     // Log error but don't fail the application
-    logger.error('MetricsTracker', `Error tracking metrics: ${error}`, {
+    logger.error('trackUsage', `Error tracking metrics`, error as Error, {
       category: 'metrics',
-      subsystem: 'error'
+      subsystem: 'error',
     });
   }
 }

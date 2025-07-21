@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ConditionalLogicItem } from '../../types';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('ConditionSelectModal');
+ConditionalLoggerEngine.getInstance().registerCategory('ConditionSelectModal', { enabled: false, level: 'info' });
 
 interface ConditionSelectModalProps {
   isOpen: boolean;
@@ -33,13 +34,13 @@ const ConditionSelectModal: React.FC<ConditionSelectModalProps> = ({
   }
 
   const handleSave = () => {
-    logger.log('ConditionSelectModal', `Saving condition for ${elementName}. Selected ID: ${selectedIdInModal}`);
+    logger.info('handleSave', `Saving condition for ${elementName}. Selected ID: ${selectedIdInModal}`);
     onSave(selectedIdInModal);
     onClose(); // Close modal after save
   };
 
   const handleCancel = () => {
-    logger.log('ConditionSelectModal', `Cancelled condition selection for ${elementName}.`);
+    logger.info('handleCancel', `Cancelled condition selection for ${elementName}.`);
     onClose();
   };
 

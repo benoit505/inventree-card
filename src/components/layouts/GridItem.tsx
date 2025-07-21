@@ -1,22 +1,20 @@
 import * as React from 'react';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, ParameterDetail, ActionDefinition, ActionExecutionContext } from '../../types';
-import { VisualEffect } from '../../store/slices/visualEffectsSlice';
-import { RootState, useAppDispatch } from '../../store/index';
+import { InventreeCardConfig, InventreeItem, ParameterAction, ActionDefinition, ActionExecutionContext, VisualEffect } from '../../types';
+import { RootState, useAppDispatch, store } from '../../store/index';
 import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
 import { useGetPartQuery, useGetPartParametersQuery, useUpdatePartParameterMutation } from '../../store/apis/inventreeApi';
-import { locatePartById } from '../../store/slices/partsSlice';
-import { Logger } from '../../utils/logger';
-import { SerializedError } from '@reduxjs/toolkit';
-import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { setLocatingPartId, selectLocatingPartId } from '../../store/slices/partsSlice';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { actionEngine } from '../../services/ActionEngine';
-import { useElementDisplayStatus } from '../../hooks/useElementDisplayStatus';
-import { motion, TargetAndTransition, Transition, Variants } from 'framer-motion';
+import { motion, Variants } from 'framer-motion';
 import { useMemo, useCallback } from 'react';
 
 import PartButtons from '../part/PartButtons';
 import PartThumbnail from '../part/PartThumbnail';
+
+ConditionalLoggerEngine.getInstance().registerCategory('GridItem', { enabled: false, level: 'info' });
 
 interface GridItemProps {
   partId: number;
@@ -42,7 +40,7 @@ const getGridItemContainerStyle = (modifiers?: VisualEffect, config?: InventreeC
     padding: '8px',
     textAlign: 'center',
     cursor: 'pointer',
-    height: config?.layout_options?.item_height ? `${config.layout_options.item_height}px` : 'auto',
+    height: config?.layout?.item_height ? `${config.layout.item_height}px` : 'auto',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'space-between',
@@ -64,7 +62,11 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
   hass,
   cardInstanceId,
 }) => {
-  const logger = Logger.getInstance();
+  const logger = useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('GridItem', cardInstanceId);
+  }, [cardInstanceId]);
+  
+  logger.verbose('GridItem', `Render Start for partId: ${partId}`, { cardInstanceId });
   const dispatch = useAppDispatch();
 
   // Get config from the Redux store - CORRECTED a bug where it was looking for state.config.config
@@ -72,59 +74,68 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
   const config = configState?.config;
 
   // A component cannot render without its config or if its initialization flag isn't set.
-  if (!configState || !configState.configInitialized || !config) {
+  if (!configState || !configState.configInitialized || !config || !cardInstanceId) {
+    logger.warn('GridItem', `Render blocked for partId ${partId}: config or cardInstanceId not ready.`, { hasConfigState: !!configState, hasConfigInitialized: !!configState?.configInitialized, hasConfig: !!config, hasId: !!cardInstanceId });
     return <div style={{ padding: '8px' }}>Loading...</div>;
   }
 
   // 1. Fetch own data using the partId prop
-  const { data: part, isLoading: isLoadingPart, isError: isPartError, error: partError } = useGetPartQuery(partId);
+  const { data: part, isLoading: isLoadingPart, isError: isPartError, error: partError } = useGetPartQuery({ pk: partId, cardInstanceId });
 
   // Selectors and hooks now use the fetched part or partId
-  const isCurrentlyLocating = useSelector((state: RootState) => state.parts.locatingPartId === partId);
-  const actualModifiers = useSelector((state: RootState) => selectVisualEffectForPart(state, cardInstanceId!, partId)) || EMPTY_MODIFIERS;
+  const isCurrentlyLocating = useSelector((state: RootState) => selectLocatingPartId(state, cardInstanceId) === partId);
+  const actualModifiers = useSelector((state: RootState) => selectVisualEffectForPart(state, cardInstanceId, partId)) || EMPTY_MODIFIERS;
 
-  console.log(`[GridItem partId=${partId}] Received visual modifiers:`, actualModifiers);
+  logger.debug('GridItem', `[partId=${partId}] Received visual modifiers`, { actualModifiers });
 
-  // Use the new hook for individual element visibility
-  const shouldShowImage = useElementDisplayStatus(cardInstanceId, 'show_image', config.display);
-  const shouldShowName = useElementDisplayStatus(cardInstanceId, 'show_name', config.display);
-  const shouldShowStock = useElementDisplayStatus(cardInstanceId, 'show_stock', config.display);
-  const shouldShowDescription = useElementDisplayStatus(cardInstanceId, 'show_description', config.display);
-  const shouldShowButtons = useElementDisplayStatus(cardInstanceId, 'show_buttons', config.display);
-
-  const parametersDisplayEnabled = useElementDisplayStatus(cardInstanceId, 'show_parameters', config.display);
+  // Directly access the display configuration. No special hook needed.
+  const displayConfig = config.display || {};
+  const shouldShowImage = displayConfig.show_image;
+  const shouldShowName = displayConfig.show_name;
+  const shouldShowStock = displayConfig.show_stock;
+  const shouldShowDescription = displayConfig.show_description;
+  const shouldShowButtons = displayConfig.show_buttons;
+  const parametersDisplayEnabled = displayConfig.show_parameters;
 
   const {
     data: parametersData,
     isLoading: isLoadingParameters,
     isError,
     error,
-  } = useGetPartParametersQuery(partId, { skip: !parametersDisplayEnabled });
+  } = useGetPartParametersQuery({ partId, cardInstanceId }, { skip: !parametersDisplayEnabled });
 
-  const [updatePartParameter, { isLoading: isUpdatingParameter }] = useUpdatePartParameterMutation();
+  const [updatePartParameter] = useUpdatePartParameterMutation();
 
   // 2. Internalize event handlers
   const handleLocateGridItem = useCallback(() => {
-    if (hass) {
-      dispatch(locatePartById({ partId, hass }));
-    }
-  }, [dispatch, partId, hass]);
+    logger.info('handleLocateGridItem', `Locate clicked for partId: ${partId}`);
+    dispatch(setLocatingPartId({ partId, cardInstanceId }));
+
+    setTimeout(() => {
+      // Check if this part is still the one being located before clearing
+      const currentState = store.getState();
+      if (selectLocatingPartId(currentState, cardInstanceId) === partId) {
+        dispatch(setLocatingPartId({ partId: null, cardInstanceId }));
+      }
+    }, 5000); // Turn off after 5 seconds
+  }, [dispatch, partId, cardInstanceId]);
 
   const handleParameterActionClick = useCallback(async (action: ParameterAction, parameterPk?: number) => {
+    logger.info('handleParameterActionClick', `Parameter action clicked for parameterPk: ${parameterPk}`, { action });
     if (!parameterPk) return;
     
-    // This logic is simplified. A real implementation would call the appropriate service.
-    // For now, we'll assume it's an update action.
     try {
       await updatePartParameter({
         partId: partId,
         parameterPk: parameterPk,
-        value: 'NewValue' // This needs a way to get the new value, e.g., from a prompt
+        value: 'NewValue',
+        cardInstanceId: cardInstanceId,
       }).unwrap();
+      logger.info('handleParameterActionClick', `Successfully updated parameter ${parameterPk}`);
     } catch (err) {
-      logger.error('GridItem', `Failed to update parameter ${parameterPk}`, err);
+      logger.error('handleParameterActionClick', `Failed to update parameter ${parameterPk}`, err as any);
     }
-  }, [updatePartParameter, partId, logger]);
+  }, [updatePartParameter, partId, cardInstanceId]);
 
   const handleThumbnailClick = useMemo(() => {
     if (!config.actions || !part) return undefined;
@@ -136,23 +147,29 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
     if (thumbnailClickAction) {
       return (event: React.MouseEvent<HTMLDivElement>) => {
         event.stopPropagation();
-        logger.log('GridItem', `Thumbnail clicked for part ${part.pk}, executing action: ${thumbnailClickAction.name}`);
+        logger.debug('handleThumbnailClick', `Thumbnail clicked for part ${part.pk}, executing action: ${thumbnailClickAction.name}`);
+        
         const executionContext: ActionExecutionContext = {
           part: part,
           hassStates: hass?.states,
+          config: config,
+          cardInstanceId: cardInstanceId,
+          hass: hass,
         };
-        actionEngine.executeAction(thumbnailClickAction.id, { ...executionContext, hass });
+        actionEngine.executeAction(thumbnailClickAction.id, executionContext, cardInstanceId);
       };
     }
     return undefined;
-  }, [config.actions, part, hass, logger]);
+  }, [config, part, hass, cardInstanceId]);
 
   // Handle loading and error states for the main part data
   if (isLoadingPart) {
+    logger.verbose('GridItem', `Loading part data for partId: ${partId}`);
     return <div>Loading part {partId}...</div>;
   }
 
   if (isPartError || !part) {
+    logger.error('GridItem', `Error loading part ${partId}.`, new Error(JSON.stringify(partError)), { isPartError });
     // A more sophisticated error component could be used here
     return <div style={{color: 'red'}}>Error loading part {partId}.</div>;
   }
@@ -168,6 +185,7 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
   ].filter(Boolean).join(' ');
 
   if (actualModifiers.isVisible === false) {
+    logger.debug('GridItem', `partId ${partId} is not visible, rendering null.`);
     return null;
   }
 
@@ -176,6 +194,8 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
   
   // Determine the animation state based on whether an effect is present.
   const animationState = animation.animate ? "shaking" : "idle";
+
+  logger.verbose('GridItem', `Render complete for partId: ${partId}`, { animationState });
 
   return (
     <motion.div
@@ -199,6 +219,7 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
             layout="grid"
             visualModifiers={actualModifiers}
             onClick={handleThumbnailClick}
+            cardInstanceId={cardInstanceId}
           />
         </div>
       )}
@@ -230,31 +251,25 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
             <p style={{color: 'red'}}>
               Error loading parameters: {
                 (() => {
-                  if (error) {
-                    if ('status' in error) {
-                      const customError = error as { status?: number | 'CUSTOM_ERROR'; data?: any; message?: string };
-                      if (customError.data && typeof customError.data === 'object' && customError.data.message) {
-                        return customError.data.message;
-                      } else if (typeof customError.data === 'string') {
-                        return customError.data;
-                      }
-                      return customError.message || customError.status?.toString() || 'API error';
-                    } else {
-                      return (error as SerializedError).message || 'Unknown client error';
+                  if (typeof error === 'object' && error !== null && 'status' in error) {
+                    const customError = error as { status?: number | 'CUSTOM_ERROR'; data?: any; message?: string };
+                    if (customError.data && typeof customError.data === 'object' && customError.data.message) {
+                      return customError.data.message;
+                    } else if (typeof customError.data === 'string') {
+                      return customError.data;
                     }
                   }
-                  return 'Unknown error';
+                  return 'An unknown error occurred.';
                 })()
               }
             </p>
           )}
-          {parametersData && parametersData.length > 0 && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {parametersData.map((parameter: ParameterDetail) => (
-                <li key={parameter.pk}>{parameter.template_detail?.name}: {parameter.data}</li>
-              ))}
-            </ul>
-          )}
+          {parametersData && parametersData.map(param => (
+            <div key={param.pk} style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{param.template_detail?.name}:</span>
+              <span>{param.data}</span>
+            </div>
+          ))}
         </div>
       )}
     </motion.div>

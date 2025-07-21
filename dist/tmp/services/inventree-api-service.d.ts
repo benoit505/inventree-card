@@ -21,6 +21,7 @@ declare class InventreeApiService {
     }>, notes?: string): Promise<any | null>;
     deleteStockItem(stockItemPk: number): Promise<void | null>;
     consolidateStockForPart(partId: number, targetLocationId?: number, notes?: string): Promise<StockItem | null>;
+    printLabel(partId: number, plugin: string, templateId: number): Promise<void>;
 }
 export declare const inventreeApiService: InventreeApiService;
 export {};

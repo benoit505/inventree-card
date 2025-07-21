@@ -1,30 +1,9 @@
-import * as React from 'react';
-import { InventreeCardConfig, ParameterDetail } from '../../types';
-import { VisualEffect } from '../../store/slices/visualEffectsSlice';
-import { SerializedError } from '@reduxjs/toolkit';
-import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import React from 'react';
+import { InventreeCardConfig, InventreeItem, VisualEffect } from '../../types';
 interface PartDetailsProps {
-    config?: InventreeCardConfig;
+    part: InventreeItem;
+    config: InventreeCardConfig;
     visualEffect?: VisualEffect;
-    description?: string | null;
-    categoryName?: string | null;
-    ipn?: string | null;
-    locationName?: string | null;
-    supplierName?: string | null;
-    manufacturerName?: string | null;
-    notes?: string | null;
-    parametersData?: ParameterDetail[] | null;
-    isLoadingParameters?: boolean;
-    isParametersError?: boolean;
-    parametersError?: SerializedError | FetchBaseQueryError | null;
-    showDescription?: boolean;
-    showCategory?: boolean;
-    showIpn?: boolean;
-    showLocation?: boolean;
-    showSupplier?: boolean;
-    showManufacturer?: boolean;
-    showNotes?: boolean;
-    showParameters?: boolean;
 }
 declare const PartDetails: React.FC<PartDetailsProps>;
 export default PartDetails;

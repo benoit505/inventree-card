@@ -1,18 +1,23 @@
 import * as React from 'react';
 import { InventreeCardConfig, ParameterDetail } from '../../types';
 import { useGetPartParametersQuery } from '../../store/apis/inventreeApi';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { SerializedError } from '@reduxjs/toolkit';
 import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+
+ConditionalLoggerEngine.getInstance().registerCategory('PartParametersView', { enabled: false, level: 'info' });
 
 interface PartParametersViewProps {
   partId: number;
   config?: InventreeCardConfig; // For future use, e.g., styling, display options
   parametersDisplayEnabled: boolean;
+  cardInstanceId: string;
 }
 
-const PartParametersView: React.FC<PartParametersViewProps> = ({ partId, config, parametersDisplayEnabled }) => {
-  const logger = Logger.getInstance();
+const PartParametersView: React.FC<PartParametersViewProps> = ({ partId, config, parametersDisplayEnabled, cardInstanceId }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('PartParametersView', cardInstanceId);
+  }, [cardInstanceId]);
 
   const {
     data: parametersData,
@@ -20,7 +25,7 @@ const PartParametersView: React.FC<PartParametersViewProps> = ({ partId, config,
     isError,
     error,
     isFetching,
-  } = useGetPartParametersQuery(partId, { 
+  } = useGetPartParametersQuery({ partId, cardInstanceId }, { 
     skip: !parametersDisplayEnabled, 
     // refetchOnMountOrArgChange: true, // Consider if always needed
   });
@@ -35,7 +40,7 @@ const PartParametersView: React.FC<PartParametersViewProps> = ({ partId, config,
 
   if (isError) {
     let errorMessage = 'Error loading parameters.';
-    if (error) {
+    if (error && typeof error === 'object') {
       if ('status' in error) { // FetchBaseQueryError
         const fetchError = error as FetchBaseQueryError;
         if (fetchError.data && typeof fetchError.data === 'object' && (fetchError.data as any).message) {

@@ -1,8 +1,8 @@
 import React, { useCallback, ChangeEvent } from 'react';
 import { StyleConfig } from '../../types'; // Assuming types are correctly pathed
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+ConditionalLoggerEngine.getInstance().registerCategory('CardStylingSection', { enabled: false, level: 'info' });
 
 interface CardStylingSectionProps {
   styleConfig?: Partial<StyleConfig>;
@@ -13,6 +13,10 @@ const CardStylingSection: React.FC<CardStylingSectionProps> = ({
   styleConfig = {},
   onStyleConfigChanged,
 }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('CardStylingSection');
+    // This logger is for the editor form itself, which is not instance-specific
+  }, []);
 
   const handleInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = event.target;
@@ -33,7 +37,7 @@ const CardStylingSection: React.FC<CardStylingSectionProps> = ({
     } as StyleConfig;
 
     onStyleConfigChanged(newStyleConfig);
-    logger.log('Editor:StylingSection', `Style option changed: ${name} = ${processedValue}`, { newStyleConfig });
+    logger.info('handleInputChange', `Style option changed: ${name} = ${processedValue}`, { newStyleConfig });
   }, [styleConfig, onStyleConfigChanged]);
 
   return (

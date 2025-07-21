@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig } from '../../types';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
 // Import the new "smart" GridItem
 import GridItem from './GridItem';
+
+ConditionalLoggerEngine.getInstance().registerCategory('GridLayout', { enabled: false, level: 'info' });
 
 interface GridLayoutProps {
   hass?: HomeAssistant;
@@ -14,12 +16,18 @@ interface GridLayoutProps {
 }
 
 const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, partIds, cardInstanceId }) => {
-  const logger = Logger.getInstance();
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('GridLayout', cardInstanceId);
+  }, [cardInstanceId]);
+
+  logger.verbose('GridLayout', 'Component rendering', { partIdCount: partIds?.length, cardInstanceId });
 
   if (!config) {
+    logger.warn('GridLayout', 'Render blocked: config is missing.');
     return <div className="grid-layout loading"><p>Loading config...</p></div>;
   }
   if (!partIds || partIds.length === 0) {
+    logger.info('GridLayout', 'No parts to display.');
     return <div className="grid-layout no-parts"><p>No parts to display.</p></div>;
   }
 
@@ -40,7 +48,7 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, partIds, cardInst
     boxSizing: 'border-box',
   };
 
-  logger.log('GridLayout', 'Rendering partIds:', { partIds });
+  logger.debug('GridLayout', 'Rendering with partIds:', { partIds });
 
   return (
     <div className="grid-layout-scroll-container" style={scrollContainerStyle}>

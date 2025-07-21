@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig } from '../../types';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
 // Import the PartView component
 import PartView from '../part/PartView';
+
+ConditionalLoggerEngine.getInstance().registerCategory('DetailLayout', { enabled: false, level: 'info' });
 
 interface DetailLayoutProps {
   hass?: HomeAssistant;
@@ -14,15 +16,19 @@ interface DetailLayoutProps {
 }
 
 const DetailLayout: React.FC<DetailLayoutProps> = ({ hass, config, selectedPartId, cardInstanceId }) => {
-  const logger = React.useMemo(() => Logger.getInstance(), []);
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('DetailLayout', cardInstanceId);
+  }, [cardInstanceId]);
+
+  logger.verbose('DetailLayout', 'Component rendering', { selectedPartId, cardInstanceId });
 
   React.useEffect(() => {
-    logger.log('DetailLayout', 'Props update', { hasHass: !!hass, hasConfig: !!config, selectedPartId });
-  }, [hass, config, selectedPartId, logger]);
+    logger.debug('useEffect[props]', 'Props update', { hasHass: !!hass, hasConfig: !!config, selectedPartId });
+  }, [hass, config, selectedPartId]);
 
-  if (!config) {
-    logger.log('DetailLayout', 'Warn - No config provided', { config });
-    return <div>Error: Configuration is missing.</div>;
+  if (!config || !hass || !cardInstanceId) {
+    logger.warn('DetailLayout', 'Missing critical props', { hasConfig: !!config, hasHass: !!hass, hasCardInstanceId: !!cardInstanceId });
+    return <div>Error: Card is not fully initialized.</div>;
   }
 
   const layoutStyle: React.CSSProperties = {

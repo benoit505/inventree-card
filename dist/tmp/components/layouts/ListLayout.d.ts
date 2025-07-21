@@ -1,11 +1,11 @@
-import * as React from 'react';
+import React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig, InventreeItem } from '../../types';
 interface ListLayoutProps {
-    hass?: HomeAssistant;
-    config?: InventreeCardConfig;
     parts: InventreeItem[];
-    cardInstanceId?: string;
+    config: InventreeCardConfig;
+    hass: HomeAssistant;
+    cardInstanceId: string;
 }
 declare const ListLayout: React.FC<ListLayoutProps>;
 export default ListLayout;

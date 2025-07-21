@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutConfig, ActionDefinition } from '../../types';
+import { LayoutColumn, ActionDefinition } from '../../types';
 interface LayoutBuilderProps {
-    layoutConfig: LayoutConfig;
-    onLayoutConfigChanged: (newLayoutConfig: LayoutConfig) => void;
+    columns: LayoutColumn[];
+    onColumnsChanged: (newColumns: LayoutColumn[]) => void;
     actions: ActionDefinition[];
 }
 declare const LayoutBuilder: React.FC<LayoutBuilderProps>;

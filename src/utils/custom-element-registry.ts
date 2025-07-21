@@ -1,7 +1,9 @@
-import { Logger } from './logger';
+import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
 
 // Track constructors that have been used for registration
 const registeredConstructors = new WeakSet<CustomElementConstructor>();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('CustomElements');
+ConditionalLoggerEngine.getInstance().registerCategory('CustomElements', { enabled: false, level: 'info' });
 
 /**
  * Safely register a custom element, preventing multiple registrations of the same constructor
@@ -15,12 +17,11 @@ export function safelyRegisterElement(
   constructor: CustomElementConstructor, 
   options?: ElementDefinitionOptions
 ): boolean {
-  const logger = Logger.getInstance();
   
   try {
     // Check if the constructor has already been used for registration
     if (registeredConstructors.has(constructor)) {
-      logger.log('CustomElements', `Constructor for ${tagName} already used for registration, skipping`, {
+      logger.info('safelyRegisterElement', `Constructor for ${tagName} already used for registration, skipping`, {
         category: 'initialization',
         subsystem: 'components'
       });
@@ -29,7 +30,7 @@ export function safelyRegisterElement(
     
     // Check if the tag is already defined
     if (customElements.get(tagName)) {
-      logger.log('CustomElements', `Element ${tagName} already registered, skipping`, {
+      logger.info('safelyRegisterElement', `Element ${tagName} already registered, skipping`, {
         category: 'initialization',
         subsystem: 'components'
       });
@@ -42,13 +43,13 @@ export function safelyRegisterElement(
     // Track this constructor as used
     registeredConstructors.add(constructor);
     
-    logger.log('CustomElements', `Successfully registered ${tagName}`, {
+    logger.info('safelyRegisterElement', `Successfully registered ${tagName}`, {
       category: 'initialization',
       subsystem: 'components'
     });
     return true;
   } catch (error) {
-    logger.error('CustomElements', `Error registering ${tagName}: ${error}`, {
+    logger.error('safelyRegisterElement', `Error registering ${tagName}`, error as Error, {
       category: 'initialization',
       subsystem: 'components'
     });

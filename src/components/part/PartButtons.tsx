@@ -4,8 +4,10 @@ import { useSelector, useDispatch } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeItem, InventreeCardConfig, ActionDefinition, ActionExecutionContext } from '../../types';
 import { RootState } from '../../store';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { actionEngine } from '../../services/ActionEngine';
+
+ConditionalLoggerEngine.getInstance().registerCategory('PartButtons', { enabled: false, level: 'info' });
 
 interface PartButtonsProps {
   partItem?: InventreeItem;
@@ -15,7 +17,9 @@ interface PartButtonsProps {
 }
 
 const PartButtons: React.FC<PartButtonsProps> = ({ partItem, config, hass, cardInstanceId }) => {
-  const logger = useMemo(() => Logger.getInstance(), []);
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('PartButtons', cardInstanceId);
+  }, [cardInstanceId]);
 
   const processButtonLabelTemplate = useCallback((template: string, item?: InventreeItem): string => {
     if (!item) return template;
@@ -26,7 +30,7 @@ const PartButtons: React.FC<PartButtonsProps> = ({ partItem, config, hass, cardI
 
   const getUiActionButtons = useCallback((): ActionDefinition[] => {
     if (!config || !config.actions || !Array.isArray(config.actions)) {
-      logger.log('PartButtons React', 'No actions defined in config.');
+      logger.debug('getUiActionButtons', 'No actions defined in config.');
       return [];
     }
     
@@ -46,34 +50,36 @@ const PartButtons: React.FC<PartButtonsProps> = ({ partItem, config, hass, cardI
       }
       return true;
     });
-    logger.log('PartButtons React', `Found ${uiButtons.length} UI Action Buttons for part_footer (part PK: ${partItem?.pk})`, { data: uiButtons });
+    logger.debug('getUiActionButtons', `Found ${uiButtons.length} UI Action Buttons for part_footer (part PK: ${partItem?.pk})`, { data: uiButtons });
     return uiButtons;
-  }, [config, logger, partItem]);
+  }, [config, partItem]);
 
   const handleClick = useCallback(async (action: ActionDefinition) => {
     if (!partItem) {
-      logger.warn('PartButtons React', 'Button clicked, but no partItem is selected.');
+      logger.warn('handleClick', 'Button clicked, but no partItem is selected.');
       return;
     }
-    if (!hass) {
-      logger.warn('PartButtons React', 'Button clicked, but HASS object is not available.');
+    if (!hass || !cardInstanceId) {
+      logger.warn('handleClick', 'Button clicked, but HASS object or cardInstanceId is not available.');
       return;
     }
 
-    logger.log('PartButtons React', `Executing Action ID: ${action.id} (Name: ${action.name}) for part ${partItem.pk}`);
+    logger.info('handleClick', `Executing Action ID: ${action.id} (Name: ${action.name}) for part ${partItem.pk}`);
 
-    const context: ActionExecutionContext & { hass?: HomeAssistant } = {
+    const context: ActionExecutionContext = {
       part: partItem,
       hass: hass,
+      cardInstanceId: cardInstanceId,
     };
 
     try {
-      await actionEngine.executeAction(action.id, context);
-      logger.log('PartButtons React', `Action ${action.name} dispatched to ActionEngine.`);
-    } catch (e: any) {
-      logger.error('PartButtons React', `Error dispatching action ${action.name} to ActionEngine: ${e?.message || String(e)}`, { error: e });
+      await actionEngine.executeAction(action.id, context, cardInstanceId);
+      logger.info('handleClick', `Action ${action.name} dispatched to ActionEngine.`);
+    } catch (e: unknown) {
+      const error = e as Error;
+      logger.error('handleClick', `Error dispatching action ${action.name} to ActionEngine: ${error.message}`, error);
     }
-  }, [partItem, hass, logger]);
+  }, [partItem, hass, cardInstanceId]);
 
   const displayedButtons = useMemo(() => getUiActionButtons(), [getUiActionButtons]);
 

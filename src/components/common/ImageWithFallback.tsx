@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { LazyLoadImage, Effect } from 'react-lazy-load-image-component';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
+
+const logger = ConditionalLoggerEngine.getInstance().getLogger('ImageWithFallback');
+ConditionalLoggerEngine.getInstance().registerCategory('ImageWithFallback', { enabled: false, level: 'info' });
 
 interface ImageWithFallbackProps {
   sources: string[];
@@ -12,39 +16,17 @@ interface ImageWithFallbackProps {
 }
 
 const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({ sources, alt, placeholder, ...props }) => {
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const [hasError, setHasError] = useState(false);
-  const [currentSrc, setCurrentSrc] = useState(sources[0]);
-
-  useEffect(() => {
-    // When the sources prop changes (e.g., for a new part), reset the state.
-    setSourceIndex(0);
-    setCurrentSrc(sources[0]);
-    setHasError(false);
-  }, [sources.join(',')]); // Depend on a string representation of the sources array
-
-  const handleError = () => {
-    if (sourceIndex < sources.length - 1) {
-      // Try the next source
-      const nextIndex = sourceIndex + 1;
-      setSourceIndex(nextIndex);
-      setCurrentSrc(sources[nextIndex]);
-    } else {
-      // All sources have failed
-      setHasError(true);
-    }
-  };
-
-  // We need a way to render the actual image tag to test the source,
-  // but we can't use LazyLoadImage for that as it hides the onError event.
-  // We'll use a hidden image to probe the source, and then display the real one.
-
   const [workingSrc, setWorkingSrc] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+  const sourcesKey = sources.join(',');
 
   useEffect(() => {
-    // Reset when sources change
+    logger.debug('useEffect[sources]', 'Sources changed, starting probe.', { sources });
     setWorkingSrc(null);
+    setHasError(false);
+
     if (!sources || sources.length === 0) {
+      logger.warn('useEffect[sources]', 'No sources provided, rendering placeholder.');
       setHasError(true);
       return;
     }
@@ -53,36 +35,52 @@ const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({ sources, alt, pla
     let currentProbeIndex = 0;
 
     const probeNext = () => {
-      if (isCancelled || currentProbeIndex >= sources.length) {
+      if (isCancelled) {
+        logger.debug('probeNext', 'Probe cancelled.');
+        return;
+      }
+      if (currentProbeIndex >= sources.length) {
+        logger.warn('probeNext', 'All sources failed, rendering placeholder.', { sources });
         if (!isCancelled) setHasError(true);
         return;
       }
 
+      const sourceToProbe = sources[currentProbeIndex];
+      logger.verbose('probeNext', `Probing source: ${sourceToProbe}`);
+      
       const img = new Image();
       img.onload = () => {
         if (!isCancelled) {
-          setWorkingSrc(sources[currentProbeIndex]);
+          logger.info('probeNext', `Source succeeded: ${sourceToProbe}`);
+          setWorkingSrc(sourceToProbe);
+        } else {
+          logger.debug('probeNext', 'Probe succeeded but component unmounted, ignoring.', { source: sourceToProbe });
         }
       };
       img.onerror = () => {
-        currentProbeIndex++;
-        probeNext();
+        logger.debug('probeNext', `Source failed: ${sourceToProbe}`);
+        if (!isCancelled) {
+          currentProbeIndex++;
+          probeNext();
+        }
       };
-      img.src = sources[currentProbeIndex];
+      img.src = sourceToProbe;
     };
 
     probeNext();
 
     return () => {
+      logger.debug('useEffect[sources]', 'Cleanup: cancelling probe.', { sources });
       isCancelled = true;
     };
-  }, [sources.join(',')]);
-
+  }, [sourcesKey]); // Use a stable key for the dependency array
 
   if (hasError || !workingSrc) {
+    logger.verbose('ImageWithFallback', 'Rendering placeholder.', { hasError, hasWorkingSrc: !!workingSrc });
     return placeholder;
   }
 
+  logger.verbose('ImageWithFallback', 'Rendering LazyLoadImage with working source.', { workingSrc });
   return (
     <LazyLoadImage
       alt={alt}

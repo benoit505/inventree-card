@@ -2,9 +2,8 @@ import * as React from 'react';
 import { useMemo } from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig, ProcessedVariant, InventreeItem } from '../../types';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { VariantHandler } from '../common/variant-handler'; // Assuming this is now a .ts file with exported functions
-import { useSelector, useDispatch } from 'react-redux';
 
 // Import child React components
 import PartThumbnail from './PartThumbnail';
@@ -14,6 +13,7 @@ interface PartVariantProps {
   variant?: ProcessedVariant;
   config?: InventreeCardConfig;
   hass?: HomeAssistant;
+  cardInstanceId?: string;
 }
 
 // Basic styling (can be expanded or moved to CSS modules/files)
@@ -75,30 +75,36 @@ const styles = {
   invalidVariantData: { padding: '10px', color: 'orange' },
 };
 
-const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
-  const logger = useMemo(() => Logger.getInstance(), []);
+const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass, cardInstanceId }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('PartVariant', cardInstanceId);
+  }, [cardInstanceId]);
 
   const viewType = useMemo(() => {
     const type = config?.variant_view_type || config?.parts_layout_mode || 'grid'; // parts_layout_mode as potential fallback
-    logger.log('PartVariant React', `View type determined: ${type}`);
+    logger.debug('useMemo[viewType]', `View type determined: ${type}`);
     return type;
-  }, [config, logger]);
+  }, [config]);
 
   React.useEffect(() => {
     if (variant) {
-      logger.log('PartVariant React', 'Received variant data:', {
+      logger.debug('useEffect[variant]', 'Received variant data:', {
         template: variant.template.name,
         numVariants: variant.variants.length,
       });
     }
-  }, [variant, logger]);
+  }, [variant]);
 
   if (!variant) {
     return <div style={styles.noVariantData}>No variant data provided</div>;
   }
 
+  if (!config || !hass) {
+    return <div style={{ padding: '10px' }}>Loading configuration...</div>;
+  }
+
   if (!VariantHandler.isVariant(variant)) {
-    logger.error('PartVariant React', 'Invalid variant data structure');
+    logger.error('PartVariant', 'Invalid variant data structure');
     return <div style={styles.invalidVariantData}>Invalid variant data structure</div>;
   }
 
@@ -108,7 +114,7 @@ const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
         <h3>{variant.template.name}</h3>
         <div style={styles.templateDetailsGrid}>
           <div style={{width: '100px', height: '100px'}}>
-             <PartThumbnail partData={variant.template} config={config} layout="grid" />
+             <PartThumbnail partData={variant.template} config={config} layout="grid" cardInstanceId={cardInstanceId} />
           </div>
           <div style={styles.templateInfoGrid}>
             <div style={styles.templateStockGrid}>Total Stock: {variant.totalStock}</div>
@@ -119,7 +125,7 @@ const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
       <div style={styles.variantsContainerGrid}>
         {variant.variants.map(v => (
           <div key={v.pk} style={styles.variantItemGrid}>
-            <PartView partId={v.pk} config={config} hass={hass} />
+            <PartView partId={v.pk} config={config} hass={hass} cardInstanceId={cardInstanceId} />
           </div>
         ))}
       </div>
@@ -131,7 +137,7 @@ const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
       <div style={styles.variantTemplateList}>
         <div style={styles.templateHeaderList}>
           <div style={{width: '60px', height: '60px'}}>
-            <PartThumbnail partData={variant.template} config={config} layout="list" />
+            <PartThumbnail partData={variant.template} config={config} layout="list" cardInstanceId={cardInstanceId} />
           </div>
           <div>
             <h3>{variant.template.name}</h3>
@@ -150,7 +156,7 @@ const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
           <div key={v.pk} style={styles.variantListItem}>
             <div style={styles.variantNameList}>
               <div style={{width: '30px', height: '30px'}}>
-                <PartThumbnail partData={v} config={config} layout="list" />
+                <PartThumbnail partData={v} config={config} layout="list" cardInstanceId={cardInstanceId} />
               </div>
               {v.name}
             </div>
@@ -166,18 +172,17 @@ const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
     <div style={styles.variantTree}>
       <div style={styles.treeContainer}>
         <div style={styles.treeTemplate}>
-          <PartView partId={variant.template.pk} config={config} hass={hass} />
+          <PartView partId={variant.template.pk} config={config} hass={hass} cardInstanceId={cardInstanceId} />
         </div>
         <div style={styles.treeVariants}>
           {variant.variants.map((v, index) => (
             <div key={v.pk} style={styles.treeVariantItem}>
-              {/* Basic line placeholder - complex SVG/canvas might be needed for real lines */}
               <div style={styles.treeLineContainer}>
-                  <div style={{...styles.treeLineVertical, height: index === 0 ? '50%' : '100%', top: index === 0 ? '50%' : '-50%'}}></div>
-                  <div style={styles.treeLineHorizontal}></div>
+                <div style={{...styles.treeLineVertical, height: index === 0 ? '50%' : '100%', top: index === 0 ? '50%' : '-50%'}}></div>
+                <div style={styles.treeLineHorizontal}></div>
               </div>
               <div style={styles.variantChildContent}>
-                <PartView partId={v.pk} config={config} hass={hass} />
+                <PartView partId={v.pk} config={config} hass={hass} cardInstanceId={cardInstanceId} />
               </div>
             </div>
           ))}
@@ -186,7 +191,7 @@ const PartVariant: React.FC<PartVariantProps> = ({ variant, config, hass }) => {
     </div>
   );
   
-  logger.log('PartVariant React', `Rendering variant for ${variant.template.name}, view: ${viewType}`);
+  logger.debug('PartVariant', `Rendering variant for ${variant.template.name}, view: ${viewType}`);
 
   switch(viewType) {
     case 'list':

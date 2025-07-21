@@ -1,9 +1,10 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
 import type { HomeAssistant } from 'custom-card-helpers';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { InventreeParameterFetchConfig } from '../../types';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('InventreeParametersToFetchSection');
+ConditionalLoggerEngine.getInstance().registerCategory('InventreeParametersToFetchSection', { enabled: false, level: 'info' });
 
 interface InventreeParametersToFetchSectionProps {
   hass?: HomeAssistant;
@@ -121,7 +122,8 @@ const InventreeParametersToFetchSection: React.FC<InventreeParametersToFetchSect
         return aParamNameSortKey.localeCompare(bParamNameSortKey);
       });
       onFetchConfigsChanged(combinedConfigs);
-      logger.log('Editor:InventreeParamsFetch', `Added InvenTree Parameter Fetch Configs: ${newConfigsToAdd.map(c => `Part ${Array.isArray(c.targetPartIds) ? c.targetPartIds.join('/') : c.targetPartIds} - ${Array.isArray(c.parameterNames) ? c.parameterNames.join('/') : c.parameterNames}`).join(', ')}`, { newConfigs: combinedConfigs });
+      const logMessage = `Added InvenTree Parameter Fetch Configs: ${newConfigsToAdd.map(c => `Part ${Array.isArray(c.targetPartIds) ? c.targetPartIds.join('/') : c.targetPartIds} - ${Array.isArray(c.parameterNames) ? c.parameterNames.join('/') : c.parameterNames}`).join(', ')}`;
+      logger.info('handleAddConfigs', logMessage, { newConfigs: combinedConfigs });
     }
     setInputValue('');
     setError(null);
@@ -138,7 +140,8 @@ const InventreeParametersToFetchSection: React.FC<InventreeParametersToFetchSect
       return !(targetsMatch && paramsMatch && config.fetchOnlyIfUsed === configToRemove.fetchOnlyIfUsed);
     });
     onFetchConfigsChanged(newConfigs);
-    logger.log('Editor:InventreeParamsFetch', `Removed InvenTree Parameter Fetch Config: Part ${Array.isArray(configToRemove.targetPartIds) ? configToRemove.targetPartIds.join('/') : configToRemove.targetPartIds} - ${Array.isArray(configToRemove.parameterNames) ? configToRemove.parameterNames.join('/') : configToRemove.parameterNames}`, { newConfigs });
+    const logMessage = `Removed InvenTree Parameter Fetch Config: Part ${Array.isArray(configToRemove.targetPartIds) ? configToRemove.targetPartIds.join('/') : configToRemove.targetPartIds} - ${Array.isArray(configToRemove.parameterNames) ? configToRemove.parameterNames.join('/') : configToRemove.parameterNames}`;
+    logger.info('handleRemoveConfig', logMessage, { newConfigs });
   }, [parameterFetchConfigs, onFetchConfigsChanged]);
 
   return (

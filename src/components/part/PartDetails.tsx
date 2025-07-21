@@ -1,34 +1,10 @@
-import * as React from 'react';
-import { InventreeCardConfig, ParameterDetail } from '../../types';
-import { VisualEffect } from '../../store/slices/visualEffectsSlice';
-import { SerializedError } from '@reduxjs/toolkit';
-import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import React from 'react';
+import { InventreeCardConfig, InventreeItem, VisualEffect } from '../../types';
 
 interface PartDetailsProps {
-  config?: InventreeCardConfig;
+  part: InventreeItem;
+  config: InventreeCardConfig;
   visualEffect?: VisualEffect;
-  
-  description?: string | null;
-  categoryName?: string | null;
-  ipn?: string | null;
-  locationName?: string | null;
-  supplierName?: string | null;
-  manufacturerName?: string | null;
-  notes?: string | null;
-
-  parametersData?: ParameterDetail[] | null;
-  isLoadingParameters?: boolean;
-  isParametersError?: boolean;
-  parametersError?: SerializedError | FetchBaseQueryError | null;
-
-  showDescription?: boolean;
-  showCategory?: boolean;
-  showIpn?: boolean;
-  showLocation?: boolean;
-  showSupplier?: boolean;
-  showManufacturer?: boolean;
-  showNotes?: boolean;
-  showParameters?: boolean;
 }
 
 const stylesFactory = (visualEffect?: VisualEffect) => ({
@@ -80,43 +56,44 @@ const stylesFactory = (visualEffect?: VisualEffect) => ({
 });
 
 const PartDetails: React.FC<PartDetailsProps> = ({
+  part,
+  config,
   visualEffect,
-  
-  description,
-  categoryName,
-  ipn,
-  locationName,
-  supplierName,
-  manufacturerName,
-  notes,
-  parametersData,
-  isLoadingParameters,
-  isParametersError,
-  parametersError,
-  showDescription,
-  showCategory,
-  showIpn,
-  showLocation,
-  showSupplier,
-  showManufacturer,
-  showNotes,
-  showParameters
 }) => {
   const styles = stylesFactory(visualEffect);
+  const displayConfig = config.display || {};
 
-  if (description === undefined && !isLoadingParameters) { 
+  const {
+    description,
+    category_detail,
+    IPN,
+    location_detail,
+    supplier_detail,
+    manufacturer_detail,
+    notes,
+    parameters,
+  } = part;
+
+  const categoryName = category_detail?.name;
+  const locationName = location_detail?.name;
+  const supplierName = supplier_detail?.name;
+  const manufacturerName = manufacturer_detail?.name;
+  const ipn = IPN;
+  const parametersData = parameters;
+
+  if (!part) { 
     return null; 
   }
 
   const hasVisibleContent = 
-    (showDescription && description) ||
-    (showCategory && categoryName) ||
-    (showIpn && ipn) ||
-    (showLocation && locationName) ||
-    (showSupplier && supplierName) ||
-    (showManufacturer && manufacturerName) ||
-    (showNotes && notes) ||
-    (showParameters && (parametersData || isLoadingParameters || isParametersError));
+    (displayConfig.show_description && description) ||
+    (displayConfig.show_category && categoryName) ||
+    (displayConfig.show_ipn && ipn) ||
+    (displayConfig.show_location && locationName) ||
+    (displayConfig.show_supplier && supplierName) ||
+    (displayConfig.show_manufacturer && manufacturerName) ||
+    (displayConfig.show_notes && notes) ||
+    (displayConfig.show_parameters && parametersData);
 
   if (!hasVisibleContent) {
     return null;
@@ -125,80 +102,50 @@ const PartDetails: React.FC<PartDetailsProps> = ({
   return (
     <div style={styles.partDetails}>
       {/* Description */}
-      {showDescription && description && (
+      {displayConfig.show_description && description && (
         <div style={styles.partDescription}>{description}</div>
       )}
       
       {/* Category */}
-      {showCategory && categoryName && (
+      {displayConfig.show_category && categoryName && (
         <div style={styles.detailItem}><strong>Category:</strong> {categoryName}</div>
       )}
 
       {/* IPN */}
-      {showIpn && ipn && (
+      {displayConfig.show_ipn && ipn && (
         <div style={styles.detailItem}><strong>IPN:</strong> {ipn}</div>
       )}
 
       {/* Location */}
-      {showLocation && locationName && (
+      {displayConfig.show_location && locationName && (
         <div style={styles.detailItem}><strong>Location:</strong> {locationName}</div>
       )}
 
       {/* Supplier */}
-      {showSupplier && supplierName && (
+      {displayConfig.show_supplier && supplierName && (
         <div style={styles.detailItem}><strong>Supplier:</strong> {supplierName}</div>
       )}
 
       {/* Manufacturer */}
-      {showManufacturer && manufacturerName && (
+      {displayConfig.show_manufacturer && manufacturerName && (
         <div style={styles.detailItem}><strong>Manufacturer:</strong> {manufacturerName}</div>
       )}
 
       {/* Notes */}
-      {showNotes && notes && (
+      {displayConfig.show_notes && notes && (
         <div style={styles.detailItem}><strong>Notes:</strong> {notes}</div>
       )}
       
       {/* Parameters Display Logic */}
-      {showParameters && (
-        <>
-          {isLoadingParameters && <p>Loading parameters...</p>}
-          {isParametersError && (
-            <p style={{ color: 'red' }}>
-              Error loading parameters: {
-                (() => {
-                  if (parametersError) {
-                    if ('status' in parametersError) {
-                      const fetchError = parametersError as FetchBaseQueryError;
-                      if (typeof fetchError.data === 'string') return fetchError.data;
-                      if (typeof fetchError.data === 'object' && fetchError.data && 'message' in fetchError.data) return (fetchError.data as any).message;
-                      return fetchError.status?.toString() || 'API error';
-                    } else {
-                      return (parametersError as SerializedError).message || 'Unknown client error';
-                    }
-                  }
-                  return 'Unknown error';
-                })()
-              }
-            </p>
-          )}
-          {parametersData && parametersData.length > 0 && (
-            <div style={styles.partParameters}>
-              {parametersData.map((param: ParameterDetail) => (
-                <div key={param.pk || param.template_detail?.name || Math.random()} style={styles.partParameter}>
-                  <span style={styles.paramName}>{param.template_detail?.name || 'Param'}:</span>
-                  <span style={styles.paramValue}>
-                    {param.data}
-                    {param.template_detail?.units ? ` ${param.template_detail.units}` : ''}
-                  </span>
-                </div>
-              ))}
+      {displayConfig.show_parameters && parametersData && (
+        <div style={styles.partParameters}>
+          {parametersData.map((param) => (
+            <div key={param.pk} style={styles.partParameter}>
+              <span style={styles.paramName}>{param.template_detail?.name}:</span>
+              <span style={styles.paramValue}>{param.data}</span>
             </div>
-          )}
-          {parametersData && parametersData.length === 0 && !isLoadingParameters && !isParametersError && (
-             <p style={{fontSize: '0.8em', opacity: 0.7}}>No parameters for this part.</p>
-          )}
-        </>
+          ))}
+        </div>
       )}
     </div>
   );

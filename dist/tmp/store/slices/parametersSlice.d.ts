@@ -1,7 +1,7 @@
-import { ParameterAction, InventreeCardConfig, InventreeItem, ParameterDetail, ParameterCondition } from '../../types';
+import { PayloadAction } from '@reduxjs/toolkit';
+import { InventreeCardConfig, InventreeItem, ParameterDetail, ParameterCondition } from '../../types';
 import { RootState } from '../index';
 export interface ParametersState {
-    actions: Record<string, ParameterAction[]>;
     parameterValues: Record<number, Record<string, ParameterDetail>>;
     parameterLoadingStatus: Record<number, 'idle' | 'loading' | 'succeeded' | 'failed'>;
     parameterError: Record<number, string | null>;
@@ -14,10 +14,41 @@ export interface ParametersState {
     };
     parametersByPartId: Record<number, ParameterDetail[]>;
 }
-export declare const setActions: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
-    entityId: string;
-    actions: ParameterAction[];
-}, "parameters/setActions">, setConfig: import("@reduxjs/toolkit").ActionCreatorWithPayload<InventreeCardConfig, "parameters/setConfig">, setStrictWebSocketMode: import("@reduxjs/toolkit").ActionCreatorWithPayload<boolean, "parameters/setStrictWebSocketMode">, clearConditionCache: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"parameters/clearConditionCache">, clearCache: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"parameters/clearCache">, checkCondition: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+declare const parametersSlice: import("@reduxjs/toolkit").Slice<ParametersState, {
+    setConfig(state: ParametersState, action: PayloadAction<InventreeCardConfig>): void;
+    setStrictWebSocketMode(state: ParametersState, action: PayloadAction<boolean>): void;
+    clearConditionCache(state: ParametersState): void;
+    clearCache(state: ParametersState): void;
+    checkCondition(state: ParametersState, action: PayloadAction<{
+        part: InventreeItem;
+        condition: ParameterCondition;
+    }>): void;
+    updateValue(state: ParametersState, action: PayloadAction<{
+        partId: number;
+        paramName: string;
+        value: string;
+        source?: string;
+    }>): void;
+    webSocketUpdateReceived(state: ParametersState, action: PayloadAction<{
+        partId: number;
+        parameterName: string;
+        value: any;
+        source?: string;
+    }>): void;
+    markChanged(state: ParametersState, action: PayloadAction<{
+        parameterId: string;
+    }>): void;
+    addParametersForPart(state: ParametersState, action: PayloadAction<{
+        partId: number;
+        parameters: ParameterDetail[];
+    }>): void;
+    updateParameterForPart(state: ParametersState, action: PayloadAction<{
+        partId: number;
+        parameterName: string;
+        value: any;
+    }>): void;
+}, "parameters", "parameters", import("@reduxjs/toolkit").SliceSelectors<ParametersState>>;
+export declare const setConfig: import("@reduxjs/toolkit").ActionCreatorWithPayload<InventreeCardConfig, "parameters/setConfig">, setStrictWebSocketMode: import("@reduxjs/toolkit").ActionCreatorWithPayload<boolean, "parameters/setStrictWebSocketMode">, clearConditionCache: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"parameters/clearConditionCache">, clearCache: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"parameters/clearCache">, checkCondition: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     part: InventreeItem;
     condition: ParameterCondition;
 }, "parameters/checkCondition">, updateValue: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
@@ -40,7 +71,6 @@ export declare const setActions: import("@reduxjs/toolkit").ActionCreatorWithPay
     parameterName: string;
     value: any;
 }, "parameters/updateParameterForPart">;
-export declare const selectActions: (state: RootState, entityId: string) => ParameterAction[];
 export declare const selectParameterLoadingStatus: (state: RootState, partId: number) => "idle" | "loading" | "succeeded" | "failed";
 export declare const selectPartParameterError: (state: RootState, partId: number) => string | null;
 export declare const selectParametersLoadingStatus: (state: RootState, partIds: number[]) => Record<number, "idle" | "loading" | "succeeded" | "failed">;
@@ -51,3 +81,4 @@ export declare const selectParametersForPart: (state: RootState, partId: number)
 export declare const selectParameterValue: (state: RootState, partId: number, paramName: string) => string | null;
 declare const _default: import("redux").Reducer<ParametersState>;
 export default _default;
+export { parametersSlice };

@@ -1,12 +1,13 @@
 import { configureStore, combineReducers, Middleware, ThunkAction, Action, ThunkDispatch } from '@reduxjs/toolkit';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
+import { persistStore, persistReducer, PersistConfig } from 'redux-persist';
+import storage from 'redux-persist/lib/storage'; // defaults to localStorage for web
+import autoMergeLevel2 from 'redux-persist/lib/stateReconciler/autoMergeLevel2';
 
 // Import individual reducers
-import apiReducer from './slices/apiSlice';
 import componentReducer from './slices/componentSlice';
 import conditionalLogicReducer from './slices/conditionalLogicSlice';
 import configReducer from './slices/configSlice';
-import counterReducer from './slices/counterSlice';
 import genericHaStatesReducer from './slices/genericHaStateSlice';
 import metricsReducer from './slices/metricsSlice';
 import parametersReducer from './slices/parametersSlice';
@@ -14,26 +15,23 @@ import partsReducer from './slices/partsSlice';
 import uiReducer from './slices/uiSlice';
 import visualEffectsReducer from './slices/visualEffectsSlice';
 import websocketReducer from './slices/websocketSlice';
-
-// Import the API slice we created
+import layoutReducer from './slices/layoutSlice';
 import { inventreeApi } from './apis/inventreeApi';
-
-// Import the new actions slice reducer
+import { loggingApi } from './apis/loggingApi';
 import actionsReducer from './slices/actionsSlice';
+import loggingReducer from './slices/loggingSlice';
 
 // Import Middleware
-import { loggingMiddleware } from './middleware/logging-middleware';
-import { servicesMiddleware } from './middleware/services-middleware';
 import { websocketMiddleware } from './middleware/websocketMiddleware';
 import metricsMiddleware from './middleware/metricsMiddleware';
+import { loggingMiddleware } from './middleware/loggingMiddleware';
+import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
 
-// Export rootReducer for store/types.ts
-export const rootReducer = combineReducers({
-  api: apiReducer,
+// 1. Combine reducers first
+const appReducer = combineReducers({
   components: componentReducer,
   conditionalLogic: conditionalLogicReducer,
   config: configReducer,
-  counter: counterReducer,
   genericHaStates: genericHaStatesReducer,
   metrics: metricsReducer,
   parameters: parametersReducer,
@@ -42,37 +40,51 @@ export const rootReducer = combineReducers({
   visualEffects: visualEffectsReducer,
   websocket: websocketReducer,
   actions: actionsReducer,
-  // Add the generated reducer as a specific top-level slice for RTK Query
+  logging: loggingReducer,
+  layout: layoutReducer,
   [inventreeApi.reducerPath]: inventreeApi.reducer,
+  [loggingApi.reducerPath]: loggingApi.reducer,
 });
 
-// Define RootState first
-export type RootState = ReturnType<typeof rootReducer>;
+// 2. Define RootState based on the combined reducer
+export type RootState = ReturnType<typeof appReducer>;
 
-// Define AppDispatch explicitly
-export type AppDispatch = ThunkDispatch<RootState, unknown, Action<string>>;
+// 3. Create the persist config with the correct RootState type
+const persistConfig = {
+  key: 'inventree-card-root',
+  storage,
+  whitelist: ['config', 'layout'],
+};
 
-// A generic AppThunk type for creating thunks
-export type AppThunk<ReturnType = void> = ThunkAction<
-  ReturnType,
-  RootState,
-  unknown, 
-  Action<string>
->;
+// 4. Create the persisted reducer
+const persistedReducer = persistReducer(persistConfig, appReducer);
 
+// 5. Configure the store
 export const store = configureStore({
-  reducer: rootReducer,
+  reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: false,
+      serializableCheck: {
+        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+      },
     }).concat([
-      loggingMiddleware,
-      servicesMiddleware,
       websocketMiddleware,
       metricsMiddleware,
+      loggingMiddleware,
       inventreeApi.middleware,
+      loggingApi.middleware,
     ]),
 });
+
+// 6. Connect core services to the store
+ConditionalLoggerEngine.getInstance().connectToStore(store);
+
+// 7. Set up the persistor
+export const persistor = persistStore(store);
+
+// Define AppDispatch and other types
+export type AppDispatch = ThunkDispatch<RootState, unknown, Action<string>>;
+export type AppThunk<ReturnType = void> = ThunkAction<ReturnType, RootState, unknown, Action<string>>;
 
 // Typed hooks
 export const useAppDispatch = () => useDispatch<AppDispatch>();

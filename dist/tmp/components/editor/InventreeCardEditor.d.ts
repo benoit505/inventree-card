@@ -5,6 +5,7 @@ export interface InventreeCardEditorProps {
     hass: HomeAssistant;
     lovelace?: LovelaceCardEditor;
     config?: InventreeCardConfig;
+    cardInstanceId: string;
     onConfigChanged: (config: InventreeCardConfig) => void;
 }
 declare const InventreeCardEditor: React.FC<InventreeCardEditorProps>;

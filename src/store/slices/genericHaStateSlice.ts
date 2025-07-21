@@ -1,8 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('genericHaStateSlice');
+ConditionalLoggerEngine.getInstance().registerCategory('genericHaStateSlice', { enabled: false, level: 'info' });
 
 // --- STATE STRUCTURE ---
 export interface HaEntityState {
@@ -35,9 +36,9 @@ const genericHaStateSlice = createSlice({
       const entity = action.payload;
       if (entity && entity.entity_id) {
         state.entities[entity.entity_id] = entity;
-        logger.log('genericHaStateSlice', `Set state for entity: ${entity.entity_id}` , { data: entity, level: 'debug' });
+        logger.debug('setEntityState', `Set state for entity: ${entity.entity_id}`, { data: entity });
       } else {
-        logger.warn('genericHaStateSlice', 'setEntityState called with invalid payload', { data: action.payload });
+        logger.warn('setEntityState', 'setEntityState called with invalid payload', { data: action.payload });
       }
     },
     setEntityStatesBatch(state: GenericHaStates, action: PayloadAction<HaEntityState[]>) {
@@ -50,9 +51,9 @@ const genericHaStateSlice = createSlice({
             count++;
           }
         });
-        logger.log('genericHaStateSlice', `Set batch of ${count} entity states.`, { level: 'debug' });
+        logger.debug('setEntityStatesBatch', `Set batch of ${count} entity states.`);
       } else {
-        logger.warn('genericHaStateSlice', 'setEntityStatesBatch called with invalid payload', { data: action.payload });
+        logger.warn('setEntityStatesBatch', 'setEntityStatesBatch called with invalid payload', { data: action.payload });
       }
     },
     removeEntityState(state: GenericHaStates, action: PayloadAction<string>) {
@@ -62,14 +63,14 @@ const genericHaStateSlice = createSlice({
         // Optionally, also clear loading/error states if implemented
         // if (state.loading[entityId]) delete state.loading[entityId];
         // if (state.error[entityId]) delete state.error[entityId];
-        logger.log('genericHaStateSlice', `Removed state for entity: ${entityId}`, { level: 'debug' });
+        logger.debug('removeEntityState', `Removed state for entity: ${entityId}`);
       }
     },
     clearAllGenericHaStates(state: GenericHaStates) {
       state.entities = {};
       // state.loading = {};
       // state.error = {};
-      logger.log('genericHaStateSlice', 'Cleared all generic HA entity states.');
+      logger.info('clearAllGenericHaStates', 'Cleared all generic HA entity states.');
     },
   },
   // extraReducers: builder => {

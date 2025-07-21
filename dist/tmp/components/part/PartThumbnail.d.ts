@@ -1,6 +1,5 @@
 import React from 'react';
-import { InventreeItem, InventreeCardConfig } from '../../types';
-import { VisualEffect } from '../../store/slices/visualEffectsSlice';
+import { InventreeItem, InventreeCardConfig, VisualEffect } from '../../types';
 interface PartThumbnailProps {
     partData?: InventreeItem;
     config?: InventreeCardConfig;
@@ -11,6 +10,7 @@ interface PartThumbnailProps {
     onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
     style?: React.CSSProperties;
     className?: string;
+    cardInstanceId?: string;
 }
 declare const PartThumbnail: React.FC<PartThumbnailProps>;
 export default PartThumbnail;

@@ -6,9 +6,11 @@ export declare class ReactEditorHost extends LitElement implements LovelaceCardE
     hass: HomeAssistant;
     lovelace: any;
     private _config?;
+    private _cardInstanceId?;
+    private logger;
     private _reactRoot;
     private _mountPoint;
-    private logger;
+    constructor();
     static styles: import("lit").CSSResult;
     setConfig(config: InventreeCardConfig): void;
     protected firstUpdated(_changedProperties: PropertyValues): void;

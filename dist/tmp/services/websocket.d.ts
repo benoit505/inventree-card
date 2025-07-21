@@ -7,7 +7,6 @@ export declare class WebSocketService {
     private static instance;
     private _hass;
     private _entityCallbacks;
-    private _logger;
     private _subscriptions;
     private _lastHassUpdate;
     private readonly HASS_UPDATE_DEBOUNCE;

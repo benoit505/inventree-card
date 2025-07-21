@@ -1,15 +1,14 @@
 // console.log('[DEBUG] STEP 2: react-app.tsx executing');
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
-import { store } from './store'; // Assuming store is exported from src/store/index.ts
+import { PersistGate } from 'redux-persist/integration/react';
+import { store, persistor } from './store'; // Assuming store is exported from src/store/index.ts
 import InventreeCard from './InventreeCard'; // Assuming InventreeCard.tsx is in src/
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig } from './types';
-import { Logger } from './utils/logger';
-
-const logger = Logger.getInstance();
+import { ActionEngine } from './services/ActionEngine';
 
 interface ReactAppProps {
   hass?: HomeAssistant;
@@ -17,18 +16,17 @@ interface ReactAppProps {
   cardInstanceId?: string;
 }
 
-export const ReactApp: React.FC<ReactAppProps> = ({ hass, config, cardInstanceId }) => {
-  // Log when the component mounts or props change
-  React.useEffect(() => {
-    logger.log('ReactApp', 'ReactApp component mounted or props updated.', { 
-      hasHass: !!hass, 
-      hasConfig: !!config, 
-      viewType: config?.view_type 
-    });
-  }, [hass, config]);
+const AppContent: React.FC<ReactAppProps> = ({ hass, config, cardInstanceId }) => {
+  // This effect is crucial for connecting the ActionEngine to Home Assistant
+  useEffect(() => {
+    if (hass) {
+      console.log('%c[ReactApp] Setting HASS object on ActionEngine', 'color: #16A085; font-weight: bold;');
+      ActionEngine.getInstance().setHomeAssistant(hass);
+    }
+  }, [hass]);
 
   return (
-    <Provider store={store}>
+    <>
       {(!hass || !config) ? (
         <div style={{ padding: '16px', border: '1px dashed red' }}>
           {!hass && <p>Waiting for Home Assistant connection...</p>}
@@ -37,6 +35,16 @@ export const ReactApp: React.FC<ReactAppProps> = ({ hass, config, cardInstanceId
       ) : (
         <InventreeCard hass={hass} config={config} cardInstanceId={cardInstanceId} />
       )}
+    </>
+  );
+};
+
+export const ReactApp: React.FC<ReactAppProps> = (props) => {
+  return (
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <AppContent {...props} />
+      </PersistGate>
     </Provider>
   );
 }; 

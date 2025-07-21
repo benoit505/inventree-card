@@ -1,5 +1,7 @@
 # InvenTree Card Refactoring Roadmap - June 2025
 
+<!-- TEST EDIT -->
+
 This document outlines the actionable steps for the Phase 3 refactoring, based on the findings from our deep analysis in Phase 2. The tasks are prioritized to deliver stability first, then architectural correctness, and finally, UI elegance.
 
 ---

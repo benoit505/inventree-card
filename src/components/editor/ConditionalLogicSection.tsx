@@ -12,12 +12,12 @@ import {
     RuleGroupType,         // Our internal, stricter RuleGroupType
     RuleType             // Our internal RuleType
 } from '../../types';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { HomeAssistant } from 'custom-card-helpers';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
 import EffectsConfiguration from './EffectsConfiguration'; // ADDED IMPORT
 
-const logger = Logger.getInstance();
+ConditionalLoggerEngine.getInstance().registerCategory('ConditionalLogicSection', { enabled: false, level: 'info' });
 
 interface ConditionalLogicSectionProps {
   conditionalLogicConfig?: ConditionalLogicConfig; // This is now { definedLogics: ConditionalLogicItem[] }
@@ -36,10 +36,11 @@ const getParameterInputType = (paramDetail?: ParameterDetail): 'text' | 'number'
 };
 
 const generateFieldsFromDataSources = (
-  dataSources?: DataSourceConfig, 
-  hass?: HomeAssistant,
-  directApiConfig?: DirectApiConfig,
-  allParameterValues?: Record<number, Record<string, ParameterDetail>>
+  dataSources: DataSourceConfig | undefined,
+  hass: HomeAssistant | undefined,
+  directApiConfig: DirectApiConfig | undefined,
+  allParameterValues: Record<number, Record<string, ParameterDetail>> | undefined,
+  logger: any // Pass logger as an argument
 ): Field[] => {
   const fields: Field[] = [];
   if (!dataSources) return [
@@ -48,8 +49,48 @@ const generateFieldsFromDataSources = (
 
   (dataSources.inventree_hass_sensors || []).forEach((entityId: string) => {
     const entity = hass?.states[entityId];
+    if (!entity) return;
+
     const entityName = entity?.attributes.friendly_name || entityId;
     fields.push({ name: `inv_sensor_state_${entityId}`, label: `InvSensor: ${entityName} State` });
+
+    // --- NEW LOGIC: Inspect the parts within the HASS sensor ---
+    const parts = entity.attributes.items;
+    if (Array.isArray(parts) && parts.length > 0) {
+      // Use the first part as a representative sample to get the field keys
+      const samplePart = parts[0];
+      const partFields: Field[] = [];
+      
+      // Generate fields for all keys in the sample part object
+      for (const key in samplePart) {
+        if (Object.prototype.hasOwnProperty.call(samplePart, key)) {
+          const value = samplePart[key];
+          let inputType: 'text' | 'number' | 'boolean' = 'text';
+
+          if (typeof value === 'number') {
+            inputType = 'number';
+          } else if (typeof value === 'boolean') {
+            inputType = 'boolean';
+          }
+          
+          // We only want to add fields for primitive types that can be used in rules.
+          if (typeof value !== 'object' || value === null) {
+            partFields.push({
+              name: `part_${key}`, // Generic part field identifier
+              label: `Part (from HASS): ${key}`,
+              inputType: inputType,
+            });
+          }
+        }
+      }
+
+      // Add the generated fields to the main list, ensuring no duplicates
+      partFields.forEach(newField => {
+        if (!fields.some(existingField => existingField.name === newField.name)) {
+          fields.push(newField);
+        }
+      });
+    }
   });
 
   (dataSources.ha_entities || []).forEach((entityId: string) => {
@@ -178,7 +219,7 @@ const generateFieldsFromDataSources = (
         { name: 'generic_stock_level', label: 'Stock Level (Any)', inputType: 'number' }
     );
   }
-  logger.log("ConditionalLogicSection", "Generated fields for QueryBuilder", { count: fields.length });
+  logger.debug("generateFieldsFromDataSources", "Generated fields for QueryBuilder", { count: fields.length });
   return fields;
 };
 
@@ -224,12 +265,18 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
   directApiConfig,
   allParameterValues
 }) => {
-  const [definedLogics, setDefinedLogics] = useState<ConditionalLogicItem[]>([]);
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('ConditionalLogicSection');
+    // This logger is for the editor form itself, which is not instance-specific
+  }, []);
 
-  const dynamicFields = useMemo(() => 
-    generateFieldsFromDataSources(configuredDataSources, hass, directApiConfig, allParameterValues), 
-    [configuredDataSources, hass, directApiConfig, allParameterValues]
+  const [collapsedLogicItems, setCollapsedLogicItems] = useState<Record<string, boolean>>({});
+
+  const { definedLogics = [] } = conditionalLogicConfig || {};
+
+  const fields = useMemo(
+    () => generateFieldsFromDataSources(configuredDataSources, hass, directApiConfig, allParameterValues, logger),
+    [configuredDataSources, hass, directApiConfig, allParameterValues, logger]
   );
 
   // Memoize a stringified version of the logic config to use as a stable dependency
@@ -248,8 +295,8 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
         effects: Array.isArray(pair.effects) ? pair.effects.map(effect => ({...effect, id: effect.id || uuidv4()})) : []
       })) : [getNewLogicPair()],
     }));
-    setDefinedLogics(sanitizedLogics);
-  }, [stringifiedLogicConfig]);
+    onConfigChanged({ definedLogics: sanitizedLogics });
+  }, [stringifiedLogicConfig, onConfigChanged]);
 
   const handleAddLogicBlock = () => {
     const newLogicItem: ConditionalLogicItem = {
@@ -258,33 +305,31 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       logicPairs: [getNewLogicPair()],
     };
     const updatedLogics = [...definedLogics, newLogicItem];
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
   
   const toggleCollapse = (logicItemId: string) => {
-    setCollapsedSections(prev => ({ ...prev, [logicItemId]: !prev[logicItemId] }));
+    setCollapsedLogicItems(prev => ({ ...prev, [logicItemId]: !prev[logicItemId] }));
   };
 
   const handleLogicItemNameChange = (logicItemId: string, newName: string) => {
     const updatedLogics = definedLogics.map(item => item.id === logicItemId ? { ...item, name: newName } : item);
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleRemoveLogicBlock = (logicItemId: string) => {
     const updatedLogics = definedLogics.filter(item => item.id !== logicItemId);
-    setDefinedLogics(updatedLogics); // Make the UI update instantly
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleAddLogicPair = (logicItemId: string) => {
-    setDefinedLogics(prev => prev.map(item => {
+    const updatedLogics = definedLogics.map(item => {
       if (item.id === logicItemId) {
         return { ...item, logicPairs: [...item.logicPairs, getNewLogicPair()] };
       }
       return item;
-    }));
+    });
+    onConfigChanged({ definedLogics: updatedLogics });
   };
 
   const handleLogicPairNameChange = (logicItemId: string, pairId: string, newName: string) => {
@@ -299,7 +344,6 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
@@ -315,7 +359,6 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
@@ -342,7 +385,6 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
@@ -366,7 +408,6 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
@@ -385,7 +426,6 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       }
       return item;
     });
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
@@ -399,7 +439,6 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
 
     // Clean up any logic blocks that now have no pairs
     updatedLogics = updatedLogics.filter(item => item.logicPairs.length > 0);
-    setDefinedLogics(updatedLogics);
     onConfigChanged({ definedLogics: updatedLogics });
   };
 
@@ -411,7 +450,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       </p>
 
       {definedLogics.map(logicItem => {
-        const isCollapsed = collapsedSections[logicItem.id];
+        const isCollapsed = collapsedLogicItems[logicItem.id];
         return (
           <div key={logicItem.id} style={{
             border: '1px solid #ddd',
@@ -471,7 +510,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
                     <h6 style={{ marginTop: '10px', marginBottom: '5px', color: '#333' }}>IF... (Condition)</h6>
                     <div className="query-builder-container" style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}>
                         <QueryBuilder
-                          fields={dynamicFields}
+                          fields={fields}
                           query={pair.conditionRules as RQBRuleGroupType}
                           onQueryChange={q => handleLogicPairQueryChange(logicItem.id, pair.id, q)}
                         />

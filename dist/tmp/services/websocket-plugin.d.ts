@@ -1,3 +1,4 @@
+import { AppDispatch } from "../store";
 import { DirectApiConfig } from '../types';
 /**
  * Connection states for the WebSocket
@@ -21,7 +22,6 @@ export declare class WebSocketPlugin {
     private _connectionId;
     private _isConnected;
     private _messageCallbacks;
-    private _logger;
     private _errorCount;
     private _url;
     private _debug;
@@ -72,59 +72,47 @@ export declare class WebSocketPlugin {
      */
     connect(): void;
     /**
-     * Event handler for connection open
+     * Called when the WebSocket connection is opened
      */
     private _onConnectionOpen;
     /**
-     * Event handler for connection message
+     * Called when a message is received from the WebSocket server
      */
     private _onConnectionMessage;
     /**
-     * Gets or creates a debounced version of _processMessage for a given messageId,
-     * then calls it.
+     * Debounces message processing based on a unique message identifier.
      */
     private _handleDebouncedMessageProcessing;
     /**
-     * Notify all message callbacks
+     * Notify all registered callbacks with the new message
      */
     private _notifyMessageCallbacks;
     /**
-     * Event handler for connection error
+     * Called when a WebSocket error occurs
      */
     private _onConnectionError;
     /**
-     * Event handler for connection close
+     * Called when the WebSocket connection is closed
      */
     private _onConnectionClose;
     /**
-     * Close the current connection
+     * Close the WebSocket connection
      */
     private _closeConnection;
-    /**
-     * Start the server inactivity timer
-     */
     private _startServerInactivityTimer;
     private _clearServerInactivityTimer;
     private _resetServerInactivityTimer;
     private _handleServerInactivity;
-    /**
-     * Register a callback for incoming messages
-     */
     onMessage(callback: (message: any) => void): () => void;
-    /**
-     * Process incoming WebSocket message
-     */
     private _processMessage;
-    /**
-     * Handle parameter update message
-     */
     private _handleParameterUpdate;
     /**
-     * Get the connection status
+     * Check if the websocket is connected
+     * @returns boolean
      */
     isConnected(): boolean;
     /**
-     * Get statistics about the connection
+     * Get connection statistics
      */
     getStats(): {
         connectionState: ConnectionState;
@@ -138,33 +126,22 @@ export declare class WebSocketPlugin {
         lastServerMessageTime: number;
     };
     /**
-     * Reset connection state and try to reconnect
+     * Reset the WebSocket plugin state
      */
     reset(): void;
     /**
-     * Get statistics about active timers
-     */
-    getTimerStats(): any;
-    /**
      * Send a message to the WebSocket server
-     * @param message Message to send
-     * @returns Whether the message was sent successfully
      */
     sendMessage(message: any): boolean;
     /**
-     * Register a callback for incoming messages
+     * Register a message callback
      * @param callback The callback to register
      */
     registerMessageCallback(callback: (message: any) => void): void;
     /**
-     * Unregister a callback for incoming messages
-     * @param callback The callback to unregister
+     * Unregister a message callback
      */
     unregisterMessageCallback(callback: (message: any) => void): void;
-    /**
-     * Get diagnostic information about the WebSocket connection
-     */
-    getDiagnostics(): any;
     /**
      * Force a reconnection attempt
      */
@@ -173,5 +150,17 @@ export declare class WebSocketPlugin {
      * Disconnect from the WebSocket server
      */
     disconnect(): void;
+    /**
+     * Schedule a reconnection attempt with exponential backoff
+     */
     private _scheduleReconnect;
+    /**
+     * Generate a unique ID for the connection
+     */
+    private _generateConnectionId;
+    /**
+     * Set the dispatch function for Redux
+     * @param dispatch The Redux dispatch function
+     */
+    setDispatch(dispatch: AppDispatch): void;
 }

@@ -1,6 +1,5 @@
 import { RuleGroupType } from "../types";
 import { RootState } from "../store";
-import { Logger } from "../core/logger";
 import { InventreeItem } from "../types";
 /**
  * Placeholder for a sophisticated expression evaluation engine.
@@ -11,6 +10,7 @@ import { InventreeItem } from "../types";
  * @param partContext Optional: The current InvenTree part item to evaluate against.
  * @param globalContext Full Redux state for accessing HA states, other parameters, etc.
  * @param logger Logger instance.
+ * @param cardInstanceId The ID of the card instance.
  * @returns boolean - True if the conditions are met, false otherwise.
  */
-export declare const evaluateExpression: (ruleGroup: RuleGroupType, partContext: InventreeItem | null, globalContext: RootState, logger: Logger) => boolean;
+export declare const evaluateExpression: (ruleGroup: RuleGroupType, partContext: InventreeItem | null, globalContext: RootState, logger: any, cardInstanceId: string) => boolean;

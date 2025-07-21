@@ -1,115 +1,116 @@
-import { createApi, BaseQueryFn } from '@reduxjs/toolkit/query/react';
-import { AxiosRequestConfig, AxiosError } from 'axios'; // Import Axios types
-import { RootState } from '../../store/index'; // Corrected path for RootState
-import { InventreeItem, ParameterDetail, StockItem } from '../../types'; // Corrected relative path
-import { inventreeApiService } from '../../services/inventree-api-service';
-import { Logger } from '../../utils/logger'; // Corrected path for Logger
+import { createApi, fetchBaseQuery, BaseQueryFn } from '@reduxjs/toolkit/query/react';
+import { RootState } from '../../store/index';
+import { InventreeItem, ParameterDetail, StockItem } from '../../types';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-// Get a logger instance
-const logger = Logger.getInstance(); // Added Logger instance
+const logger = ConditionalLoggerEngine.getInstance().getLogger('inventreeApi');
+ConditionalLoggerEngine.getInstance().registerCategory('inventreeApi', { enabled: false, level: 'info' });
 
-export interface AxiosBaseQueryArgs { // Added export
-  serviceMethod: keyof Omit<typeof inventreeApiService, 'axiosInstance' | 'lastApiCallTimestamp' | 'lastApiFailureTimestamp' | 'request'>; // Exclude non-method properties
-  methodArgs: any[];
-}
+// The new dynamicBaseQuery
+const dynamicBaseQuery: BaseQueryFn = async (args, api, extraOptions) => {
+  const { cardInstanceId, url, method, body, params } = args;
+  const state = api.getState() as RootState;
+  
+  console.log(`%c[dynamicBaseQuery] Attempting query for instance: ${cardInstanceId}`, 'color: #D35400; font-weight: bold;', { url });
 
-const axiosBaseQuery = ((): BaseQueryFn<
-  AxiosBaseQueryArgs,
-  unknown,
-  { status?: number | 'CUSTOM_ERROR'; data?: any; message?: string } // Refined Error Type
- > => async ({ serviceMethod, methodArgs }) => {
-  try {
-    const serviceFn = inventreeApiService[serviceMethod] as (...args: any[]) => Promise<any>; // Explicitly cast to any[] for args
-    if (typeof serviceFn !== 'function') {
-      logger.error('axiosBaseQuery', `Service method '${String(serviceMethod)}' does not exist on inventreeApiService`);
-      return {
-        error: {
-          status: 'CUSTOM_ERROR',
-          data: `Service method '${String(serviceMethod)}' does not exist on inventreeApiService`,
-        },
-      };
-    }
-    const result = await serviceFn.apply(inventreeApiService, methodArgs);
-
-    if (result === null && (serviceMethod === 'getPartParameters' || serviceMethod === 'getPart' || serviceMethod === 'getStockItemsForPart' )) { // Add other methods that can return null on error
-      logger.warn('axiosBaseQuery', `Service method '${String(serviceMethod)}' returned null, treating as error. Args:`, { data: methodArgs });
-      return {
-        error: {
-          status: 'CUSTOM_ERROR', // Or a more specific status if available
-          data: `Service method '${String(serviceMethod)}' failed or returned no data.`,
-          message: `Service method '${String(serviceMethod)}' indicated an error by returning null.`
-        },
-      };
-    }
-
-    return { data: result };
-  } catch (axiosError) {
-    const err = axiosError as AxiosError;
-    logger.error('axiosBaseQuery', `Error executing service method '${serviceMethod}': ${err.message}`, { data: err.response?.data });
-    return {
-      error: {
-        status: err.response?.status,
-        data: err.response?.data || err.message,
-        message: err.message
-      },
-    };
+  if (!cardInstanceId) {
+    const errorMsg = 'cardInstanceId was not provided in the query args';
+    logger.error('dynamicBaseQuery', errorMsg, undefined, args);
+    return { error: { status: 'CUSTOM_ERROR', error: errorMsg } };
   }
-});
+
+  const config = state.config.configsByInstance[cardInstanceId]?.config?.direct_api;
+
+  if (!config || !config.url || !config.api_key) {
+    const errorMsg = `API configuration not found for cardInstanceId: ${cardInstanceId}`;
+    console.error(`%c[dynamicBaseQuery] FAILED: ${errorMsg}`, 'color: #C0392B; font-weight: bold;');
+    logger.error('dynamicBaseQuery', errorMsg, undefined, { cardInstanceId });
+    return { error: { status: 'CUSTOM_ERROR', error: errorMsg } };
+  }
+
+  console.log(`%c[dynamicBaseQuery] Found config for ${cardInstanceId}, proceeding with request.`, 'color: #27AE60; font-weight: bold;', { url: config.url });
+
+  // Use fetchBaseQuery to handle the actual request
+  const baseQuery = fetchBaseQuery({
+    baseUrl: config.url,
+    prepareHeaders: (headers) => {
+      headers.set('Authorization', `Token ${config.api_key}`);
+      return headers;
+    },
+  });
+
+  const response = await baseQuery({ url, method, body, params }, api, extraOptions);
+  
+  console.log('%c[dynamicBaseQuery] Response from fetchBaseQuery:', 'color: #8E44AD; font-weight: bold;', response);
+
+  return response;
+};
 
 export const inventreeApi = createApi({
   reducerPath: 'inventreeApi',
-  baseQuery: axiosBaseQuery(),
+  baseQuery: dynamicBaseQuery,
   tagTypes: ['Part', 'PartParameter', 'StockItem', 'SearchResult', 'Category', 'Location'],
   endpoints: (builder) => ({
-    getPart: builder.query<InventreeItem, number>({
-      query: (partId) => ({
-        serviceMethod: 'getPart',
-        methodArgs: [partId],
+    getPart: builder.query<InventreeItem, { pk: number, cardInstanceId: string }>({
+      query: ({ pk, cardInstanceId }) => ({
+        url: `part/${pk}/`,
+        method: 'GET',
+        cardInstanceId,
       }),
-      providesTags: (result, error, partId) => [{ type: 'Part', id: partId }],
+      providesTags: (result, error, { pk }) => [{ type: 'Part', id: pk }],
     }),
-    getPartParameters: builder.query<ParameterDetail[], number>({
-      query: (partId) => ({
-        serviceMethod: 'getPartParameters',
-        methodArgs: [partId],
+    getPartParameters: builder.query<ParameterDetail[], { partId: number, cardInstanceId: string }>({
+      query: ({ partId, cardInstanceId }) => ({
+        url: `part/parameter/`,
+        params: { part: partId },
+        method: 'GET',
+        cardInstanceId,
       }),
-      providesTags: (result, error, partId) => [{ type: 'PartParameter', id: `LIST-${partId}` }],
+      providesTags: (result, error, { partId }) => [{ type: 'PartParameter', id: `LIST-${partId}` }],
     }),
-    updatePartParameter: builder.mutation<ParameterDetail, { partId: number; parameterPk: number; value: string }>({
-      query: ({ parameterPk, value }) => ({
-        serviceMethod: 'updatePartParameter',
-        methodArgs: [parameterPk, value],
+    updatePartParameter: builder.mutation<ParameterDetail, { partId: number; parameterPk: number; value: any, cardInstanceId: string }>({
+      query: ({ parameterPk, value, cardInstanceId }) => ({
+        url: `part/parameter/${parameterPk}/`,
+        method: 'PATCH',
+        body: { value },
+        cardInstanceId,
       }),
       invalidatesTags: (result, error, { partId, parameterPk }) => [
         { type: 'PartParameter', id: `LIST-${partId}` },
-        { type: 'PartParameter', id: parameterPk },
+        { type: 'PartParameter', id: parameterPk.toString() },
         { type: 'Part', id: partId },
       ],
     }),
-    getStockItems: builder.query<StockItem[], { partId: number }>({
-      query: ({ partId }) => ({
-        serviceMethod: 'getStockItemsForPart',
-        methodArgs: [partId],
+    getStockItems: builder.query<StockItem[], { partId: number, cardInstanceId: string }>({
+      query: ({ partId, cardInstanceId }) => ({
+        url: `stock/`,
+        params: { part: partId },
+        method: 'GET',
+        cardInstanceId,
       }),
       providesTags: (result, error, { partId }) => [
         { type: 'StockItem', id: `LIST-${partId}` },
         ...(result?.map(item => ({ type: 'StockItem' as const, id: item.pk })) || []),
       ],
     }),
-    addStockItem: builder.mutation<StockItem, { partId: number; quantity: number; locationId?: number; notes?: string }>({
-        query: ({ partId, quantity, locationId, notes }) => ({
-            serviceMethod: 'addStockItem',
-            methodArgs: [partId, quantity, locationId, notes],
+    addStockItem: builder.mutation<StockItem, { partId: number; quantity: number; locationId?: number; notes?: string, cardInstanceId: string }>({
+        query: ({ partId, quantity, locationId, notes, cardInstanceId }) => ({
+            url: `stock/`,
+            method: 'POST',
+            body: { part: partId, quantity, location: locationId, notes },
+            cardInstanceId,
         }),
         invalidatesTags: (result, error, { partId }) => [
             { type: 'StockItem', id: `LIST-${partId}` },
             { type: 'Part', id: partId },
         ],
     }),
-    searchParts: builder.query<Array<{ pk: number; name: string; thumbnail?: string }>, string>({
-      query: (searchText) => ({
-        serviceMethod: 'getParts',
-        methodArgs: [{ search: searchText }],
+    searchParts: builder.query<Array<{ pk: number; name: string; thumbnail?: string }>, { searchText: string, cardInstanceId: string }>({
+      query: ({ searchText, cardInstanceId }) => ({
+        url: `part/`,
+        params: { search: searchText },
+        method: 'GET',
+        cardInstanceId,
       }),
       transformResponse: (response: InventreeItem[]) => {
         return response.map(part => ({
@@ -118,7 +119,7 @@ export const inventreeApi = createApi({
           thumbnail: part.thumbnail || undefined,
         }));
       },
-      providesTags: (result, error, searchText) => 
+      providesTags: (result) => 
         result 
           ? [
               ...result.map(({ pk }) => ({ type: 'SearchResult' as const, id: pk })),
@@ -137,4 +138,4 @@ export const {
   useAddStockItemMutation,
   useSearchPartsQuery,
   useLazySearchPartsQuery,
-} = inventreeApi; 
+} = inventreeApi;

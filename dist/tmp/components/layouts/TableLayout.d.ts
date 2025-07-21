@@ -1,11 +1,12 @@
 import React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeItem, LayoutConfig } from '../../types';
-import 'react-lazy-load-image-component/src/effects/blur.css';
+import { InventreeItem, InventreeCardConfig } from '../../types';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 interface TableLayoutProps {
     hass: HomeAssistant;
     parts: InventreeItem[];
-    layoutConfig: LayoutConfig;
+    config: InventreeCardConfig;
     cardInstanceId: string;
 }
 declare const TableLayout: React.FC<TableLayoutProps>;

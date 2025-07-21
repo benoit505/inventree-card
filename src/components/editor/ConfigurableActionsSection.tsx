@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { ActionDefinition } from '../../types'; // Updated type
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import ActionEditorForm from './ActionEditorForm';
 import { HomeAssistant } from 'custom-card-helpers';
 
-const logger = Logger.getInstance();
+ConditionalLoggerEngine.getInstance().registerCategory('ConfigurableActionsSection', { enabled: false, level: 'info' });
 
 interface ConfigurableActionsSectionProps { // Renamed props interface
   hass: HomeAssistant;
@@ -17,6 +17,11 @@ const ConfigurableActionsSection: React.FC<ConfigurableActionsSectionProps> = ({
   actions = [], // Default to empty array
   onActionsChanged,
 }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('ConfigurableActionsSection');
+    // This logger is for the editor form itself, which is not instance-specific
+  }, []);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAction, setEditingAction] = useState<ActionDefinition | undefined>(undefined); // Type changed
   const [editingActionIndex, setEditingActionIndex] = useState<number | null>(null);
@@ -25,14 +30,14 @@ const ConfigurableActionsSection: React.FC<ConfigurableActionsSectionProps> = ({
     setEditingAction(action ? { ...action } : undefined);
     setEditingActionIndex(index !== undefined ? index : null);
     setIsModalOpen(true);
-    logger.log('Editor:ConfigurableActionsSection', 'Modal opened', { action, index });
+    logger.info('openModal', 'Modal opened', { action, index });
   }, []);
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
     setEditingAction(undefined);
     setEditingActionIndex(null);
-    logger.log('Editor:ConfigurableActionsSection', 'Modal closed');
+    logger.info('closeModal', 'Modal closed');
   }, []);
 
   const handleSaveAction = useCallback((savedAction: ActionDefinition) => { // Type changed
@@ -43,10 +48,10 @@ const ConfigurableActionsSection: React.FC<ConfigurableActionsSectionProps> = ({
       updatedActions = currentActions.map((act, idx) =>
         idx === editingActionIndex ? { ...savedAction, id: act.id || String(Date.now()) } : act
       );
-      logger.log('Editor:ConfigurableActionsSection', 'Action updated', { savedAction, index: editingActionIndex });
+      logger.info('handleSaveAction', 'Action updated', { savedAction, index: editingActionIndex });
     } else {
       updatedActions = [...currentActions, { ...savedAction, id: savedAction.id || String(Date.now()) }]; // Ensure new actions get an ID
-      logger.log('Editor:ConfigurableActionsSection', 'New action added', { savedAction });
+      logger.info('handleSaveAction', 'New action added', { savedAction });
     }
     onActionsChanged(updatedActions); // Use new callback
     closeModal();
@@ -56,7 +61,7 @@ const ConfigurableActionsSection: React.FC<ConfigurableActionsSectionProps> = ({
     const currentActions = actions || [];
     const updatedActions = currentActions.filter((_, idx) => idx !== index);
     onActionsChanged(updatedActions); // Use new callback
-    logger.log('Editor:ConfigurableActionsSection', 'Action deleted', { index });
+    logger.info('handleDeleteAction', 'Action deleted', { index });
   }, [actions, onActionsChanged]);
 
   return (

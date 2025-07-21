@@ -1,4 +1,4 @@
-import { Logger } from "../utils/logger";
+import { ConditionalLoggerEngine } from "../core/logging/ConditionalLoggerEngine";
 // import { CacheService, DEFAULT_TTL, CacheCategory } from "./cache"; // Removed
 import { HomeAssistant } from "custom-card-helpers";
 import { store, AppDispatch } from "../store";
@@ -7,6 +7,9 @@ import { inventreeApi } from '../store/apis/inventreeApi';
 import { WebSocketEventMessage, DirectApiConfig } from '../types';
 import { Dispatch, UnknownAction } from '@reduxjs/toolkit';
 import debounce from 'lodash-es/debounce'; // Import debounce
+
+const logger = ConditionalLoggerEngine.getInstance().getLogger('WebSocketPlugin');
+ConditionalLoggerEngine.getInstance().registerCategory('WebSocketPlugin', { enabled: false, level: 'info' });
 
 /**
  * Connection states for the WebSocket
@@ -20,6 +23,23 @@ export enum ConnectionState {
   CLOSING = 'closing'
 }
 
+// Maps the internal ConnectionState to the status string required by the Redux store.
+function mapToReduxStatus(state: ConnectionState): 'connected' | 'connecting' | 'disconnected' | 'error' {
+    switch (state) {
+        case ConnectionState.CONNECTED:
+            return 'connected';
+        case ConnectionState.CONNECTING:
+        case ConnectionState.RECONNECTING:
+            return 'connecting';
+        case ConnectionState.FAILED:
+            return 'error';
+        case ConnectionState.DISCONNECTED:
+        case ConnectionState.CLOSING:
+        default:
+            return 'disconnected';
+    }
+}
+
 /**
  * Plugin for direct WebSocket connection to InvenTree server
  * Handles parameter updates and other real-time events
@@ -31,7 +51,6 @@ export class WebSocketPlugin {
   private _connectionId: string | null = null;
   private _isConnected: boolean = false;
   private _messageCallbacks: ((message: any) => void)[] = [];
-  private _logger: Logger;
   // private cache: CacheService = CacheService.getInstance(); // Removed
   private _errorCount: number = 0;
   private _url: string = '';
@@ -74,16 +93,12 @@ export class WebSocketPlugin {
    * Private constructor for singleton
    */
   private constructor() {
-    this._logger = Logger.getInstance();
     this._lastServerMessageTime = 0; // Initialize
     if (!this._timersInitialized) {
       // window.setTimeout(() => this._initializeTimers(), 0); // Defer timer init if causing issues
       this._timersInitialized = true;
     }
-    this._logger.log('WebSocketPlugin', 'Instance created.', {
-      category: 'websocket',
-      subsystem: 'plugin'
-    });
+    logger.info('constructor', 'Instance created.');
   }
   
   /**
@@ -96,10 +111,7 @@ export class WebSocketPlugin {
     // Determine the WebSocket URL to use
     if (config.websocket_url && config.websocket_url.trim() !== '') {
       this._url = config.websocket_url.trim();
-      this._logger.log('WebSocket', `Using explicit WebSocket URL: ${this._url}`, {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
+      logger.info('configure', `Using explicit WebSocket URL: ${this._url}`);
     } else if (config.url && config.url.trim() !== '') {
       const baseUrl = config.url.trim().replace(/\/+$/, ''); 
       if (baseUrl.startsWith('http')) {
@@ -107,16 +119,10 @@ export class WebSocketPlugin {
       } else {
         this._url = `ws://${baseUrl}/ws/`; 
       }
-      this._logger.log('WebSocket', `Derived WebSocket URL from API URL: ${this._url} (Base: ${config.url})`, {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
+      logger.info('configure', `Derived WebSocket URL from API URL: ${this._url}`, { base: config.url });
     } else {
       this._url = ''; 
-      this._logger.warn('WebSocket', 'Could not determine WebSocket URL from configuration.', {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
+      logger.warn('configure', 'Could not determine WebSocket URL from configuration.');
     }
     
     // Configure auto-reconnect
@@ -137,10 +143,7 @@ export class WebSocketPlugin {
         this._messageDebounceTime = 50; 
     }
     
-    this._logger.log('WebSocket', `Configured WebSocket plugin. Target URL: ${this._url}, Auto-Reconnect: ${this._autoReconnect}, Reconnect Interval: ${this._reconnectInterval}ms, Debounce: ${this._messageDebounceTime}ms, Server Inactivity Timeout: ${this._serverInactivityTimeoutDuration}ms`, {
-      category: 'websocket',
-      subsystem: 'plugin'
-    });
+    logger.info('configure', `Configured WebSocket plugin.`, { targetUrl: this._url, autoReconnect: this._autoReconnect, reconnectInterval: this._reconnectInterval, debounce: this._messageDebounceTime, serverInactivityTimeout: this._serverInactivityTimeoutDuration});
   }
   
   /**
@@ -164,10 +167,7 @@ export class WebSocketPlugin {
     };
     
     if (!validTransitions[oldState].includes(newState)) {
-      this._logger.warn('WebSocket', `Invalid state transition from ${oldState} to ${newState}`, {
-        category: 'websocket',
-        subsystem: 'state'
-      });
+      logger.warn('_setConnectionState', `Invalid state transition from ${oldState} to ${newState}`);
       return;
     }
     
@@ -175,10 +175,7 @@ export class WebSocketPlugin {
     this._connectionState = newState;
     this._lastStateChangeTime = Date.now();
     
-    this._logger.log('WebSocket', `Connection state changed: ${oldState} -> ${newState}`, {
-      category: 'websocket', 
-      subsystem: 'state'
-    });
+    logger.info('_setConnectionState', `Connection state changed: ${oldState} -> ${newState}`);
     
     // Perform actions based on new state
     switch (newState) {
@@ -215,10 +212,7 @@ export class WebSocketPlugin {
     // For now, ensure any specific timers used by this class are cleared
     this._clearServerInactivityTimer();
     // If other direct timers were used by this class and tracked, clear them here.
-    this._logger.log('WebSocket', 'Cleared specific timers in WebSocketPlugin.', {
-      category: 'websocket',
-      subsystem: 'timers'
-    });
+    logger.debug('_clearAllTimers', 'Cleared specific timers in WebSocketPlugin.');
     // The old cleanupAllTimers() was global; we are moving away from that.
   }
   
@@ -227,300 +221,162 @@ export class WebSocketPlugin {
    */
   public connect(): void {
     if (!this._timersInitialized || !this._url) {
-      this._logger.warn('WebSocket', 'Cannot connect - plugin not initialized or URL not provided', {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
+      logger.warn('connect', 'Cannot connect - plugin not initialized or URL not provided');
       return;
     }
     
     // Check connection state
     if (this._connectionState === ConnectionState.CONNECTING || 
         this._connectionState === ConnectionState.CONNECTED) {
-      this._logger.log('WebSocket', `Already ${this._connectionState}, not initiating new connection`, {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
+      logger.info('connect', `Already ${this._connectionState}, not initiating new connection`);
       return;
     }
     
     // Enforce cooldown period between connection attempts
     const timeSinceLastAttempt = Date.now() - this._lastConnectionAttempt;
     if (timeSinceLastAttempt < this._cooldownPeriod) {
-      this._logger.log('WebSocket', `Connection attempt too soon (${timeSinceLastAttempt}ms since last attempt), enforcing cooldown`, {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
-      
-      // Schedule a connection attempt after the cooldown using safe timer utilities
-      window.setTimeout(() => {
-        this.connect();
-      }, this._cooldownPeriod - timeSinceLastAttempt);
-      
+      logger.debug('connect', `Connection attempt too soon (${timeSinceLastAttempt}ms since last attempt), enforcing cooldown`);
       return;
     }
-    
-    // Update connection tracking
+
     this._lastConnectionAttempt = Date.now();
     this._connectionAttempts++;
+    this._setConnectionState(ConnectionState.CONNECTING);
+    this._disconnecting = false; 
+
+    logger.info('connect', `Attempting to connect to WebSocket: ${this._url}`);
     
     try {
-      // Set state to connecting
-      this._setConnectionState(ConnectionState.CONNECTING);
-      
-      this._logger.log('WebSocket', `Connecting to InvenTree WebSocket at ${this._url} (attempt #${this._connectionAttempts + 1})`, { 
-        category: 'websocket', 
-        subsystem: 'plugin' 
-      });
-      
-      // Create a WebSocket connection
-      this._connection = new WebSocket(this._url);
-      
-      // Add connection timeout (10 seconds) using safe timer utilities
-      window.setTimeout(() => {
-        if (this._connectionState === ConnectionState.CONNECTING) {
-          this._logger.warn('WebSocket', 'Connection attempt timed out after 10 seconds', {
-            category: 'websocket',
-            subsystem: 'plugin'
-          });
-          
-          // Close the connection if it's still pending
-          this._closeConnection();
-          
-          // Set state to failed
-          this._setConnectionState(ConnectionState.FAILED);
-        }
-      }, 10000);
-      
-      // Set up event handlers
-      this._connection.onopen = this._onConnectionOpen.bind(this);
-      this._connection.onmessage = this._onConnectionMessage.bind(this);
-      this._connection.onerror = this._onConnectionError.bind(this);
-      this._connection.onclose = this._onConnectionClose.bind(this);
-      
+        this._connection = new WebSocket(this._url);
+        this._connection.onopen = this._onConnectionOpen.bind(this);
+        this._connection.onmessage = this._onConnectionMessage.bind(this);
+        this._connection.onerror = this._onConnectionError.bind(this);
+        this._connection.onclose = this._onConnectionClose.bind(this);
     } catch (error) {
-      this._logger.error('WebSocket', `Error creating WebSocket: ${error}`, {
-        category: 'websocket',
-        subsystem: 'plugin'
-      });
-      
-      this._setConnectionState(ConnectionState.FAILED);
+        logger.error('connect', 'Error creating WebSocket connection:', error as Error);
+        this._setConnectionState(ConnectionState.FAILED);
     }
   }
-  
+
   /**
-   * Event handler for connection open
+   * Called when the WebSocket connection is opened
    */
   private _onConnectionOpen(event: Event): void {
     this._setConnectionState(ConnectionState.CONNECTED);
-    this._isConnected = true;
-    this._connectionAttempts = 0; // Reset on successful connection
-    this._lastSuccessfulConnection = Date.now();
-    this._errorCount = 0; // Reset error count on new successful connection
-
-    // If dispatch is available, set global WebSocket status
-    if (this._dispatch) {
-      this._dispatch(setWebSocketStatus('connected'));
-    }
-    
-    this._logger.log('WebSocketPlugin', 'WebSocket connection established successfully.', {
-      category: 'websocket',
-      subsystem: 'connection',
-      connectionId: this._connectionId
-    });
-
-    // Start server inactivity detection
-    this._lastServerMessageTime = Date.now();
-    this._startServerInactivityTimer();
+    this._connectionId = this._generateConnectionId();
+    logger.info('_onConnectionOpen', `WebSocket connection established. Connection ID: ${this._connectionId}`);
   }
-  
+
   /**
-   * Event handler for connection message
+   * Called when a message is received from the WebSocket server
    */
   private _onConnectionMessage(event: MessageEvent): void {
-    this._lastMessageTime = Date.now();
-    this._messageCount++;
-    this._lastServerMessageTime = Date.now(); // Update on any server message
     this._resetServerInactivityTimer();
+    this._lastServerMessageTime = Date.now();
+    this._messageCount++;
+    this._lastMessageTime = Date.now();
+    
+    if (this._dispatch) {
+        this._dispatch(setWebSocketStatus(mapToReduxStatus(this._connectionState)));
+    }
 
-    let message;
     try {
-      message = JSON.parse(event.data as string);
+        const message = JSON.parse(event.data);
+        const messageId = message?.data?.pk ?? (message?.name || 'unknown');
+        logger.debug('_onConnectionMessage', 'Received message:', { message });
+        this._handleDebouncedMessageProcessing(message, messageId);
     } catch (error) {
-      this._logger.error('WebSocket', `Failed to parse message: ${error}`, {
-        category: 'websocket',
-        subsystem: 'messages',
-        data: event.data
-      });
-      return;
+        logger.error('_onConnectionMessage', 'Error parsing WebSocket message:', error as Error);
     }
-
-    this._logger.log('WebSocket', 'Raw message received:', {
-      category: 'websocket',
-      subsystem: 'messages',
-      data: message
-    });
-
-    // Use a more robust messageId, e.g., from message.id if available, or hash the content
-    const messageIdSource = message.id || message.event; // Prefer message.id or message.event
-    let messageId: string;
-    if (messageIdSource) {
-        messageId = String(messageIdSource);
-    } else {
-        // Fallback for messages without a clear ID source - could be improved with hashing
-        messageId = `msg:${JSON.stringify(message.data || message).substring(0, 50)}-${Date.now() % 10000}`;
-    }
-
-    let debouncedProcessor = this._debouncedProcessors.get(messageId);
-    if (!debouncedProcessor) {
-      debouncedProcessor = debounce((msgToProcess) => {
-        this._handleDebouncedMessageProcessing(msgToProcess, messageId);
-      }, this._messageDebounceTime, { leading: true, trailing: false });
-      this._debouncedProcessors.set(messageId, debouncedProcessor);
-    }
-    debouncedProcessor(message);
   }
-  
+
   /**
-   * Gets or creates a debounced version of _processMessage for a given messageId,
-   * then calls it.
+   * Debounces message processing based on a unique message identifier.
    */
   private _handleDebouncedMessageProcessing(message: any, messageId: string): void {
-    if (this._processingMessages.has(messageId)) {
-      this._logger.log('WebSocket', `Still processing message ${messageId}, skipping duplicate call.`, {
-        category: 'websocket',
-        subsystem: 'dedupe'
-      });
-      return;
+    if (!this._debouncedProcessors.has(messageId)) {
+      const debouncedFunc = debounce(
+        (msg: any) => {
+          this._processingMessages.add(messageId);
+          try {
+            this._notifyMessageCallbacks(msg);
+          } finally {
+            this._processingMessages.delete(messageId);
+          }
+        },
+        this._messageDebounceTime,
+        { leading: false, trailing: true }
+      );
+      this._debouncedProcessors.set(messageId, debouncedFunc);
     }
-
-    this._processingMessages.add(messageId);
-    this._logger.log('WebSocket', `Processing message (debounced): ${messageId}`, {
-      category: 'websocket',
-      subsystem: 'messages',
-      data: message
-    });
-
-    try {
-      this._processMessage(message);
-    } catch (error) {
-      this._logger.error('WebSocket', `Error processing message ${messageId}: ${error}`, {
-        category: 'websocket',
-        subsystem: 'errors',
-        data: message
-      });
-    } finally {
-      this._processingMessages.delete(messageId);
-      // Optional: Consider cleaning up _debouncedProcessors if messageIds are very dynamic
-      // For event names (like 'part_partparameter.saved'), they are reused, so keeping them is fine.
-    }
+    this._debouncedProcessors.get(messageId)!(message);
   }
-  
+
   /**
-   * Notify all message callbacks
+   * Notify all registered callbacks with the new message
    */
   private _notifyMessageCallbacks(message: any): void {
-    for (const callback of this._messageCallbacks) {
-      try {
-        callback(message);
-      } catch (error) {
-        this._logger.error('WebSocket', `Error in message callback: ${error}`, {
-          category: 'websocket',
-          subsystem: 'callback'
-        });
-      }
+    if (this._dispatch) {
+        this._dispatch(webSocketMessageReceived(message));
     }
-  }
-  
-  /**
-   * Event handler for connection error
-   */
-  private _onConnectionError(event: Event): void {
-    this._errorCount++;
-    this._logger.error('WebSocketPlugin', `WebSocket error event triggered - error count: ${this._errorCount}`, {
-      category: 'websocket',
-      subsystem: 'error',
-      eventData: event // Generic event might not have much detail
-    });
-    // Error event often precedes close event. State transition might be handled in onClose.
-    // If not already connecting/reconnecting, transition to failed and attempt reconnect.
-    if (this._connectionState !== ConnectionState.CONNECTING && this._connectionState !== ConnectionState.RECONNECTING) {
-        this._setConnectionState(ConnectionState.FAILED);
-        if (this._autoReconnect) {
-            this._scheduleReconnect();
+    
+    this._processMessage(message);
+
+    for (const callback of this._messageCallbacks) {
+        try {
+            callback(message);
+        } catch (error) {
+            logger.error('_notifyMessageCallbacks', 'Error in message callback:', error as Error);
         }
     }
   }
   
   /**
-   * Event handler for connection close
+   * Called when a WebSocket error occurs
+   */
+  private _onConnectionError(event: Event): void {
+    logger.error('_onConnectionError', 'WebSocket connection error:', undefined, event);
+    this._setConnectionState(ConnectionState.FAILED);
+    if (!this._disconnecting && this._autoReconnect) {
+      this._scheduleReconnect();
+    }
+  }
+
+  /**
+   * Called when the WebSocket connection is closed
    */
   private _onConnectionClose(event: CloseEvent): void {
-    const previousState = this._connectionState;
-    this._setConnectionState(ConnectionState.DISCONNECTED);
-    this._isConnected = false;
-    this._clearServerInactivityTimer(); // Stop inactivity timer
-
-    this._logger.log('WebSocketPlugin', `WebSocket connection closed. Code: ${event.code}, Reason: "${event.reason || 'Unknown reason'}", Was Clean: ${event.wasClean}`, {
-      category: 'websocket',
-      subsystem: 'connection',
-      connectionId: this._connectionId,
-      previousState: previousState
-    });
-
-    if (this._dispatch) {
-      this._dispatch(setWebSocketStatus('disconnected'));
-    }
-
-    if (!this._disconnecting && this._autoReconnect) { // If not an intentional disconnect
-      this._logger.log('WebSocketPlugin', 'Auto-reconnect is enabled, scheduling reconnect.', { category: 'websocket', subsystem: 'reconnect' });
-      this._scheduleReconnect();
+    const eventDetails = { code: event.code, reason: event.reason, wasClean: event.wasClean };
+    if (event.wasClean) {
+      logger.info('_onConnectionClose', 'WebSocket connection closed cleanly.', eventDetails);
     } else {
-      this._logger.log('WebSocketPlugin', 'Auto-reconnect disabled or intentionally disconnecting, not scheduling reconnect.', { category: 'websocket', subsystem: 'reconnect' });
-      // Ensure state is truly disconnected if it was closing
-      if (previousState === ConnectionState.CLOSING) {
-          this._setConnectionState(ConnectionState.DISCONNECTED); // Finalize state
-      }
+      logger.error('_onConnectionClose', 'WebSocket closed with an error.', undefined, eventDetails);
     }
-    this._connection = null; // Clear the connection object
+
+    this._setConnectionState(ConnectionState.DISCONNECTED);
+    this._connection = null;
+    this._connectionId = null;
+
+    if (!this._disconnecting && this._autoReconnect) {
+      logger.info('_onConnectionClose', 'Scheduling reconnect due to unexpected closure.');
+      this._scheduleReconnect();
+    }
   }
-  
+
   /**
-   * Close the current connection
+   * Close the WebSocket connection
    */
   private _closeConnection(): void {
-    this._logger.log('WebSocketPlugin', 'Attempting to close WebSocket connection.', { category: 'websocket', subsystem: 'connection', currentState: this._connectionState });
     if (this._connection) {
-      if (this._connection.readyState === WebSocket.OPEN || this._connection.readyState === WebSocket.CONNECTING) {
-        this._setConnectionState(ConnectionState.CLOSING);
-        this._connection.close(1000, 'Client initiated disconnect'); // Normal closure
-      } else {
-        this._logger.log('WebSocketPlugin', 'Connection already closed or closing.', { readyState: this._connection.readyState });
-        // Ensure timers are cleared if connection was, e.g., already closed by server
-        this._clearAllTimers();
-        this._setConnectionState(ConnectionState.DISCONNECTED); // Ensure state reflects reality
-      }
-    } else {
-      this._logger.log('WebSocketPlugin', 'No active connection to close.');
-      this._setConnectionState(ConnectionState.DISCONNECTED); // Ensure state if no connection object
+      this._connection.close();
+      this._setConnectionState(ConnectionState.CLOSING);
     }
   }
-  
-  /**
-   * Start the server inactivity timer
-   */
-  private _startServerInactivityTimer(): void {
-    this._clearServerInactivityTimer(); // Clear any existing timer
 
-    if (this._connectionState === ConnectionState.CONNECTED) { // Only run if connected
-      this._logger.log('WebSocketPlugin', `Starting server inactivity timer for ${this._serverInactivityTimeoutDuration}ms.`, { category: 'websocket', subsystem: 'heartbeat' });
-      this._serverInactivityTimerId = window.setTimeout(
-        () => {
-          this._handleServerInactivity();
-        }, 
-        this._serverInactivityTimeoutDuration
-      );
-    }
+  private _startServerInactivityTimer(): void {
+    this._clearServerInactivityTimer();
+    this._serverInactivityTimerId = window.setTimeout(() => this._handleServerInactivity(), this._serverInactivityTimeoutDuration);
+    logger.debug('_startServerInactivityTimer', 'Server inactivity timer started.');
   }
 
   private _clearServerInactivityTimer(): void {
@@ -531,119 +387,69 @@ export class WebSocketPlugin {
   }
 
   private _resetServerInactivityTimer(): void {
+    this._clearServerInactivityTimer();
     this._startServerInactivityTimer();
   }
 
   private _handleServerInactivity(): void {
-    this._logger.warn('WebSocketPlugin', 'Server inactivity detected. Last message received more than timeout period ago.', {
-      category: 'websocket',
-      subsystem: 'heartbeat',
-      lastMessageTime: new Date(this._lastServerMessageTime).toISOString(),
-      timeoutDuration: this._serverInactivityTimeoutDuration
-    });
-    this._errorCount++; // Consider this an error scenario
-    
-    this._logger.error('WebSocketPlugin', 'Max server inactivity reached, closing connection as potentially stale.', { category: 'websocket', subsystem: 'heartbeat' });
-    
-    this._disconnecting = false; // Ensure auto-reconnect can happen
-    this.disconnect(); // This call is correct (0 arguments for a 0-parameter function)
+    logger.warn('_handleServerInactivity', 'Server inactivity detected. Reconnecting...');
+    this.forceReconnect();
   }
-  
-  /**
-   * Register a callback for incoming messages
-   */
+
   public onMessage(callback: (message: any) => void): () => void {
     this._messageCallbacks.push(callback);
-    
-    // Return unsubscribe function
     return () => {
-      const index = this._messageCallbacks.indexOf(callback);
-      if (index !== -1) {
-        this._messageCallbacks.splice(index, 1);
-      }
+      this._messageCallbacks = this._messageCallbacks.filter(cb => cb !== callback);
     };
   }
-  
-  /**
-   * Process incoming WebSocket message
-   */
+
   private _processMessage(message: any): void {
-    // Check if this is a parameter update by looking inside message.data
-    if (message.data && message.data.model === 'PartParameter') {
-      this._handleParameterUpdate(message.data); // Pass message.data to the handler
+    try {
+      switch (message.type) {
+        case 'parameter.update':
+          this._handleParameterUpdate(message.data);
+          break;
+        default:
+          logger.debug('_processMessage', `Received unhandled message type: ${message.type}`);
+          break;
+      }
+    } catch (error) {
+      logger.error('_processMessage', 'Error processing WebSocket message:', error as Error, { message });
     }
-    // Add other message type handlers as needed
   }
   
-  /**
-   * Handle parameter update message
-   */
   private _handleParameterUpdate(messageData: any): void {
-    this._logger.log('WebSocket', 'Processing parameter update with RTK Query', { 
-        category: 'websocket', 
-        subsystem: 'parameters', 
-        data: messageData 
-    });
-
-    const partId = messageData.part_pk ?? messageData.parent_id;
-    const paramPk = messageData.id; // The WebSocket message 'id' is the Parameter's PK
-    const paramValue = messageData.parameter_value;
-
-    if (partId !== undefined && paramPk !== undefined && paramValue !== undefined) {
-        
-        if (this._dispatch) {
-            this._logger.log('WebSocket', `Dispatching updateQueryData for Part ${partId}, Param PK ${paramPk} to value ${paramValue}`, { 
-                category: 'websocket', 
-                subsystem: 'parameters', 
-                level: 'info' 
-            });
-
-            this._dispatch(inventreeApi.util.updateQueryData('getPartParameters', Number(partId), (draft) => {
-                const parameterToUpdate = draft.find(p => p.pk === Number(paramPk));
-                
-                if (parameterToUpdate) {
-                    parameterToUpdate.data = String(paramValue);
-                    this._logger.log('WebSocket', `Successfully updated parameter PK ${paramPk} in RTK Query cache for part ${partId}.`, {
-                        category: 'websocket',
-                        subsystem: 'parameters'
-                    });
-                } else {
-                    this._logger.warn('WebSocket', `Received update for parameter PK ${paramPk} which was not found in cache for Part ${partId}. Invalidating cache instead.`, {
-                        category: 'websocket',
-                        subsystem: 'parameters'
-                    });
-                    // If the parameter is not found, it might be newly created. 
-                    // The safest and most robust fallback is to invalidate the cache for this part's parameters,
-                    // which will cause any subscribed components to refetch the full, correct list.
-                    if (this._dispatch) {
-                        this._dispatch(inventreeApi.util.invalidateTags([{ type: 'PartParameter', id: `LIST-${Number(partId)}` }]));
-                    }
-                }
-            }));
-        } else {
-            this._logger.warn('WebSocket', 'Dispatch function not available in _handleParameterUpdate.', { 
-                category: 'websocket', 
-                subsystem: 'errors' 
-            });
-        }
+    const { pk, value } = messageData;
+    if (pk === undefined || value === undefined) {
+      logger.warn('_handleParameterUpdate', 'Received invalid parameter update message data.', { data: messageData });
+      return;
+    }
+  
+    logger.info('_handleParameterUpdate', `Processing parameter update for pk ${pk}.`, { newValue: value });
+  
+    if (this._dispatch) {
+      try {
+        const thunk = inventreeApi.util.invalidateTags([{ type: 'PartParameter', id: pk }]);
+        this._dispatch(thunk);
+        logger.debug('_handleParameterUpdate', `Successfully invalidated cache for PartParameter with pk: ${pk}`);
+      } catch (error) {
+        logger.error('_handleParameterUpdate', `Error invalidating cache for PartParameter with pk: ${pk}`, error as Error);
+      }
     } else {
-        this._logger.warn('WebSocket', 'Parameter update received, but missing part_pk/parent_id, id, or parameter_value.', {
-            category: 'websocket',
-            subsystem: 'parameters',
-            data: messageData
-        });
+      logger.warn('_handleParameterUpdate', 'Dispatch function not available, cannot invalidate cache.');
     }
   }
-  
+
   /**
-   * Get the connection status
+   * Check if the websocket is connected
+   * @returns boolean
    */
   public isConnected(): boolean {
     return this._connectionState === ConnectionState.CONNECTED;
   }
   
   /**
-   * Get statistics about the connection
+   * Get connection statistics
    */
   public getStats(): {
     connectionState: ConnectionState;
@@ -658,224 +464,128 @@ export class WebSocketPlugin {
   } {
     return {
       connectionState: this._connectionState,
-      isConnected: this._isConnected,
+      isConnected: this.isConnected(),
       messageCount: this._messageCount,
       errorCount: this._errorCount,
       lastMessageTime: this._lastMessageTime,
       connectionAttempts: this._connectionAttempts,
       lastConnectionAttempt: this._lastConnectionAttempt,
       lastSuccessfulConnection: this._lastSuccessfulConnection,
-      lastServerMessageTime: this._lastServerMessageTime,
+      lastServerMessageTime: this._lastServerMessageTime
     };
   }
   
   /**
-   * Reset connection state and try to reconnect
+   * Reset the WebSocket plugin state
    */
   public reset(): void {
-    this._logger.log('WebSocket', 'Resetting WebSocket connection', {
-      category: 'websocket',
-      subsystem: 'control'
-    });
-    
-    // Disconnect first
     this.disconnect();
-    
-    // Reset error counters
+    this._config = null;
+    this._messageCallbacks = [];
     this._errorCount = 0;
+    this._url = '';
+    this._autoReconnect = true;
+    this._reconnectInterval = 5000;
+    this._timersInitialized = false;
+    this._connectionState = ConnectionState.DISCONNECTED;
+    this._lastConnectionAttempt = 0;
     this._connectionAttempts = 0;
-    
-    // Wait a moment before reconnecting
-    window.setTimeout(() => {
-      if (this._config?.enabled) {
-        this.connect();
-      }
-    }, 1000);
-  }
-  
-  /**
-   * Get statistics about active timers
-   */
-  public getTimerStats(): any {
-    return {
-      isInitialized: this._timersInitialized,
-      activeDebouncers: this._debouncedProcessors.size 
-    };
+    logger.info('reset', 'WebSocket plugin has been reset.');
   }
 
   /**
    * Send a message to the WebSocket server
-   * @param message Message to send
-   * @returns Whether the message was sent successfully
    */
   public sendMessage(message: any): boolean {
-    if (!this._connection || this._connection.readyState !== WebSocket.OPEN) {
-      this._logger.warn('WebSocket', 'Cannot send message - WebSocket not connected', {
-        category: 'websocket',
-        subsystem: 'message'
-      });
-      return false;
-    }
-    
-    try {
-      this._connection.send(JSON.stringify(message));
-      return true;
-    } catch (error) {
-      this._logger.error('WebSocket', `Error sending message: ${error}`, {
-        category: 'websocket',
-        subsystem: 'message'
-      });
+    if (this._connection && this._connection.readyState === WebSocket.OPEN) {
+      try {
+        this._connection.send(JSON.stringify(message));
+        logger.debug('sendMessage', 'Message sent:', { message });
+        return true;
+      } catch (error) {
+        logger.error('sendMessage', 'Error sending message:', error as Error, { message });
+        return false;
+      }
+    } else {
+      logger.warn('sendMessage', 'Cannot send message, connection is not open.');
       return false;
     }
   }
 
   /**
-   * Register a callback for incoming messages
+   * Register a message callback
    * @param callback The callback to register
    */
   public registerMessageCallback(callback: (message: any) => void): void {
-    if (!this._messageCallbacks.includes(callback)) {
-      this._messageCallbacks.push(callback);
-    }
+    this.onMessage(callback);
+    logger.debug('registerMessageCallback', 'Message callback registered.');
   }
 
   /**
-   * Unregister a callback for incoming messages
-   * @param callback The callback to unregister
+   * Unregister a message callback
    */
   public unregisterMessageCallback(callback: (message: any) => void): void {
-    const index = this._messageCallbacks.indexOf(callback);
-    if (index !== -1) {
-      this._messageCallbacks.splice(index, 1);
-    }
-  }
-
-  /**
-   * Get diagnostic information about the WebSocket connection
-   */
-  public getDiagnostics(): any {
-    const now = Date.now();
-    const safeStringify = (obj: any) => {
-      try {
-        return JSON.stringify(obj);
-      } catch (e) {
-        return `Error stringifying object: ${e instanceof Error ? e.message : String(e)}`;
-      }
-    };
-
-    return {
-      config: this._config ? safeStringify(this._config) : 'Not configured',
-      url: this._url,
-      connectionState: this._connectionState,
-      isConnected: this._isConnected,
-      isConfigured: this._timersInitialized,
-      lastConnectionAttempt: this._lastConnectionAttempt ? new Date(this._lastConnectionAttempt).toISOString() : 'N/A',
-      connectionAttempts: this._connectionAttempts,
-      lastSuccessfulConnection: this._lastSuccessfulConnection ? new Date(this._lastSuccessfulConnection).toISOString() : 'N/A',
-      lastStateChangeTime: this._lastStateChangeTime ? new Date(this._lastStateChangeTime).toISOString() : 'N/A',
-      timeSinceLastStateChangeMs: this._lastStateChangeTime ? (now - this._lastStateChangeTime) : 'N/A',
-      disconnectingIntentional: this._disconnecting,
-      autoReconnectEnabled: this._autoReconnect,
-      reconnectIntervalMs: this._reconnectInterval,
-      timersInitialized: this._timersInitialized,
-      messageStats: {
-        count: this._messageCount,
-        lastReceivedTime: this._lastMessageTime ? new Date(this._lastMessageTime).toISOString() : 'N/A',
-        timeSinceLastMessageMs: this._lastMessageTime ? (now - this._lastMessageTime) : 'N/A',
-        activeDebouncerCount: this._debouncedProcessors.size,
-        processingMessagesCount: this._processingMessages.size,
-      },
-      serverInactivity: {
-        lastServerMessageTime: this._lastServerMessageTime ? new Date(this._lastServerMessageTime).toISOString() : 'N/A',
-        timeSinceLastServerMessageMs: this._lastServerMessageTime ? (now - this._lastServerMessageTime) : 'N/A',
-        inactivityTimeoutMs: this._serverInactivityTimeoutDuration,
-        inactivityTimerRunning: !!this._serverInactivityTimerId,
-      },
-      timerManagerStats: this.getTimerStats()
-    };
+    this._messageCallbacks = this._messageCallbacks.filter(cb => cb !== callback);
+    logger.debug('unregisterMessageCallback', 'Message callback unregistered.');
   }
 
   /**
    * Force a reconnection attempt
    */
   public forceReconnect(): void {
-    this._logger.log('WebSocket', 'Forcing reconnection...', {
-      category: 'websocket',
-      subsystem: 'plugin'
-    });
-    
-    // Close any existing connection
-    this._closeConnection();
-    
-    // Reset error count
-    this._errorCount = 0;
-    
-    // Set state to reconnecting
-    this._setConnectionState(ConnectionState.RECONNECTING);
-    
-    // Connect immediately with a small delay
-    setTimeout(() => {
-      this.connect();
-    }, 100); // REPLACED safeSetTimeout, removed 'force-reconnect' label
+    logger.info('forceReconnect', 'Forcing reconnection...');
+    if (this._connection) {
+      this._disconnecting = true; 
+      this._connection.close();
+      this._onConnectionClose({ wasClean: true, code: 1000, reason: 'Forced reconnect' } as CloseEvent);
+    }
+    this._disconnecting = false;
+    this._scheduleReconnect(true);
   }
 
   /**
    * Disconnect from the WebSocket server
    */
   public disconnect(): void {
-    // Set flag to prevent auto-reconnect
+    logger.info('disconnect', 'Disconnecting from WebSocket server...');
     this._disconnecting = true;
-    
-    // Clear all timers
-    this._clearAllTimers();
-    
-    // Close the connection
+    this._autoReconnect = false;
     this._closeConnection();
-    
-    // Update state after a brief delay to allow close event to process
-    setTimeout(() => {
-      this._disconnecting = false;
-      this._setConnectionState(ConnectionState.DISCONNECTED);
-    }, 100); // REPLACED safeSetTimeout, removed 'disconnect-complete' label
   }
 
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   */
   private _scheduleReconnect(forceImmediate: boolean = false): void {
-    if (!this._autoReconnect || this._disconnecting) {
-      this._logger.log('WebSocket', 'Auto-reconnect disabled or intentionally disconnecting, not scheduling reconnect.', {
-        category: 'websocket',
-        subsystem: 'reconnect'
-      });
-      // Ensure state is truly disconnected if it was RECONNECTING, otherwise it might be stuck
-      if (this._connectionState === ConnectionState.RECONNECTING) {
-         this._setConnectionState(ConnectionState.DISCONNECTED);
-      }
+    if (!this._autoReconnect || this._connectionState === ConnectionState.CONNECTING) {
       return;
     }
 
-    // If already connecting or connected, don't schedule another reconnect immediately
-    if (this._connectionState === ConnectionState.CONNECTING || this._connectionState === ConnectionState.CONNECTED) {
-        this._logger.log('WebSocketPlugin', 'Already connecting or connected, skipping scheduled reconnect.', { category: 'websocket', subsystem: 'reconnect' });
-        return;
-    }
+    const delay = forceImmediate ? 0 : Math.min(
+      this._minReconnectDelay + Math.pow(2, this._connectionAttempts) * 1000,
+      this._maxReconnectDelay
+    );
 
-    this._setConnectionState(ConnectionState.RECONNECTING);
-    
-    // Simple fixed interval based on _reconnectInterval for now
-    // Exponential backoff could be added later if needed, respecting _minReconnectDelay and _maxReconnectDelay
-    const delay = forceImmediate ? 0 : this._reconnectInterval; 
-    
+    logger.info('_scheduleReconnect', `Scheduling reconnect attempt in ${delay}ms.`);
+
     setTimeout(() => {
-      if (this._connectionState === ConnectionState.RECONNECTING && !this._disconnecting) {
-        this._logger.log('WebSocket', 'Attempting scheduled reconnect...', { category: 'websocket', subsystem: 'reconnect' });
-        this.connect();
-      } else {
-        this._logger.log('WebSocket', 'Skipping scheduled reconnect due to state change or intentional disconnect.', { 
-            category: 'websocket', 
-            subsystem: 'reconnect', 
-            currentState: this._connectionState, 
-            isDisconnecting: this._disconnecting 
-        });
-      }
-    }, delay); // REPLACED safeSetTimeout, removed debug label
+      this.connect();
+    }, delay);
+  }
+
+  /**
+   * Generate a unique ID for the connection
+   */
+  private _generateConnectionId(): string {
+    return 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+  }
+
+  /**
+   * Set the dispatch function for Redux
+   * @param dispatch The Redux dispatch function
+   */
+  public setDispatch(dispatch: AppDispatch): void {
+    this._dispatch = dispatch;
+    logger.info('setDispatch', 'Redux dispatch function has been set.');
   }
 }

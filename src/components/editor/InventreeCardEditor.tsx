@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { HomeAssistant, LovelaceCardEditor } from 'custom-card-helpers';
-import { Logger } from '../../utils/logger';
-import { RootState } from '../../store';
-import { useSelector } from 'react-redux';
-import { InventreeCardConfig, DirectApiConfig, ViewType, DisplayConfig, StyleConfig, InteractionsConfig, ConditionalLogicConfig, ParameterDetail, DataSourceConfig, RuleGroupType, LayoutConfig, ActionDefinition, InventreeParameterFetchConfig, ThumbnailOverride } from '../../types';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
+import { RootState, store } from '../../store';
+import { useSelector, useDispatch } from 'react-redux';
+import { InventreeCardConfig, DirectApiConfig, ViewType, DisplayConfig, StyleConfig, InteractionsConfig, ConditionalLogicConfig, ParameterDetail, DataSourceConfig, RuleGroupType, LayoutConfig, ActionDefinition, InventreeParameterFetchConfig, ThumbnailOverride, LogQuery } from '../../types';
 
 // Import sections
 import InventreeHassSensorsSection from './InventreeHassSensorsSection';
@@ -16,14 +16,17 @@ import ElementVisibilitySection from './ElementVisibilitySection';
 import CardStylingSection from './CardStylingSection';
 import ConfigurableActionsSection from './ConfigurableActionsSection';
 import ConditionalLogicSection from './ConditionalLogicSection';
+import LoggingSettingsSection from './LoggingSettingsSection';
 
-const logger = Logger.getInstance();
+ConditionalLoggerEngine.getInstance().registerCategory('InventreeCardEditor', { enabled: true, level: 'info' });
+
 const CARD_NAME = 'inventree-card';
 
 export interface InventreeCardEditorProps {
   hass: HomeAssistant;
   lovelace?: LovelaceCardEditor;
   config?: InventreeCardConfig;
+  cardInstanceId: string;
   onConfigChanged: (config: InventreeCardConfig) => void;
 }
 
@@ -35,83 +38,99 @@ const defaultRuleGroup: RuleGroupType = {
   not: false
 };
 
-const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelace, config: initialConfig, onConfigChanged }) => {
-  const [currentEditorConfig, setCurrentEditorConfig] = useState<Partial<InventreeCardConfig>>(initialConfig || {});
+const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelace, config: initialConfig, cardInstanceId, onConfigChanged }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('InventreeCardEditor', cardInstanceId);
+  }, [cardInstanceId]);
+  
+  const dispatch = useDispatch();
+  const [activeTab, setActiveTab] = useState('data');
   
   // Correctly get all parameter values from the store using RootState
   const allParameterValues = useSelector<RootState, Record<number, Record<string, ParameterDetail>>>(
     (state) => state.parameters.parameterValues 
   );
 
-  useEffect(() => {
-    logger.log('Editor:Main', 'Editor mounted or initialConfig changed', { initialConfig });
-    setCurrentEditorConfig(prevConfig => {
-      const updatedConfig: Partial<InventreeCardConfig> = { ...prevConfig, ...initialConfig };
-      
-      updatedConfig.data_sources = {
-        inventree_hass_sensors: updatedConfig.data_sources?.inventree_hass_sensors || [],
-        ha_entities: updatedConfig.data_sources?.ha_entities || [],
-        inventree_pks: updatedConfig.data_sources?.inventree_pks || [],
-        inventree_parameters: updatedConfig.data_sources?.inventree_parameters || [],
-        inventree_parameters_to_fetch: updatedConfig.data_sources?.inventree_parameters_to_fetch || [],
-        inventree_pk_thumbnail_overrides: updatedConfig.data_sources?.inventree_pk_thumbnail_overrides || [],
-      };
+  const currentEditorConfig = useMemo<Partial<InventreeCardConfig>>(() => {
+    // Lovelace freezes the config object. We must create a deep, mutable clone
+    // to run migrations and allow for editing.
+    const config = JSON.parse(JSON.stringify(initialConfig || {}));
 
-      if (!updatedConfig.direct_api) {
-        updatedConfig.direct_api = { enabled: false, url: '', api_key: '' };
+    // --- MIGRATION LOGIC ---
+    // This handles migrating the old top-level 'columns' to the new 'layout.columns'.
+    if (config.columns && Array.isArray(config.columns)) {
+      if (!config.layout) {
+        config.layout = {};
       }
-      if (!updatedConfig.layout) {
-        updatedConfig.layout = { viewType: 'detail' };
+      if (!config.layout.columns || config.layout.columns.length === 0) {
+        config.layout.columns = config.columns;
+        logger.info('Migration', 'Migrated legacy `columns` to `layout.columns`');
       }
-      if (!updatedConfig.view_type && updatedConfig.layout?.viewType) {
-        updatedConfig.view_type = updatedConfig.layout.viewType;
-      } else if (!updatedConfig.view_type) {
-        updatedConfig.view_type = 'detail';
-      }
-      if (!updatedConfig.columns && updatedConfig.layout?.columns) updatedConfig.columns = updatedConfig.layout.columns;
-      if (!updatedConfig.grid_spacing && updatedConfig.layout?.grid_spacing) updatedConfig.grid_spacing = updatedConfig.layout.grid_spacing;
-      if (!updatedConfig.item_height && updatedConfig.layout?.item_height) updatedConfig.item_height = updatedConfig.layout.item_height;
-      if (!updatedConfig.display) {
-        updatedConfig.display = { show_header: true, show_image: true, show_name: true, show_stock: true };
-      }
-      if (!updatedConfig.style) {
-        updatedConfig.style = { background: 'var(--ha-card-background, var(--card-background-color, white))', spacing: 8, image_size: 50 };
-      }
-      if (!updatedConfig.interactions) {
-        updatedConfig.interactions = { buttons: [] };
-      }
-      if (!updatedConfig.actions) {
-        updatedConfig.actions = [];
-      }
-      if (!updatedConfig.conditional_logic) {
-        updatedConfig.conditional_logic = { definedLogics: [] };
-      } else if (!updatedConfig.conditional_logic.definedLogics) {
-        updatedConfig.conditional_logic.definedLogics = [];
-      }
+      // Delete the legacy property to prevent confusion
+      delete config.columns;
+    }
 
-      return updatedConfig;
+    if (config.layout) {
+      // Scrub obsolete 'width' property from columns
+      if (Array.isArray(config.layout.columns)) {
+        config.layout.columns = config.layout.columns.map((c: any) => {
+          if (c.width === undefined) {
+            return c;
+          }
+          const { width, ...rest } = c;
+          return rest;
+        });
+      }
+      // Migrate legacy 'row_height' to 'rowHeight' and remove it
+      if (config.layout.row_height !== undefined) {
+        config.layout.rowHeight = config.layout.row_height;
+        delete config.layout.row_height;
+      }
+      // Remove the obsolete 'layouts' object
+      if (config.layout.layouts !== undefined) {
+        delete config.layout.layouts;
+      }
+    }
+
+    // This deep-fills the config with defaults to prevent render errors
+    config.data_sources = {
+      inventree_hass_sensors: config.data_sources?.inventree_hass_sensors || [],
+      ha_entities: config.data_sources?.ha_entities || [],
+      inventree_pks: config.data_sources?.inventree_pks || [],
+      inventree_parameters: config.data_sources?.inventree_parameters || [],
+      inventree_parameters_to_fetch: config.data_sources?.inventree_parameters_to_fetch || [],
+      inventree_pk_thumbnail_overrides: config.data_sources?.inventree_pk_thumbnail_overrides || [],
+    };
+    config.direct_api = config.direct_api || { enabled: false, url: '', api_key: '' };
+    config.layout = config.layout || { viewType: 'detail' };
+    config.display = config.display || { show_header: true, show_image: true, show_name: true, show_stock: true };
+    config.style = config.style || { background: 'var(--ha-card-background, var(--card-background-color, white))', spacing: 8, image_size: 50 };
+    config.interactions = config.interactions || { buttons: [] };
+    config.actions = config.actions || [];
+    config.conditional_logic = config.conditional_logic || { definedLogics: [] };
+    config.logging = config.logging || { queries: [] };
+    return config;
+  }, [initialConfig]);
+
+  const handleConfigChanged = useCallback((newConfig: Partial<InventreeCardConfig>) => {
+    logger.debug('handleConfigChanged', 'Editor config changed.', { newConfig });
+    onConfigChanged(newConfig as InventreeCardConfig);
+  }, [onConfigChanged, logger]);
+
+  // Simplified handler
+  const handleConfigPartChanged = useCallback((key: keyof InventreeCardConfig, value: any) => {
+    handleConfigChanged({
+      ...currentEditorConfig,
+      [key]: value,
     });
-  }, [initialConfig]); // Removed logger from dependencies as it's a stable instance
-
-  const handleConfigPartChanged = useCallback(<K extends keyof InventreeCardConfig>(key: K, value: InventreeCardConfig[K]) => {
-    setCurrentEditorConfig(prev => {
-      const newConfig = { ...prev, [key]: value };
-      onConfigChanged(newConfig as InventreeCardConfig); 
-      return newConfig;
-    });
-  }, [onConfigChanged]);
+  }, [currentEditorConfig, handleConfigChanged]);
 
   const handleDataSourcesChanged = useCallback((newDataSources: DataSourceConfig) => {
-    setCurrentEditorConfig(prev => {
-      const newConfig = { 
-        ...prev,
-        data_sources: newDataSources,
-      };
-      onConfigChanged(newConfig as InventreeCardConfig);
-      logger.log('Editor:Main', 'Updated data_sources in config', { data_sources: newConfig.data_sources });
-      return newConfig;
+    handleConfigChanged({
+      ...currentEditorConfig,
+      data_sources: newDataSources,
     });
-  }, [onConfigChanged]);
+  }, [currentEditorConfig, handleConfigChanged]);
 
   const handleInventreeHassSensorsChanged = useCallback((newSensors: string[]) => {
     handleDataSourcesChanged({
@@ -142,16 +161,11 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
   }, [currentEditorConfig.data_sources, handleDataSourcesChanged]);
 
   const handleInventreeParametersToFetchChanged = useCallback((newFetchConfigs: InventreeParameterFetchConfig[]) => {
-    logger.log('Editor:Main', 'Received updated InventreeParameterFetchConfig list', { configs: newFetchConfigs });
-    
-    const currentDataSources = currentEditorConfig.data_sources || {};
     const updatedDataSources: DataSourceConfig = {
-      ...currentDataSources,
+      ...(currentEditorConfig.data_sources || {}),
       inventree_parameters_to_fetch: newFetchConfigs,
-      // inventree_parameters: [], // Optionally clear or manage the old string array if it's purely for this section's input
     };
     handleDataSourcesChanged(updatedDataSources);
-
   }, [currentEditorConfig.data_sources, handleDataSourcesChanged]);
 
   const handleDirectApiConfigChanged = useCallback((newApiConfig: DirectApiConfig) => {
@@ -159,23 +173,8 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
   }, [handleConfigPartChanged]);
 
   const handleLayoutConfigChanged = useCallback((newLayoutConfig: LayoutConfig) => {
-    setCurrentEditorConfig(prev => {
-        // This function now receives the entire layout object,
-        // which could include updates to viewType, columns, etc.
-        const newConfig = { 
-            ...prev,
-            // Persist the whole layout object
-            layout: newLayoutConfig,
-            // Also update legacy top-level fields for compatibility for now
-            view_type: newLayoutConfig.viewType,
-            columns: newLayoutConfig.legacy_columns,
-            grid_spacing: newLayoutConfig.grid_spacing,
-            item_height: newLayoutConfig.item_height,
-        };
-        onConfigChanged(newConfig as InventreeCardConfig);
-        return newConfig;
-    });
-  }, [onConfigChanged]);
+    handleConfigPartChanged('layout', newLayoutConfig);
+  }, [handleConfigPartChanged]);
 
   const handleDisplayConfigChanged = useCallback((newDisplayConfig: DisplayConfig) => {
     handleConfigPartChanged('display', newDisplayConfig);
@@ -197,128 +196,101 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
     handleConfigPartChanged('conditional_logic', newConditionalLogicConfig);
   }, [handleConfigPartChanged]);
 
+  const handleQueriesChanged = useCallback((newQueries: LogQuery[]) => {
+    handleConfigPartChanged('logging', { ...currentEditorConfig.logging, queries: newQueries });
+  }, [handleConfigPartChanged, currentEditorConfig.logging]);
+
   if (!hass) {
     return <p>Loading Home Assistant...</p>;
   }
 
-  // Provide default values for currentEditorConfig to prevent errors during rendering if some parts are undefined
-  const editorData: Partial<InventreeCardConfig> = useMemo(() => ({
-    name: currentEditorConfig.name || '',
-    entity: currentEditorConfig.entity || '',
-    type: currentEditorConfig.type || CARD_NAME,
-    view_type: currentEditorConfig.view_type || 'detail',
-    columns: currentEditorConfig.columns,
-    grid_spacing: currentEditorConfig.grid_spacing,
-    item_height: currentEditorConfig.item_height,
-    data_sources: {
-        inventree_hass_sensors: currentEditorConfig.data_sources?.inventree_hass_sensors || [],
-        ha_entities: currentEditorConfig.data_sources?.ha_entities || [],
-        inventree_pks: currentEditorConfig.data_sources?.inventree_pks || [],
-        inventree_parameters: currentEditorConfig.data_sources?.inventree_parameters || [],
-        inventree_parameters_to_fetch: currentEditorConfig.data_sources?.inventree_parameters_to_fetch || [],
-        inventree_pk_thumbnail_overrides: currentEditorConfig.data_sources?.inventree_pk_thumbnail_overrides || [],
-    },
-    direct_api: currentEditorConfig.direct_api || { enabled: false, url: '', api_key: '' },
-    layout: currentEditorConfig.layout || { viewType: 'detail' }, 
-    display: currentEditorConfig.display || { show_header: true, show_image: true, show_name: true, show_stock: true },
-    style: currentEditorConfig.style || { background: 'var(--ha-card-background, var(--card-background-color, white))', spacing: 8, image_size: 50 },
-    interactions: currentEditorConfig.interactions || { buttons: [] },
-    actions: currentEditorConfig.actions || [],
-    conditional_logic: currentEditorConfig.conditional_logic || { definedLogics: [] },
-  }), [currentEditorConfig]);
-
-
   return (
     <div className="inventree-card-editor">
-      <h2>InvenTree Card Configuration (React Editor)</h2>
+      <div style={{ display: 'flex', borderBottom: '1px solid #ccc', marginBottom: '16px' }}>
+        <button style={{ flex: 1, padding: '10px', border: 'none', background: activeTab === 'data' ? '#eee' : 'transparent', cursor: 'pointer' }} onClick={() => setActiveTab('data')}>Data Sources</button>
+        <button style={{ flex: 1, padding: '10px', border: 'none', background: activeTab === 'layout' ? '#eee' : 'transparent', cursor: 'pointer' }} onClick={() => setActiveTab('layout')}>Layout</button>
+        <button style={{ flex: 1, padding: '10px', border: 'none', background: activeTab === 'appearance' ? '#eee' : 'transparent', cursor: 'pointer' }} onClick={() => setActiveTab('appearance')}>Appearance</button>
+        <button style={{ flex: 1, padding: '10px', border: 'none', background: activeTab === 'actions' ? '#eee' : 'transparent', cursor: 'pointer' }} onClick={() => setActiveTab('actions')}>Actions & Logic</button>
+        <button style={{ flex: 1, padding: '10px', border: 'none', background: activeTab === 'debugging' ? '#eee' : 'transparent', cursor: 'pointer' }} onClick={() => setActiveTab('debugging')}>Debugging</button>
+      </div>
 
-      {/* Data Sources Section */}
-      <section className="editor-section">
-        <h3>Data Sources</h3>
-        <InventreeHassSensorsSection 
-          hass={hass}
-          selectedSensors={editorData.data_sources?.inventree_hass_sensors || []}
-          onSensorsChanged={handleInventreeHassSensorsChanged}
-        />
-        <HaEntitiesSection
-          hass={hass}
-          selectedEntities={editorData.data_sources?.ha_entities || []}
-          onEntitiesChanged={handleHaEntitiesChanged}
-        />
-        <InventreePkSection
-          hass={hass}
-          selectedPks={editorData.data_sources?.inventree_pks || []}
-          onPksChanged={handleInventreePksChanged}
-          thumbnailOverrides={editorData.data_sources?.inventree_pk_thumbnail_overrides || []}
-          onThumbnailOverridesChanged={handleInventreePkThumbnailOverridesChanged}
-        />
-        <InventreeParametersToFetchSection
-          hass={hass}
-          parameterFetchConfigs={editorData.data_sources?.inventree_parameters_to_fetch || []}
-          onFetchConfigsChanged={handleInventreeParametersToFetchChanged}
-        />
-        <InventreeApiConfigSection
-          hass={hass} 
-          directApiConfig={editorData.direct_api}
-          onDirectApiConfigChanged={handleDirectApiConfigChanged}
-        />
-      </section>
+      {activeTab === 'data' && (
+        <>
+          <InventreeApiConfigSection
+            hass={hass}
+            directApiConfig={currentEditorConfig.direct_api!}
+            onDirectApiConfigChanged={handleDirectApiConfigChanged}
+          />
+          <InventreePkSection 
+            selectedPks={currentEditorConfig.data_sources?.inventree_pks || []}
+            thumbnailOverrides={currentEditorConfig.data_sources?.inventree_pk_thumbnail_overrides || []}
+            onPksChanged={handleInventreePksChanged}
+            onThumbnailOverridesChanged={handleInventreePkThumbnailOverridesChanged}
+          />
+          <InventreeHassSensorsSection
+            selectedSensors={currentEditorConfig.data_sources?.inventree_hass_sensors || []}
+            onSensorsChanged={handleInventreeHassSensorsChanged}
+            hass={hass}
+          />
+          <HaEntitiesSection
+            selectedEntities={currentEditorConfig.data_sources?.ha_entities || []}
+            onEntitiesChanged={handleHaEntitiesChanged}
+            hass={hass}
+          />
+          <InventreeParametersToFetchSection
+            parameterFetchConfigs={currentEditorConfig.data_sources?.inventree_parameters_to_fetch || []}
+            onFetchConfigsChanged={handleInventreeParametersToFetchChanged}
+          />
+        </>
+      )}
 
-      {/* Presentation Section */}
-      <section className="editor-section">
-        <h3>Presentation</h3>
-        <LayoutSelectionSection 
-          hass={hass}
-          layoutConfig={editorData.layout}
+      {activeTab === 'layout' && (
+        <LayoutSelectionSection
+          layoutConfig={currentEditorConfig.layout!}
           onLayoutConfigChanged={handleLayoutConfigChanged}
-          actions={editorData.actions || []}
+          actions={currentEditorConfig.actions || []}
         />
-        <ElementVisibilitySection 
-          displayConfig={editorData.display}
-          onDisplayConfigChanged={handleDisplayConfigChanged}
-          definedLogics={editorData.conditional_logic?.definedLogics || []}
-        />
-        <CardStylingSection 
-          styleConfig={editorData.style} 
-          onStyleConfigChanged={handleStyleConfigChanged} 
-        />
-      </section>
+      )}
 
-      {/* Interactions (now Actions) Section */}
-      <section className="editor-section">
-        <h3>Actions (Triggers & Operations)</h3>
-        <ConfigurableActionsSection
-          hass={hass}
-          actions={editorData.actions}
-          onActionsChanged={handleActionsChanged}
+      {activeTab === 'appearance' && (
+        <>
+          <ElementVisibilitySection
+            displayConfig={currentEditorConfig.display!}
+            onDisplayConfigChanged={handleDisplayConfigChanged}
+            definedLogics={currentEditorConfig.conditional_logic?.definedLogics || []}
+          />
+          <CardStylingSection
+            styleConfig={currentEditorConfig.style!}
+            onStyleConfigChanged={handleStyleConfigChanged}
+          />
+        </>
+      )}
+
+      {activeTab === 'actions' && (
+        <>
+          <ConfigurableActionsSection 
+            hass={hass}
+            actions={currentEditorConfig.actions || []}
+            onActionsChanged={handleActionsChanged}
+          />
+          <ConditionalLogicSection
+            conditionalLogicConfig={currentEditorConfig.conditional_logic!}
+            onConfigChanged={handleConditionalLogicConfigChanged}
+            configuredDataSources={currentEditorConfig.data_sources}
+            hass={hass}
+            directApiConfig={currentEditorConfig.direct_api}
+            allParameterValues={allParameterValues}
+          />
+        </>
+      )}
+
+      {activeTab === 'debugging' && (
+        <LoggingSettingsSection 
+          cardInstanceId={cardInstanceId}
+          queries={currentEditorConfig.logging?.queries || []}
+          onQueriesChanged={handleQueriesChanged}
         />
-      </section>
-
-      {/* Conditional Logic Section */}
-      <section className="editor-section">
-        <h3>Conditional Logic</h3>
-        <ConditionalLogicSection
-          conditionalLogicConfig={editorData.conditional_logic} // This is { definedLogics: ... }
-          onConfigChanged={handleConditionalLogicConfigChanged} // Expects { definedLogics: ... }
-          configuredDataSources={editorData.data_sources}
-          hass={hass}
-          directApiConfig={editorData.direct_api}
-          allParameterValues={allParameterValues} 
-        />
-      </section>
-
-      {/* System Settings Section - Placeholder */}
-      <section className="editor-section">
-        <h3>System Settings</h3>
-        <p>Performance, caching, and advanced debug settings will go here.</p>
-      </section>
-
-      <details>
-        <summary>Current Editor Configuration State (Debug)</summary>
-        <pre style={{ fontSize: '0.8em', backgroundColor: '#f0f0f0', padding: '10px', borderRadius: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {JSON.stringify(editorData, null, 2)}
-        </pre>
-      </details>
+      )}
     </div>
   );
 };

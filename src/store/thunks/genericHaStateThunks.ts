@@ -2,18 +2,19 @@ import { createAsyncThunk } from '@reduxjs/toolkit';
 import { HomeAssistant } from 'custom-card-helpers';
 import { RootState } from '../index'; // Adjusted path for RootState
 import { HaEntityState, setEntityStatesBatch } from '../slices/genericHaStateSlice';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('genericHaStateThunks');
+ConditionalLoggerEngine.getInstance().registerCategory('genericHaStateThunks', { enabled: false, level: 'info' });
 
 export const fetchHaEntityStatesThunk = createAsyncThunk<
-  HaEntityState[], // Return type: an array of the fetched/processed entity states
-  { hass: HomeAssistant; entityIds: string[] }, // Argument type: HASS object and an array of entity IDs
+  HaEntityState[],
+  { hass: HomeAssistant; entityIds: string[] },
   { state: RootState; rejectValue: string }
 >(
   'genericHaStates/fetchStates',
   async ({ hass, entityIds }, { rejectWithValue, dispatch }) => {
-    logger.log('fetchHaEntityStatesThunk', `Fetching states for entities: ${entityIds.join(', ')}` , { level: 'debug' });
+    logger.debug('fetchHaEntityStatesThunk', `Fetching states for entities: ${entityIds.join(', ')}`);
 
     if (!hass || !hass.states) {
       const errorMsg = 'HASS object or hass.states is not available.';
@@ -22,7 +23,7 @@ export const fetchHaEntityStatesThunk = createAsyncThunk<
     }
 
     if (!entityIds || entityIds.length === 0) {
-      logger.log('fetchHaEntityStatesThunk', 'No entity IDs provided. Returning empty array.', { level: 'debug' });
+      logger.debug('fetchHaEntityStatesThunk', 'No entity IDs provided. Returning empty array.');
       return [];
     }
 
@@ -41,18 +42,16 @@ export const fetchHaEntityStatesThunk = createAsyncThunk<
         fetchedStates.push(processedState);
       } else {
         logger.warn('fetchHaEntityStatesThunk', `State for entity ${entityId} not found in HASS object.`);
-        // Optionally, still push a representation of a missing/unavailable entity
-        // For now, we just skip it or log.
       }
     }
 
     if (fetchedStates.length > 0) {
-      logger.log('fetchHaEntityStatesThunk', `Dispatching setEntityStatesBatch with ${fetchedStates.length} states.`, { level: 'debug' });
+      logger.debug('fetchHaEntityStatesThunk', `Dispatching setEntityStatesBatch with ${fetchedStates.length} states.`);
       dispatch(setEntityStatesBatch(fetchedStates));
     } else {
-      logger.log('fetchHaEntityStatesThunk', 'No states were successfully fetched or processed.', { level: 'debug' });
+      logger.debug('fetchHaEntityStatesThunk', 'No states were successfully fetched or processed.');
     }
     
-    return fetchedStates; // Return the states for potential direct use or further processing by the caller
+    return fetchedStates;
   }
 ); 

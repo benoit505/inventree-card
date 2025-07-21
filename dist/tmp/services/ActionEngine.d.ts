@@ -3,15 +3,18 @@ import { ActionExecutionContext } from '../types';
 export declare class ActionEngine {
     private static instance;
     private dispatch;
+    private hass;
+    private isExecuting;
     private constructor();
     static getInstance(): ActionEngine;
-    executeAction(actionId: string, initialContext: ActionExecutionContext & {
-        hass?: HomeAssistant;
-    }): Promise<void>;
+    executeAction(actionId: string, context: ActionExecutionContext, cardInstanceId: string): void;
+    private handleOperation;
     private handleCallHAService;
     private handleUpdateInvenTreeParameter;
     private handleDispatchReduxAction;
     private handleTriggerConditionalLogic;
     private handleSetCardState;
+    private processTemplate;
+    setHomeAssistant(hass: HomeAssistant | null): void;
 }
 export declare const actionEngine: ActionEngine;

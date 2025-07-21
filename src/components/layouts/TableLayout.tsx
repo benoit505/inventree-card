@@ -1,209 +1,320 @@
-import React, { useMemo, useState } from 'react';
-import { HomeAssistant } from 'custom-card-helpers';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  flexRender,
-  Table,
-  ColumnDef,
-  SortingState,
-} from '@tanstack/react-table';
-import { motion } from 'framer-motion';
+import React, { useMemo, useState, forwardRef, HTMLAttributes, useCallback, useRef, useEffect } from 'react';
+import { Responsive, WidthProvider } from 'react-grid-layout';
 import { get } from 'lodash';
-import { ActionEngine } from '../../services/ActionEngine';
-import { InventreeItem, LayoutColumn, LayoutConfig, InventreeCardConfig } from '../../types';
-import { useSelector } from 'react-redux';
-import { RootState } from '../../store';
-import { LazyLoadImage } from 'react-lazy-load-image-component';
-import 'react-lazy-load-image-component/src/effects/blur.css';
-import ImageWithFallback from '../common/ImageWithFallback';
+import { motion, Reorder, useDragControls, Variants } from 'framer-motion';
 
+import { HomeAssistant } from 'custom-card-helpers';
+import { ActionEngine } from '../../services/ActionEngine';
+import { useAppDispatch, useAppSelector, RootState } from '../../store';
+import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
+import { selectCombinedParts } from '../../store/slices/partsSlice';
+import { ActionDefinition, InventreeItem, LayoutColumn, LayoutConfig, VisualEffect, ReactGridLayout, InventreeCardConfig } from '../../types';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+import { 
+  selectLayoutsForInstance, 
+  selectColumnsForInstance, 
+  setLayouts as setReduxLayouts, 
+  setColumns as setReduxColumns,
+} from '../../store/slices/layoutSlice';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
+
+ConditionalLoggerEngine.getInstance().registerCategory('TableLayout', { enabled: false, level: 'info', verbose: false });
+
+const ResponsiveReactGridLayout = WidthProvider(Responsive);
 const LOCAL_THUMB_BASE_PATH = '/local/inventree_thumbs/';
 const PREFERRED_THUMB_EXTENSIONS = ['png', 'jpg', 'webp'];
 
-interface TableLayoutProps {
-  hass: HomeAssistant;
-  parts: InventreeItem[];
-  layoutConfig: LayoutConfig;
+// --- GridCell Wrapper Component ---
+// This is a simple, "dumb" component that correctly receives and passes 
+// through the props from react-grid-layout to a DOM element.
+interface GridCellProps extends HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
+}
+
+const GridCell = forwardRef<HTMLDivElement, GridCellProps>((props, ref) => {
+  return (
+    <div ref={ref} {...props}>
+      {props.children}
+    </div>
+  );
+});
+
+// --- CellRenderer Component ---
+// This component is responsible for rendering the content of a single cell.
+// It correctly uses hooks to get the data it needs.
+interface CellRendererProps {
+  partId: number;
+  column: LayoutColumn;
+  isSelected: boolean;
   cardInstanceId: string;
 }
 
-const TableLayout: React.FC<TableLayoutProps> = ({ hass, parts, layoutConfig, cardInstanceId }) => {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
+const itemVariants: Variants = {
+  idle: {
+    x: 0,
+  },
+  shaking: (custom: any) => custom?.animate || {},
+};
+
+const CellRenderer: React.FC<CellRendererProps> = ({ partId, column, isSelected, cardInstanceId }) => {
+  const part = useAppSelector((state: RootState) => selectCombinedParts(state, cardInstanceId).find((p) => p.pk === partId));
+  const visualEffects = useAppSelector((state: RootState) => selectVisualEffectForPart(state, cardInstanceId, partId)) || {};
+  const config = useAppSelector((state: RootState) => state.config.configsByInstance[cardInstanceId]?.config);
+
+  if (!part) {
+    return <div></div>;
+  }
+
+  const animation = visualEffects.animation || {};
+  const animationState = animation.animate ? "shaking" : "idle";
+
+  const cellStyle: React.CSSProperties = {
+    ...(visualEffects.cellStyles?.[column.id] || {}),
+    backgroundColor: visualEffects.highlight,
+    color: visualEffects.textColor,
+    border: isSelected ? '2px solid #3498db' : (visualEffects.border || '1px solid #ddd'),
+    opacity: visualEffects.opacity,
+    boxSizing: 'border-box',
+    transition: 'border 0.2s ease-in-out',
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const renderContent = () => {
+    const { content } = column;
+    if (typeof content === 'object' && content !== null && 'type' in content && (content as any).type === 'parameter') {
+      const param = part.parameters?.find((p) => p.template_detail?.name === (content as any).parameter_name);
+      return <>{param?.data || 'N/A'}</>;
+    }
   
-  const apiUrl = useSelector((state: RootState) => state.api.url);
-  const actionDefinitions = useSelector((state: RootState) => state.actions.actionDefinitions);
-  const visualEffectsByPart = useSelector((state: RootState) => state.visualEffects.effectsByCardInstance[cardInstanceId] || {});
-  const actionEngine = useMemo(() => ActionEngine.getInstance(), []);
-
-  const columns = useMemo<ColumnDef<InventreeItem>[]>(() => {
-    return (layoutConfig.columns || []).map((col: LayoutColumn) => ({
-      accessorKey: col.content,
-      id: col.id,
-      header: col.header ?? col.content,
-      width: col.width,
-      cell: info => {
-        const part = info.row.original;
-
-        if (col.content === 'thumbnail') {
-          const potentialSources: string[] = [];
-
-          // 1. Add local paths first
-          PREFERRED_THUMB_EXTENSIONS.forEach(ext => {
-            potentialSources.push(`${LOCAL_THUMB_BASE_PATH}part_${part.pk}.${ext}`);
-          });
-
-          // 2. Add remote API path as the last resort
-          const apiThumbnailUrl = get(part, 'thumbnail');
-          if (apiThumbnailUrl && apiUrl) {
-            const baseUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
-            const relativeUrl = apiThumbnailUrl.startsWith('/') ? apiThumbnailUrl.slice(1) : apiThumbnailUrl;
-            potentialSources.push(`${baseUrl}/${relativeUrl}`);
-          }
-          
+    if (typeof content === 'string') {
+      switch (content) {
+        case 'thumbnail':
+          return <img src={part.thumbnail || ''} alt={part.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
+        case 'buttons':
           return (
-            <ImageWithFallback
-              sources={potentialSources}
-              alt={part.name}
-              height={40}
-              width={40}
-              style={{ objectFit: 'cover', borderRadius: '4px' }}
-              effect="blur"
-              placeholder={<div style={{height: '40px', width: '40px', backgroundColor: '#e0e0e0', borderRadius: '4px'}} />}
-            />
-          );
-        }
+            <div style={{ display: 'flex', gap: '5px' }}>
+              {(column.buttons || []).map(buttonConfig => {
+                const action = config?.actions?.find(a => a.id === buttonConfig.actionId);
+                if (!action) return null;
 
-        if (col.content === 'buttons') {
-          if (!col.buttons || col.buttons.length === 0) return null;
-
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {col.buttons.map(buttonConfig => {
                 // Check if this button should be rendered for this specific part
-                if (buttonConfig.targetPartPks && !buttonConfig.targetPartPks.includes(part.pk)) {
-                  return null; // Don't render the button if the part PK is not in the target list
+                const targets = buttonConfig.targetPartPks;
+                if (targets && targets.length > 0 && !targets.includes(part.pk)) {
+                  return null;
                 }
 
-                const actionDef = actionDefinitions[buttonConfig.actionId];
-                if (!actionDef) return null;
-
-                const icon = actionDef.trigger?.ui?.icon;
-                const label = actionDef.name || actionDef.id;
+                // Safely access properties, prioritizing the override.
+                const iconString = buttonConfig.icon ?? action.trigger?.ui?.icon;
+                const label = buttonConfig.label ?? action.trigger?.ui?.labelTemplate ?? action.name;
 
                 return (
-                  <button 
-                    key={buttonConfig.id} 
-                    onClick={() => actionEngine.executeAction(buttonConfig.actionId, { part, hass })} 
-                    style={{ display: 'flex', alignItems: 'center', padding: '4px', background: 'none', border: 'none', cursor: 'pointer' }} 
-                    title={label}
-                  >
-                    {icon ? <ha-icon icon={icon} /> : <span>{label}</span>}
+                  <button key={`${action.id}-${part.pk}`} onClick={(e) => { e.stopPropagation(); ActionEngine.getInstance().executeAction(action.id, { part: part as InventreeItem }, cardInstanceId); }} title={action.name} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {iconString ? (
+                      <ha-icon icon={iconString} style={{ color: '#444' }} />
+                    ) : (
+                      <span>{label}</span>
+                    )}
                   </button>
                 );
               })}
             </div>
           );
-        }
+        case 'description':
+          return <div style={{ padding: '5px', fontSize: '0.9em' }}>{part.description}</div>;
+        default:
+          return <>{get(part, content, '')}</>;
+      }
+    }
+    return null;
+  };
+  
+  return (
+    <motion.div
+      style={cellStyle}
+      variants={itemVariants}
+      animate={animationState}
+      custom={animation}
+      transition={animation.transition}
+    >
+      {renderContent()}
+    </motion.div>
+  );
+};
 
-        const value = get(part, col.content);
-        console.log(`[TableLayout Cell Render] Part PK: ${part.pk}, Column: ${col.id}, Content Key: ${col.content}, Value:`, value);
-        return value !== null && value !== undefined ? String(value) : null;
-      },
-    }));
-  }, [layoutConfig.columns, apiUrl, actionDefinitions, actionEngine]);
+// --- Main TableLayout Component ---
+interface TableLayoutProps {
+  hass: HomeAssistant;
+  parts: InventreeItem[];
+  config: InventreeCardConfig; 
+  cardInstanceId: string;
+}
 
-  const table = useReactTable({
-    data: parts,
-    columns,
-    state: { sorting, globalFilter },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    columnResizeMode: 'onChange',
+const TableLayout: React.FC<TableLayoutProps> = ({ hass, parts, config, cardInstanceId }): JSX.Element => {
+  // ========================================================================================
+  // === 1. HOOKS: All hooks must be at the top level =======================================
+  // ========================================================================================
+  const logger = useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('TableLayout', cardInstanceId);
+  }, [cardInstanceId]);
+  
+  logger.verbose('TableLayout', `Render cycle started. Part count: ${parts.length}`, { cardInstanceId });
+
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
+  
+  const allVisualEffects = useAppSelector((state: RootState) => state.visualEffects.effectsByCardInstance[cardInstanceId]);
+  
+  // ========================================================================================
+  // === 2. DERIVED STATE & MEMOIZED VALUES ===============================================
+  // ========================================================================================
+  
+  const displayColumns = useMemo(() => {
+    const cols = config.layout?.columns || [];
+    logger.verbose('useMemo[displayColumns]', 'Recalculated display columns from config.', { 
+      columnCount: cols.length,
+      columnIds: cols.map((c: LayoutColumn) => c.id) 
+    });
+    return cols;
+  }, [config.layout?.columns, logger]);
+
+  const filteredParts = useMemo(() => {
+    if (!globalFilter) return parts;
+    return parts.filter(part =>
+      part.name.toLowerCase().includes(globalFilter.toLowerCase()) ||
+      part.description?.toLowerCase().includes(globalFilter.toLowerCase())
+    );
+  }, [parts, globalFilter]);
+
+  const displayLayouts = useMemo<ReactGridLayout.Layouts>(() => {
+    logger.debug('useMemo[displayLayouts]', 'Recalculating display layouts from column templates.');
+
+    const columnsForLayout = config.layout?.columns || [];
+    if (columnsForLayout.length === 0) {
+      logger.warn('useMemo[displayLayouts]', 'No columns defined, cannot generate layout.');
+      return { lg: [] };
+    }
+    
+    // Calculate the total height of one template row in grid units.
+    // This is the maximum "bottom" position (y + h) among all columns in the template.
+    // This ensures that rows with complex, multi-level layouts don't overlap.
+    const templateRowHeight = columnsForLayout.reduce((maxHeight: number, col: LayoutColumn) => {
+        const colBottom = (col.y ?? 0) + (col.h ?? 1);
+        return Math.max(maxHeight, colBottom);
+    }, 0);
+
+    const layouts: ReactGridLayout.Layout[] = [];
+    parts.forEach((part: InventreeItem, rowIndex: number) => {
+      // Each part (row) is offset vertically by the height of the template multiplied by its index.
+      const yOffset = rowIndex * templateRowHeight;
+      columnsForLayout.forEach((col: LayoutColumn) => {
+        layouts.push({ 
+          i: `${part.pk}-${col.id}`, 
+          x: col.x ?? 0, 
+          y: (col.y ?? 0) + yOffset, // Apply the template's y-position plus the calculated row offset
+          w: col.w ?? 2, 
+          h: col.h ?? 1,
+        });
+      });
+    });
+    
+    return { lg: layouts };
+  }, [config.layout?.columns, parts, logger]);
+  
+  const visiblePartPks = useMemo(() => new Set(filteredParts.map((p) => p.pk)), [filteredParts]);
+
+  const visibleLayouts: ReactGridLayout.Layouts = useMemo(() => {
+    if (!displayLayouts) return { lg: [] };
+    const lgLayout = displayLayouts.lg || [];
+    const filteredLg = lgLayout.filter((item: ReactGridLayout.Layout) => {
+      const pk = parseInt(item.i.split('-')[0], 10);
+      return visiblePartPks.has(pk);
+    });
+    return { lg: filteredLg };
+  }, [displayLayouts, visiblePartPks]);
+
+  // ========================================================================================
+  // === 3. EFFECT HOOKS (Removed, no longer needed for persistence) ========================
+  // ========================================================================================
+  
+  // ========================================================================================
+  // === 4. EVENT HANDLERS (Removed, no editing in view mode) ===============================
+  // ========================================================================================
+
+  // ========================================================================================
+  // === 5. RENDER GUARDS (Early returns) =================================================
+  // ========================================================================================
+  
+  if (!parts || !displayColumns || displayColumns.length === 0) {
+    logger.warn('TableLayout', 'Render blocked: parts or columns not ready yet.', { 
+      hasParts: !!parts, 
+      hasDisplayColumns: !!displayColumns,
+      columnCount: displayColumns?.length || 0,
+    });
+    return <div>Loading parts or layout configuration...</div>;
+  }
+  
+  // ========================================================================================
+  // === 6. FINAL RENDER ====================================================================
+  // ========================================================================================
+
+  logger.verbose('TableLayout', 'Final values for render:', {
+    displayColumns: displayColumns.map((c: LayoutColumn) => c.id),
+    layoutKeysCount: displayLayouts?.lg?.length,
   });
 
   return (
-    <div style={{ width: '100%' }}>
-      {layoutConfig.enableFiltering && <div style={{ padding: '8px' }}><input value={globalFilter ?? ''} onChange={e => setGlobalFilter(String(e.target.value))} placeholder="Search all columns..." style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} /></div>}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          {table.getHeaderGroups().map(headerGroup => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map(header => {
-                const colDef = header.column.columnDef as any;
-                return (
-                  <th key={header.id} colSpan={header.colSpan} style={{ width: colDef.width || header.getSize(), cursor: 'pointer' }} onClick={header.column.getToggleSortingHandler()}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {{ asc: ' 🔼', desc: ' 🔽' }[header.column.getIsSorted() as string] ?? null}
-                  </th>
-                )
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map(row => {
-            const effects = visualEffectsByPart[row.original.pk];
-            if (effects?.isVisible === false) return null;
-            
-            // Start with base styles from the config
-            const rowStyle: React.CSSProperties = {
-              height: layoutConfig.rowHeight ? `${layoutConfig.rowHeight}px` : 'auto',
-            };
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <input
+          type="text"
+          placeholder="Filter..."
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          style={{ padding: '8px', width: '100%', boxSizing: 'border-box' }}
+        />
+      </div>
+      
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <ResponsiveReactGridLayout
+          className="layout"
+          layouts={visibleLayouts}
+          breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+          cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+          rowHeight={config.layout?.rowHeight || 50}
+          isDraggable={false}
+          isResizable={false}
+          compactType={config.layout?.compactType}
+          allowOverlap={!!config.layout?.allowOverlap}
+          onLayoutChange={() => {}} // No-op, layout changes are not handled in view mode
+        >
+          {filteredParts.flatMap((part: InventreeItem) =>
+            displayColumns.map((column: LayoutColumn) => {
+              const cellId = `${part.pk}-${column.id}`;
+              const isVisible = allVisualEffects?.[part.pk]?.isVisible !== false;
+              if (!isVisible) return null;
 
-            // Apply conditional effect styles, overriding base if necessary
-            if (effects?.highlight) rowStyle.backgroundColor = effects.highlight;
-            if (effects?.textColor) rowStyle.color = effects.textColor;
-            if (effects?.border) rowStyle.border = effects.border;
-            if (effects?.opacity) rowStyle.opacity = effects.opacity;
-
-            const animation = effects?.animation || {};
-            const animationState = animation.animate ? "shaking" : "idle";
-
-            return (
-              <motion.tr
-                key={row.id}
-                style={rowStyle}
-                variants={{
-                  idle: { x: 0 },
-                  shaking: (custom) => custom?.animate || {},
-                }}
-                animate={animationState}
-                custom={animation}
-                transition={animation.transition}
-              >
-                {row.getVisibleCells().map(cell => {
-                  const colDef = cell.column.columnDef as any;
-                  
-                  // Start with a base style object
-                  let cellStyle: React.CSSProperties = {
-                    width: colDef.width || cell.column.getSize(),
-                  };
-
-                  // Check for and apply cell-specific styles from the effects engine
-                  const cellEffects = effects?.cellStyles?.[cell.column.id];
-                  if (cellEffects) {
-                    cellStyle = { ...cellStyle, ...cellEffects };
-                  }
-
-                  return (
-                    <td key={cell.id} style={cellStyle}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  )
-                })}
-              </motion.tr>
-            );
-          })}
-        </tbody>
-      </table>
+              return (
+                <div key={cellId} onClick={() => setSelectedCellId(cellId)}>
+                  <CellRenderer
+                    partId={part.pk}
+                    column={column}
+                    isSelected={selectedCellId === cellId}
+                    cardInstanceId={cardInstanceId}
+                  />
+                </div>
+              );
+            })
+          )}
+        </ResponsiveReactGridLayout>
+      </div>
     </div>
   );
 };
 
-export default TableLayout; 
+export default TableLayout;

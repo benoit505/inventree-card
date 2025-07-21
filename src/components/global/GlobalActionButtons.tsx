@@ -3,8 +3,11 @@ import { useSelector } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig, ActionDefinition, ActionExecutionContext } from '../../types';
 import { RootState } from '../../store';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { actionEngine } from '../../services/ActionEngine';
+
+const logger = ConditionalLoggerEngine.getInstance().getLogger('GlobalActionButtons');
+ConditionalLoggerEngine.getInstance().registerCategory('GlobalActionButtons', { enabled: false, level: 'info' });
 
 interface GlobalActionButtonsProps {
   config?: InventreeCardConfig;
@@ -13,7 +16,6 @@ interface GlobalActionButtonsProps {
 }
 
 const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass, cardInstanceId }) => {
-  const logger = useMemo(() => Logger.getInstance(), []);
   const genericHaStates = useSelector((state: RootState) => state.genericHaStates);
 
   // Button labels for global actions generally won't have part-specific templates.
@@ -27,7 +29,7 @@ const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass,
 
   const getGlobalUiActionButtons = useCallback((): ActionDefinition[] => {
     if (!config || !config.actions || !Array.isArray(config.actions)) {
-      logger.log('GlobalActionButtons', 'No actions defined in config.');
+      logger.debug('getGlobalUiActionButtons', 'No actions defined in config.');
       return [];
     }
     
@@ -37,41 +39,42 @@ const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass,
       // If targetPartPks is set (and not an empty array), this button is too specific for global placement.
       if (action.trigger.ui?.targetPartPks) {
         if (Array.isArray(action.trigger.ui.targetPartPks) && action.trigger.ui.targetPartPks.length > 0) {
-          logger.log('GlobalActionButtons', `Filtering out global button '${action.name}' because targetPartPks is specified.`, { actionId: action.id });
+          logger.debug('getGlobalUiActionButtons', `Filtering out global button '${action.name}' because targetPartPks is specified.`, { actionId: action.id });
           return false;
         }
         // Potentially handle non-empty string targetPartPks if they have a global meaning, for now, filter out if present and not an empty array.
         if (typeof action.trigger.ui.targetPartPks === 'string' && action.trigger.ui.targetPartPks.trim() !== '') {
-            logger.log('GlobalActionButtons', `Filtering out global button '${action.name}' because string targetPartPks '${action.trigger.ui.targetPartPks}' is specified.`, { actionId: action.id });
+            logger.debug('getGlobalUiActionButtons', `Filtering out global button '${action.name}' because string targetPartPks '${action.trigger.ui.targetPartPks}' is specified.`, { actionId: action.id });
             return false;
         }
       }
       return true;
     });
-    logger.log('GlobalActionButtons', `Found ${globalButtons.length} UI Action Buttons for global_header`, { data: globalButtons });
+    logger.debug('getGlobalUiActionButtons', `Found ${globalButtons.length} UI Action Buttons for global_header`, { data: globalButtons });
     return globalButtons;
-  }, [config, logger]);
+  }, [config]);
 
   const handleClick = useCallback(async (action: ActionDefinition) => {
-    if (!hass) {
-      logger.warn('GlobalActionButtons', 'Button clicked, but HASS object is not available.');
+    if (!hass || !cardInstanceId) {
+      logger.warn('handleClick', 'Button clicked, but HASS object or cardInstanceId is not available.');
       return;
     }
 
-    logger.log('GlobalActionButtons', `Executing Global Action ID: ${action.id} (Name: ${action.name})`);
+    logger.info('handleClick', `Executing Global Action ID: ${action.id} (Name: ${action.name})`);
 
-    const context: ActionExecutionContext & { hass?: HomeAssistant } = {
+    const context: ActionExecutionContext = {
       hass: hass,
       hassStates: genericHaStates,
+      cardInstanceId: cardInstanceId,
     };
 
     try {
-      await actionEngine.executeAction(action.id, context);
-      logger.log('GlobalActionButtons', `Global action ${action.name} dispatched to ActionEngine.`);
+      await actionEngine.executeAction(action.id, context, cardInstanceId);
+      logger.info('handleClick', `Global action ${action.name} dispatched to ActionEngine.`);
     } catch (e: any) {
-      logger.error('GlobalActionButtons', `Error dispatching global action ${action.name}: ${e?.message || String(e)}`, { error: e });
+      logger.error('handleClick', `Error dispatching global action ${action.name}: ${e?.message || String(e)}`, e as any);
     }
-  }, [hass, logger, genericHaStates]);
+  }, [hass, genericHaStates, cardInstanceId]);
 
   const displayedButtons = useMemo(() => getGlobalUiActionButtons(), [getGlobalUiActionButtons]);
 
@@ -117,7 +120,7 @@ const GlobalActionButtons: React.FC<GlobalActionButtonsProps> = ({ config, hass,
 
         // If there's no icon and no label, skip rendering this button as it would be invisible/confusing.
         if (!buttonIcon && !buttonLabel) {
-          logger.log('GlobalActionButtons', `Skipping rendering button for action '${action.name}' as it has no icon and no label.`, {actionId: action.id});
+          logger.debug('render', `Skipping rendering button for action '${action.name}' as it has no icon and no label.`, {actionId: action.id});
           return null;
         }
 

@@ -1,10 +1,12 @@
 import { Middleware, AnyAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
 import { trackUsage } from '../../utils/metrics-tracker';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 // import { MetricsService } from '../../services/metrics'; // Import if a real service exists
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('metricsMiddleware');
+ConditionalLoggerEngine.getInstance().registerCategory('metricsMiddleware', { enabled: false, level: 'info' });
+
 // const metricsService = MetricsService.getInstance(); // Get instance if service exists
 
 const metricsMiddleware: Middleware = 
@@ -20,9 +22,9 @@ const metricsMiddleware: Middleware =
         const { category, action: eventAction, label, value } = typedAction.payload;
         try {
             trackUsage(category, eventAction, { label, value, source: 'redux' });
-            logger.log('MetricsMiddleware', `Tracked event: ${category}/${eventAction}`, { category: 'metrics', data: typedAction.payload });
+            logger.debug('middleware', `Tracked event: ${category}/${eventAction}`, { data: typedAction.payload });
         } catch (error) {
-            logger.error('MetricsMiddleware', `Error tracking usage: ${error}`, { category: 'metrics', error });
+            logger.error('middleware', `Error tracking usage: ${(error as Error).message}`, error as Error);
         }
     }
     

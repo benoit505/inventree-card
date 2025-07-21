@@ -1,11 +1,11 @@
-import * as React from 'react';
+import React from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem } from '../../types';
+import { InventreeItem, InventreeCardConfig } from '../../types';
 interface PartsLayoutProps {
-    hass?: HomeAssistant;
-    config?: InventreeCardConfig;
     parts: InventreeItem[];
-    cardInstanceId?: string;
+    hass: HomeAssistant;
+    config: InventreeCardConfig;
+    cardInstanceId: string;
 }
 declare const PartsLayout: React.FC<PartsLayoutProps>;
 export default PartsLayout;

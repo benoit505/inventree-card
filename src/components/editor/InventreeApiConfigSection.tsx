@@ -1,9 +1,10 @@
 import React, { useCallback, ChangeEvent } from 'react';
 import type { HomeAssistant } from 'custom-card-helpers';
 import { DirectApiConfig, InventreeCardConfig } from '../../types'; // Assuming types are correctly pathed
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('InventreeApiConfigSection');
+ConditionalLoggerEngine.getInstance().registerCategory('InventreeApiConfigSection', { enabled: false, level: 'info' });
 
 interface InventreeApiConfigSectionProps {
   hass?: HomeAssistant;
@@ -36,7 +37,7 @@ const InventreeApiConfigSection: React.FC<InventreeApiConfigSectionProps> = ({
       [name]: processedValue,
     };
     onDirectApiConfigChanged(newConfig);
-    logger.log('Editor:ApiConfig', `API Config changed: ${name} = ${processedValue}`, { newConfig });
+    logger.info('handleInputChange', `API Config changed: ${name} = ${processedValue}`, { newConfig });
   }, [directApiConfig, onDirectApiConfigChanged]);
 
   return (

@@ -1,132 +1,97 @@
-import * as React from 'react';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+/// <reference types="react-window" />
+import React from 'react';
+import { useDispatch } from 'react-redux';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, VisualModifiers, ParameterDetail } from '../../types';
-import { VisualEffect } from '../../store/slices/visualEffectsSlice';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState, AppDispatch } from '../../store/index';
-import { ThunkDispatch } from 'redux-thunk';
-import { AnyAction } from 'redux';
-import { Logger } from '../../utils/logger';
-import { useElementDisplayStatus } from '../../hooks/useElementDisplayStatus';
-
-import { selectLocatingPartId, locatePartById } from '../../store/slices/partsSlice';
-import { fetchParametersForReferencedParts } from '../../store/thunks/parameterThunks';
-
+import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
+import { InventreeCardConfig, InventreeItem, VisualEffect } from '../../types';
+import { setLocatingPartId } from '../../store/slices/partsSlice';
 import ListItem from './ListItem';
+import { useSelector } from 'react-redux';
+import { RootState, useAppDispatch } from '../../store';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-// ADD: Import TanStack Virtual
-import { useVirtualizer } from '@tanstack/react-virtual';
+ConditionalLoggerEngine.getInstance().registerCategory('ListLayout', { enabled: false, level: 'info' });
 
 interface ListLayoutProps {
-  hass?: HomeAssistant;
-  config?: InventreeCardConfig;
   parts: InventreeItem[];
-  cardInstanceId?: string;
+  config: InventreeCardConfig;
+  hass: HomeAssistant;
+  cardInstanceId: string;
 }
 
-const ListLayout: React.FC<ListLayoutProps> = ({ hass, config, parts, cardInstanceId }) => {
-  const logger = React.useMemo(() => Logger.getInstance(), []);
-  const dispatch = useDispatch<AppDispatch>();
+const ListLayout: React.FC<ListLayoutProps> = ({
+  parts,
+  config,
+  hass,
+  cardInstanceId,
+}) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('ListLayout', cardInstanceId);
+  }, [cardInstanceId]);
 
-  // ADD: Ref for the parent scroll container
-  const parentRef = React.useRef<HTMLDivElement>(null);
-
-  const locatingPartId = useSelector((state: RootState) => selectLocatingPartId(state));
-  const allLoadingStatuses = useSelector((state: RootState) => state.parameters.parameterLoadingStatus || {});
-
-  const globalParameterActions = useMemo(() => config?.parameters?.actions || [], [config?.parameters?.actions]);
-
-  const parametersDisplayEnabledInList = useElementDisplayStatus(cardInstanceId, 'show_parameters', config?.display);
-
-  const filteredAndSortedParts = useMemo(() => {
-    logger.log('ListLayout React', 'useMemo[filteredAndSortedParts] - Recalculating.', { numParts: parts?.length });
-    if (!parts) return [];
-
-    let processedParts = [...parts];
-    processedParts.sort((a, b) => a.pk - b.pk); 
-    logger.log('ListLayout React', `Parts after basic sorting: ${processedParts.length}`);
-    return processedParts;
-  }, [parts, logger]);
-
-  const handleLocatePart = useCallback((partId: number) => {
-    logger.log('ListLayout React', `Locating part: ${partId}`);
-    if (hass) {
-      dispatch(locatePartById({ partId, hass }));
-    }
-  }, [dispatch, logger, hass]);
-
-  if (!config) {
-    return <div className="list-container loading-container"><div className="loading">Loading config...</div></div>;
-  }
-  if (!parts || parts.length === 0) {
-    return <div className="list-container no-parts"><p>No parts to display.</p></div>;
-  }
-
-  if (filteredAndSortedParts.length === 0 && parts.length > 0) { 
-      logger.log('ListLayout React Render', 'Initial parts provided, but filteredAndSortedParts is empty (this should not happen if only sorting).');
-  } else if (filteredAndSortedParts.length === 0) {
-      logger.log('ListLayout React Render', 'No parts to display after sorting (or initial empty). ');
-      return <div className="list-container no-parts"><p>No parts to display.</p></div>;
-  }
-
-  logger.log('ListLayout React Render', `Rendering with ${filteredAndSortedParts.length} parts.`);
-
-  // VIRTUALIZATION SETUP
-  const rowVirtualizer = useVirtualizer({
-    count: filteredAndSortedParts.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 70, // Estimate list item height, adjust as needed
-    overscan: 5,
-  });
+  logger.verbose('ListLayout', 'Component rendering', { partCount: parts.length, cardInstanceId });
+  const dispatch = useAppDispatch();
   
-  // STYLES FOR VIRTUALIZATION
-  const scrollContainerStyles: React.CSSProperties = {
-    height: '100%',
-    maxHeight: '80vh',
-    overflow: 'auto',
-    position: 'relative',
-    padding: '8px',
+  const handleLocatePart = (partId: number) => {
+    logger.info('handleLocatePart', `Locating partId: ${partId}`);
+    dispatch(setLocatingPartId({ partId, cardInstanceId }));
   };
 
-  const virtualContainerStyles: React.CSSProperties = {
-    height: `${rowVirtualizer.getTotalSize()}px`,
-    width: '100%',
-    position: 'relative',
-  };
+  const conditionalEffects = useSelector((state: RootState) => state.visualEffects.effectsByCardInstance[cardInstanceId] || {});
+
+  const visibleParts = parts.filter(part => {
+    const effect = conditionalEffects[part.pk];
+    const isVisible = !effect || effect.isVisible !== false;
+    if (!isVisible) {
+      logger.debug('ListLayout', `Filtering out partId ${part.pk} because it is not visible.`);
+    }
+    return isVisible;
+  });
+  logger.debug('ListLayout', `Render with ${visibleParts.length} visible parts out of ${parts.length} total.`);
+
+  const rowHeight = config.layout_options?.item_height || 75;
+
+  // Define the type for the itemData prop
+  interface ItemData {
+    parts: InventreeItem[];
+    config: InventreeCardConfig;
+    hass: HomeAssistant;
+    cardInstanceId: string;
+    conditionalEffects: Record<number, VisualEffect>;
+    onLocate: (partId: number) => void;
+  }
 
   return (
-    <div ref={parentRef} className="list-container" style={scrollContainerStyles}>
-      <div style={virtualContainerStyles}>
-        {rowVirtualizer.getVirtualItems().map(virtualItem => {
-          const part = filteredAndSortedParts[virtualItem.index];
-          if (!part || typeof part.pk !== 'number') return null;
-          
+    <div style={{ height: '100%', width: '100%' }}>
+      <List<ItemData>
+        height={500} 
+        itemCount={visibleParts.length}
+        itemSize={rowHeight}
+        width="100%"
+        itemData={{
+          parts: visibleParts,
+          config,
+          hass,
+          cardInstanceId,
+          conditionalEffects,
+          onLocate: handleLocatePart,
+        }}
+      >
+        {({ data, index, style }: ListChildComponentProps<ItemData>) => {
+          const part = data.parts[index];
           return (
-            <div
-              key={virtualItem.key}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: `${virtualItem.size}px`,
-                transform: `translateY(${virtualItem.start}px)`,
-              }}
-            >
+            <div style={style}>
               <ListItem
                 part={part}
-                config={config}
-                hass={hass}
-                parametersDisplayEnabled={parametersDisplayEnabledInList}
-                onLocate={handleLocatePart}
-                parameterActions={globalParameterActions}
-                cardInstanceId={cardInstanceId}
+                config={data.config}
+                hass={data.hass}
+                cardInstanceId={data.cardInstanceId}
+                onLocate={data.onLocate}
               />
             </div>
           );
-        })}
-      </div>
+        }}
+      </List>
     </div>
   );
 };

@@ -1,16 +1,17 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig, InventreeItem, ParameterAction, VisualModifiers, ParameterCondition, ProcessedVariant } from '../../types';
+import { InventreeCardConfig, InventreeItem, ParameterAction, VisualEffect, ParameterCondition, ProcessedVariant } from '../../types';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { ThunkDispatch } from 'redux-thunk';
 import { AnyAction } from 'redux';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { VariantHandler } from '../common/variant-handler';
 import PartView from '../part/PartView';
+import { motion, AnimatePresence } from 'framer-motion';
 
-import { selectLocatingPartId, locatePartById } from '../../store/slices/partsSlice';
+import { selectLocatingPartId, setLocatingPartId } from '../../store/slices/partsSlice';
 import { selectVisualEffectForPart } from '../../store/slices/visualEffectsSlice';
 
 interface VariantLayoutProps {
@@ -20,8 +21,14 @@ interface VariantLayoutProps {
   cardInstanceId?: string;
 }
 
-// --- Style Helpers (Consider moving to a shared util if used across more layouts) ---
-const getVariantItemContainerStyle = (modifiers?: VisualModifiers, isGroupHeader?: boolean): React.CSSProperties => {
+// --- Types specific to this layout ---
+interface DisplayItem {
+  item: ProcessedVariant | InventreeItem;
+  depth: number;
+}
+
+// --- Style Helpers (Consider moving to a shared util if used elsewhere) ---
+const getVariantItemContainerStyle = (modifiers?: VisualEffect, isGroupHeader?: boolean): React.CSSProperties => {
   const styles: React.CSSProperties = {
     border: '1px solid #e0e0e0',
     padding: '8px',
@@ -36,17 +43,23 @@ const getVariantItemContainerStyle = (modifiers?: VisualModifiers, isGroupHeader
   return styles;
 };
 
-const getVariantItemTextStyle = (modifiers?: VisualModifiers): React.CSSProperties => {
+const getVariantItemTextStyle = (modifiers?: VisualEffect): React.CSSProperties => {
   if (!modifiers || !modifiers.textColor) return {};
   return { color: modifiers.textColor };
 };
 
+ConditionalLoggerEngine.getInstance().registerCategory('VariantLayout', { enabled: false, level: 'info' });
+
 const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, cardInstanceId }) => {
-  const logger = useMemo(() => Logger.getInstance(), []);
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('VariantLayout', cardInstanceId);
+  }, [cardInstanceId]);
+  
+  logger.verbose('VariantLayout', 'Component rendering', { partCount: parts.length, cardInstanceId });
   const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
   const fullState = useSelector((state: RootState) => state);
 
-  const locatingPartId = useSelector((state: RootState) => selectLocatingPartId(state));
+  const locatingPartId = useSelector((state: RootState) => selectLocatingPartId(state, cardInstanceId || 'unknown_card'));
   const parameterConfigFromProps = useMemo(() => config?.parameters, [config]);
   const allLoadingStatuses = useSelector((state: RootState) => state.parameters.parameterLoadingStatus || {});
 
@@ -57,14 +70,14 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
   // --- Process Variants --- 
   useEffect(() => {
     if (config && parts) {
-      logger.log('VariantLayout React', 'useEffect[parts, config] - Processing variants', { numParts: parts.length });
+      logger.debug('useEffect[processVariants]', 'Processing variants', { numParts: parts.length });
       // Ensure VariantHandler.processItems is available and correctly typed for React usage
       const newProcessed = VariantHandler.processItems(parts, config);
       setProcessedVariants(newProcessed);
     } else {
       setProcessedVariants([]);
     }
-  }, [parts, config, logger]);
+  }, [parts, config]);
 
   // --- Calculate Required Part IDs ---
   const getReferencedPartIdsFromConditions = useCallback((conditions?: ParameterCondition[]): number[] => {
@@ -82,27 +95,35 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
 
   // --- Filter Visible Items ---
   const visibleItems = useMemo(() => {
-    if (!config?.parameters?.enabled && !config?.conditional_logic) {
-      return processedVariants;
-    }
-    return processedVariants.filter(item => {
+    logger.debug('useMemo[visibleItems]', 'Filtering visible items', { processedCount: processedVariants.length });
+    if (processedVariants.length === 0) return [];
+
+    const filtered = processedVariants.filter(item => {
       const partToCheckId = VariantHandler.isVariant(item) ? item.template.pk : item.pk;
-      const effect = selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partToCheckId) as VisualModifiers | undefined;
-      return effect?.isVisible !== false;
+      const effect = selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partToCheckId);
+      const isVisible = effect?.isVisible !== false;
+      if (!isVisible) {
+          logger.debug('useMemo[visibleItems]', `Hiding partId ${partToCheckId} due to isVisible:false effect.`);
+      }
+      return isVisible;
     });
-  }, [processedVariants, config?.parameters, config?.conditional_logic, fullState, cardInstanceId]);
+    logger.debug('useMemo[visibleItems]', `Found ${filtered.length} visible items.`);
+    return filtered;
+  }, [processedVariants, fullState, cardInstanceId]);
 
   // --- Event Handlers ---
   const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.style.display = 'none'; }, []);
   const handleLocateItem = useCallback((partId: number) => {
-    if (hass) {
-      dispatch(locatePartById({ partId, hass }));
+    logger.info('handleLocateItem', `Locating item with partId: ${partId}`);
+    if (cardInstanceId) {
+      dispatch(setLocatingPartId({ partId, cardInstanceId }));
     }
-  }, [dispatch, hass]);
+  }, [dispatch, cardInstanceId]);
   const handleParameterAction = useCallback((partId: number, action: ParameterAction) => { 
-    logger.warn('VariantLayout Action', 'handleParameterAction called (needs review for RTK Query integration)', { data: { partId, action } });
-  }, [dispatch, logger]);
+    logger.warn('handleParameterAction', 'handleParameterAction called (needs review for RTK Query integration)', { partId, action });
+  }, [dispatch]);
   const handleToggleGroup = useCallback((groupPk: number) => {
+    logger.debug('handleToggleGroup', `Toggling group visibility for template PK: ${groupPk}`);
     setExpandedGroups(prev => {
         const newSet = new Set(prev);
         if (newSet.has(groupPk)) newSet.delete(groupPk);
@@ -112,19 +133,25 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
   }, []);
 
   // --- Render Helper for a single part (template or variant) ---
-  const renderPartItem = useCallback((part: InventreeItem, isVariantInGroup: boolean = false, isGroupHeader: boolean = false) => {
-    const partId = part.pk;
-    const visualModifiers = (selectVisualEffectForPart(fullState, cardInstanceId || 'unknown_card', partId) as VisualModifiers | undefined) || {};
+  const renderPartItem = useCallback((partId: number, layoutContext: 'grid' | 'list' | 'tree', isTemplate: boolean) => {
+    logger.verbose('renderPartItem', `Rendering item for partId: ${partId}`, { layoutContext, isTemplate });
+    const visualModifiers = selectVisualEffectForPart(fullState, cardInstanceId || '', partId) || {};
     const isCurrentlyLocating = locatingPartId === partId;
 
-    const baseDisplayConfig = config?.display || {};
+    // This check ensures config and cardInstanceId are defined for the selectors and PartView
+    if (!config || !cardInstanceId || !hass) {
+        logger.warn('renderPartItem', `Cannot render partId ${partId}: critical props missing.`);
+        return <div style={{padding: '8px'}}>Initializing part...</div>;
+    }
+
+    const baseDisplayConfig = config.display || {};
     const itemDisplayConfig = { ...baseDisplayConfig };
 
-    if (isGroupHeader) {
+    if (isTemplate) {
       itemDisplayConfig.show_buttons = false;
       itemDisplayConfig.show_part_details_component = false; 
       itemDisplayConfig.show_stock_status_border = baseDisplayConfig.show_stock_status_border_for_templates !== false; 
-    } else if (isVariantInGroup) {
+    } else {
       itemDisplayConfig.show_buttons = baseDisplayConfig.show_buttons_for_variants !== undefined ? baseDisplayConfig.show_buttons_for_variants : false;
       itemDisplayConfig.show_part_details_component = baseDisplayConfig.show_part_details_component_for_variants !== undefined ? baseDisplayConfig.show_part_details_component_for_variants : false;
       itemDisplayConfig.show_image = baseDisplayConfig.show_image_for_variants !== undefined ? baseDisplayConfig.show_image_for_variants : true;
@@ -137,28 +164,37 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
       display: itemDisplayConfig,
     } as InventreeCardConfig;
 
-    const itemContainerStyleToUse = getVariantItemContainerStyle(visualModifiers, isGroupHeader);
+    const itemContainerStyleToUse = getVariantItemContainerStyle(visualModifiers, isTemplate);
 
     return (
       <div 
         key={partId} 
-        className={`variant-part-item ${isVariantInGroup ? 'variant-member' : ''} ${isGroupHeader ? 'group-header' : ''}`}
+        className={`variant-part-item ${isTemplate ? 'group-header' : ''}`}
         style={itemContainerStyleToUse}
-        onClick={() => !isGroupHeader && handleLocateItem(partId)}
+        onClick={() => !isTemplate && handleLocateItem(partId)}
       >
         <PartView partId={partId} config={itemConfig} hass={hass} cardInstanceId={cardInstanceId} />
         {isCurrentlyLocating && <div className="locating-indicator" style={{ marginTop: '5px', textAlign:'center', color:'blue' }}>Locating...</div>}
       </div>
     );
-  }, [config, hass, fullState, locatingPartId, handleLocateItem, cardInstanceId]);
+  }, [config, hass, cardInstanceId, fullState, locatingPartId, handleLocateItem]);
 
   // --- Main Render Logic ---
-  if (!config) return <div className="variant-layout loading"><p>Loading config...</p></div>;
-  if (!processedVariants || processedVariants.length === 0) return <div className="variant-layout no-variants"><p>No parts or variants to display.</p></div>;
-  if (visibleItems.length === 0 && processedVariants.length > 0) return <div className="variant-layout no-variants"><p>All items filtered out.</p></div>;
+  if (!config || !cardInstanceId || !hass) {
+      logger.warn('VariantLayout', 'Render blocked: critical props missing.');
+      return <div className="variant-layout loading"><p>Loading...</p></div>;
+  }
+  if (!processedVariants || processedVariants.length === 0) {
+      logger.info('VariantLayout', 'Render blocked: no parts or variants to display.');
+      return <div className="variant-layout no-variants"><p>No parts or variants to display.</p></div>;
+  }
+  if (visibleItems.length === 0 && processedVariants.length > 0) {
+      logger.info('VariantLayout', 'Render complete, but all items were filtered out.');
+      return <div className="variant-layout no-variants"><p>All items filtered out.</p></div>;
+  }
   
   const viewMode = config.variant_view_type || 'grid';
-  logger.log('VariantLayout React Render', `Rendering in ${viewMode} mode with ${visibleItems.length} visible items.`);
+  logger.debug('VariantLayout', `Rendering in ${viewMode} mode with ${visibleItems.length} visible items.`);
 
   // For simplicity, starting with Grid and List views. Others can be added.
   const renderGridView = () => (
@@ -167,14 +203,14 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
         if (VariantHandler.isVariant(item)) {
           return (
             <div key={item.template.pk} className="variant-group-grid">
-              {renderPartItem(item.template, false, true)} {/* Render template as header */}
+              {renderPartItem(item.template.pk, 'grid', true)} {/* Render template as header */}
               <div style={{ marginLeft: '20px', borderLeft: '2px solid #f0f0f0', paddingLeft: '10px' }}>
-                {item.variants.map(v => renderPartItem(v, true))}
+                {item.variants.map(v => renderPartItem(v.pk, 'grid', false))}
               </div>
             </div>
           );
         }
-        return renderPartItem(item as InventreeItem);
+        return renderPartItem(item.pk, 'grid', false);
       })}
     </div>
   );
@@ -185,14 +221,14 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
         if (VariantHandler.isVariant(item)) {
           return (
             <div key={item.template.pk} className="variant-group-list" style={{ marginBottom: '15px' }}>
-              {renderPartItem(item.template, false, true)}
+              {renderPartItem(item.template.pk, 'list', true)}
               <div style={{ marginLeft: '30px', paddingTop: '5px' }}>
-                {item.variants.map(v => renderPartItem(v, true))}
+                {item.variants.map(v => renderPartItem(v.pk, 'list', false))}
               </div>
             </div>
           );
         }
-        return renderPartItem(item as InventreeItem);
+        return renderPartItem(item.pk, 'list', false);
       })}
     </div>
   );
@@ -206,17 +242,17 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
                 <div key={item.template.pk} className="variant-group-tree" style={{ marginBottom: '5px' }}>
                     <div onClick={() => handleToggleGroup(item.template.pk)} style={{ display:'flex', alignItems:'center'}}>
                         <span style={{ marginRight:'5px' }}>{isExpanded ? '▼' : '►'}</span>
-                        {renderPartItem(item.template, false, true)}
+                        {renderPartItem(item.template.pk, 'tree', true)}
                     </div>
                     {isExpanded && (
                         <div style={{ marginLeft: '30px', paddingTop: '5px', borderLeft: '1px dashed #ccc' }}>
-                            {item.variants.map(v => renderPartItem(v, true))}
+                            {item.variants.map(v => renderPartItem(v.pk, 'tree', false))}
                         </div>
                     )}
                 </div>
             );
         }
-        return renderPartItem(item as InventreeItem);
+        return renderPartItem(item.pk, 'tree', false);
       })}
     </div>
   );

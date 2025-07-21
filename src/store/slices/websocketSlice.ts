@@ -1,9 +1,10 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { RootState } from '../index';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { WebSocketEventMessage } from '../../types';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('WebSocketSlice');
+ConditionalLoggerEngine.getInstance().registerCategory('WebSocketSlice', { enabled: false, level: 'info' });
 
 type WebSocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'disabled';
 
@@ -26,7 +27,7 @@ export const websocketSlice = createSlice({
     initialState,
     reducers: {
         setWebSocketStatus: (state: WebSocketState, action: PayloadAction<WebSocketStatus>) => {
-            logger.log('WebSocketSlice', `Status changing from ${state.status} to ${action.payload}`);
+            logger.info('setWebSocketStatus', `Status changing from ${state.status} to ${action.payload}`);
             state.status = action.payload;
             if (action.payload === 'error') {
                 // Potentially capture error details if provided in action payload later
@@ -38,12 +39,12 @@ export const websocketSlice = createSlice({
         webSocketMessageReceived: (state: WebSocketState, action: PayloadAction<any>) => {
             state.lastMessage = action.payload;
             state.messageCount += 1;
-            logger.log('WebSocketSlice', `Message received (Count: ${state.messageCount})`, action.payload);
+            logger.debug('webSocketMessageReceived', `Message received (Count: ${state.messageCount})`, action.payload);
             // Further processing or dispatching other actions can happen in middleware
             // or components subscribing to state.lastMessage changes.
         },
         resetWebSocketState: (state: WebSocketState) => {
-            logger.log('WebSocketSlice', 'Resetting WebSocket state');
+            logger.info('resetWebSocketState', 'Resetting WebSocket state');
             Object.assign(state, initialState);
         },
     },

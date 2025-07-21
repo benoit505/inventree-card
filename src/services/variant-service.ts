@@ -1,12 +1,12 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig, VariantGroup, InventreeItem } from "../types";
-import { Logger } from '../utils/logger';
+import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('VariantService');
+ConditionalLoggerEngine.getInstance().registerCategory('VariantService', { enabled: false, level: 'info' });
 
 export class VariantService {
     private hass: HomeAssistant;
-    private logger = Logger.getInstance();
 
     constructor(hass: HomeAssistant) {
         this.hass = hass;
@@ -71,9 +71,10 @@ export class VariantService {
 
         try {
             const variantGroups = this.groupVariants(items, config);
+            // TODO: This function doesn't seem to do anything with the groups.
             return items;
         } catch (error) {
-            Logger.getInstance().error('VariantService', 'Failed to process variants:', error);
+            logger.error('processVariants', 'Failed to process variants:', error as Error);
             return items;
         }
     }
@@ -102,13 +103,13 @@ export class VariantService {
         try {
             return config.variants.variant_groups || [];
         } catch (error) {
-            this.logger.error('VariantService', 'Failed to get variants:', error);
+            logger.error('getVariants', 'Failed to get variants:', error as Error);
             return [];
         }
     }
 
     detectVariantGroups(parts: InventreeItem[]): VariantGroup[] {
-        this.logger.log('VariantService', `Detecting variant groups from ${parts.length} parts`, { subsystem: 'detectVariantGroupsFn' });
+        logger.debug('detectVariantGroups', `Detecting variant groups from ${parts.length} parts`);
         
         const templateParts = parts.filter(part => part.is_template);
         const variantParts = parts.filter(part => part.variant_of !== null);
@@ -138,7 +139,7 @@ export class VariantService {
             };
         });
         
-        this.logger.log('VariantService', `Detected ${result.length} variant groups`, { subsystem: 'detectVariantGroupsFn' });
+        logger.debug('detectVariantGroups', `Detected ${result.length} variant groups`);
         return result;
     }
     
@@ -152,7 +153,7 @@ export class VariantService {
             const templatePart = partMap[group.template_id];
             
             if (!templatePart) {
-                this.logger.warn('VariantService', `Template part not found for group ${group.template_id}`);
+                logger.warn('processVariantGroups', `Template part not found for group ${group.template_id}`);
                 return null;
             }
             
@@ -206,7 +207,7 @@ export class VariantService {
             
             return state.attributes.items as InventreeItem[];
         } catch (error) {
-            this.logger.error('VariantService', 'Failed to get variant data:', error);
+            logger.error('getVariantData', 'Failed to get variant data:', error as Error);
             return [];
         }
     }
@@ -218,7 +219,7 @@ export class VariantService {
  * @returns Array of arrays, each containing PKs of parts in a variant group
  */
 export function detectVariantGroups(parts: InventreeItem[]): number[][] {
-  logger.log('VariantService', `Detecting variant groups from ${parts.length} parts`, { subsystem: 'detectVariantGroupsFn' });
+  logger.debug('detectVariantGroups', `Detecting variant groups from ${parts.length} parts`);
   
   // Group parts by their variant_of property
   const variantGroups: { [key: number]: number[] } = {};
@@ -243,7 +244,7 @@ export function detectVariantGroups(parts: InventreeItem[]): number[][] {
   
   // Convert the object to an array of arrays
   const result = Object.values(variantGroups);
-  logger.log('VariantService', `Detected ${result.length} variant groups`, { subsystem: 'detectVariantGroupsFn' });
+  logger.debug('detectVariantGroups', `Detected ${result.length} variant groups`);
   
   return result;
 }

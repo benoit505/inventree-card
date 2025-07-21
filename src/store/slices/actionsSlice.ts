@@ -1,9 +1,10 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ActionDefinition } from '../../types';
 import { RootState } from '../index';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('actionsSlice');
+ConditionalLoggerEngine.getInstance().registerCategory('actionsSlice', { enabled: false, level: 'info' });
 
 export type ActionStatus = 'idle' | 'pending' | 'success' | 'error';
 
@@ -14,55 +15,65 @@ export interface ActionRuntimeState {
   lastRun?: number; // Timestamp
 }
 
-export interface ActionsState {
+export interface InstanceActionsState {
   actionDefinitions: Record<string, ActionDefinition>;
   actionRuntimeStates: Record<string, ActionRuntimeState>;
 }
 
+export interface ActionsState {
+  byInstance: Record<string, InstanceActionsState>;
+}
+
 const initialState: ActionsState = {
-  actionDefinitions: {},
-  actionRuntimeStates: {},
+  byInstance: {},
 };
 
 const actionsSlice = createSlice({
   name: 'actions',
   initialState,
   reducers: {
-    setActionDefinitions(state, action: PayloadAction<ActionDefinition[]>) {
+    setActionDefinitions(state, action: PayloadAction<{ definitions: ActionDefinition[], cardInstanceId: string }>) {
+      const { definitions, cardInstanceId } = action.payload;
+      
+      if (!state.byInstance[cardInstanceId]) {
+        state.byInstance[cardInstanceId] = { actionDefinitions: {}, actionRuntimeStates: {} };
+      }
+      const instanceState = state.byInstance[cardInstanceId];
+
       const newDefinitions: Record<string, ActionDefinition> = {};
-      for (const definition of action.payload) {
+      for (const definition of definitions) {
         newDefinitions[definition.id] = definition;
       }
-      state.actionDefinitions = newDefinitions;
-      logger.log('actionsSlice', `Set ${action.payload.length} action definitions.`);
+      instanceState.actionDefinitions = newDefinitions;
+      logger.info('setActionDefinitions', `Set ${definitions.length} action definitions for instance ${cardInstanceId}.`);
+      
       // Initialize runtime states for new definitions
-      action.payload.forEach(def => {
-        if (!state.actionRuntimeStates[def.id]) {
-          state.actionRuntimeStates[def.id] = { status: 'idle' };
+      definitions.forEach(def => {
+        if (!instanceState.actionRuntimeStates[def.id]) {
+          instanceState.actionRuntimeStates[def.id] = { status: 'idle' };
         }
       });
     },
-    updateActionRuntimeState(state, action: PayloadAction<{ actionId: string; runtimeState: Partial<ActionRuntimeState> }>) {
-      const { actionId, runtimeState } = action.payload;
-      if (state.actionRuntimeStates[actionId]) {
-        state.actionRuntimeStates[actionId] = { ...state.actionRuntimeStates[actionId], ...runtimeState };
-      } else {
-        state.actionRuntimeStates[actionId] = { status: 'idle', ...runtimeState };
+    updateActionRuntimeState(state, action: PayloadAction<{ cardInstanceId: string, actionId: string; runtimeState: Partial<ActionRuntimeState> }>) {
+      const { cardInstanceId, actionId, runtimeState } = action.payload;
+      const instanceState = state.byInstance[cardInstanceId];
+      if (instanceState?.actionRuntimeStates[actionId]) {
+        instanceState.actionRuntimeStates[actionId] = { ...instanceState.actionRuntimeStates[actionId], ...runtimeState };
+      } else if (instanceState) {
+        instanceState.actionRuntimeStates[actionId] = { status: 'idle', ...runtimeState };
       }
-      logger.log('actionsSlice', `Updated runtime state for action ${actionId}:`, { data: runtimeState });
+      logger.debug('updateActionRuntimeState', `Updated runtime state for action ${actionId} on instance ${cardInstanceId}:`, { data: runtimeState });
     },
-    clearActionRuntimeState(state, action: PayloadAction<{ actionId: string }>) {
-        const { actionId } = action.payload;
-        if (state.actionRuntimeStates[actionId]) {
-            state.actionRuntimeStates[actionId] = { status: 'idle' };
-            logger.log('actionsSlice', `Cleared runtime state for action ${actionId}.`);
+    clearActionRuntimeState(state, action: PayloadAction<{ cardInstanceId: string, actionId: string }>) {
+        const { cardInstanceId, actionId } = action.payload;
+        const instanceState = state.byInstance[cardInstanceId];
+        if (instanceState?.actionRuntimeStates[actionId]) {
+            instanceState.actionRuntimeStates[actionId] = { status: 'idle' };
+            logger.debug('clearActionRuntimeState', `Cleared runtime state for action ${actionId} on instance ${cardInstanceId}.`);
         }
     },
-    clearAllActionRuntimeStates(state) {
-        Object.keys(state.actionRuntimeStates).forEach(actionId => {
-            state.actionRuntimeStates[actionId] = { status: 'idle' };
-        });
-        logger.log('actionsSlice', 'Cleared all action runtime states.');
+    removeInstance(state, action: PayloadAction<{ cardInstanceId: string }>) {
+      delete state.byInstance[action.payload.cardInstanceId];
     }
   },
 });
@@ -71,15 +82,17 @@ export const {
   setActionDefinitions,
   updateActionRuntimeState,
   clearActionRuntimeState,
-  clearAllActionRuntimeStates
+  removeInstance
 } = actionsSlice.actions;
 
 // Selectors
-export const selectActionDefinitions = (state: RootState): Record<string, ActionDefinition> => state.actions.actionDefinitions;
-export const selectAllActionDefinitions = (state: RootState): ActionDefinition[] => Object.values(state.actions.actionDefinitions);
-export const selectActionDefinition = (state: RootState, actionId: string): ActionDefinition | undefined => state.actions.actionDefinitions[actionId];
+export const selectActionDefinitionsForInstance = (state: RootState, cardInstanceId: string): Record<string, ActionDefinition> => state.actions.byInstance[cardInstanceId]?.actionDefinitions || {};
+export const selectAllActionDefinitionsForInstance = (state: RootState, cardInstanceId: string): ActionDefinition[] => Object.values(state.actions.byInstance[cardInstanceId]?.actionDefinitions || {});
+export const selectActionDefinitionForInstance = (state: RootState, cardInstanceId: string, actionId: string): ActionDefinition | undefined => state.actions.byInstance[cardInstanceId]?.actionDefinitions[actionId];
 
-export const selectActionRuntimeStates = (state: RootState): Record<string, ActionRuntimeState> => state.actions.actionRuntimeStates;
-export const selectActionRuntimeState = (state: RootState, actionId: string): ActionRuntimeState | undefined => state.actions.actionRuntimeStates[actionId];
+export const selectActionRuntimeStatesForInstance = (state: RootState, cardInstanceId: string): Record<string, ActionRuntimeState> => state.actions.byInstance[cardInstanceId]?.actionRuntimeStates || {};
+export const selectActionRuntimeStateForInstance = (state: RootState, cardInstanceId: string, actionId: string): ActionRuntimeState | undefined => state.actions.byInstance[cardInstanceId]?.actionRuntimeStates[actionId];
 
-export default actionsSlice.reducer; 
+export default actionsSlice.reducer;
+
+export { actionsSlice }; 

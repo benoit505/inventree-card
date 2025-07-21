@@ -1,9 +1,9 @@
-import { HomeAssistant } from 'custom-card-helpers';
-import { InventreeCardConfig } from './types';
+import React from 'react';
+import { HomeAssistant, LovelaceCardConfig } from 'custom-card-helpers';
 interface InventreeCardProps {
-    hass?: HomeAssistant;
-    config?: InventreeCardConfig;
+    hass: HomeAssistant;
+    config: LovelaceCardConfig;
     cardInstanceId?: string;
 }
-declare const InventreeCard: ({ hass, config, cardInstanceId }: InventreeCardProps) => JSX.Element | null;
+declare const InventreeCard: React.FC<InventreeCardProps>;
 export default InventreeCard;

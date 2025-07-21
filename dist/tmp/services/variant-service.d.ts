@@ -2,7 +2,6 @@ import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeCardConfig, VariantGroup, InventreeItem } from "../types";
 export declare class VariantService {
     private hass;
-    private logger;
     constructor(hass: HomeAssistant);
     private static getTemplateKey;
     static getVariants(items: InventreeItem[]): Record<string, InventreeItem[]>;

@@ -6,7 +6,7 @@ if (typeof window !== 'undefined' && !window.process) {
 // Import core dependencies
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { Logger } from './utils/logger';
+import { ConditionalLoggerEngine } from './core/logging/ConditionalLoggerEngine';
 // import { CacheService } from './services/cache';
 import { safelyRegisterElement } from './utils/custom-element-registry';
 
@@ -20,9 +20,10 @@ import { ReactApp } from './react-app';
 import { InventreeCard } from './inventree-card';
 
 // Initialize logger first for better debugging
-const logger = Logger.getInstance();
+const logger = ConditionalLoggerEngine.getInstance().getLogger('Index');
+ConditionalLoggerEngine.getInstance().registerCategory('Index', { enabled: false, level: 'info' });
 
-logger.info('Index', 'Starting React module initialization', { 
+logger.info('Initialization', 'Starting React module initialization', { 
   category: 'initialization', 
   subsystem: 'index' 
 });
@@ -45,17 +46,17 @@ import { store } from './store';
 // } from './core/types';
 
 // Ensure Redux store is available
-logger.info('Index', 'Redux store initialized', { category: 'initialization', subsystem: 'redux' });
+logger.info('Initialization', 'Redux store initialized', { category: 'initialization', subsystem: 'redux' });
 
 // Register the Lit wrapper component (which will render React)
 try {
   safelyRegisterElement(CARD_TYPE, InventreeCard); 
-  logger.info('Index', `Registering main wrapper component: ${CARD_TYPE}`, {
+  logger.info('Initialization', `Registering main wrapper component: ${CARD_TYPE}`, {
     category: 'initialization',
     subsystem: 'components'
   });
 } catch (error) {
-  logger.error('Index', `Error registering main wrapper component: ${error}`, {
+  logger.error('Initialization', `Error registering main wrapper component: ${error}`, error as Error, {
     category: 'initialization',
     subsystem: 'components'
   });
@@ -70,6 +71,6 @@ window.customCards.push({
     preview: true
 });
 
-logger.info('Index', 'Card registration complete', { category: 'initialization', subsystem: 'card' });
+logger.info('Initialization', 'Card registration complete', { category: 'initialization', subsystem: 'card' });
 
-logger.info('Index', 'React Module initialization complete', { category: 'initialization', subsystem: 'index' });
+logger.info('Initialization', 'React Module initialization complete', { category: 'initialization', subsystem: 'index' });

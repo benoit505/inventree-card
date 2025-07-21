@@ -1,8 +1,6 @@
 import { RuleGroupType, RuleType, ParameterOperator } from "../types";
 import { RootState } from "../store";
-import { Logger } from "../core/logger";
 import { selectGenericHaEntityActualState, selectGenericHaEntityAttribute } from "../store/slices/genericHaStateSlice";
-import { selectParameterValue } from "../store/slices/parametersSlice";
 import { selectPartById } from "../store/slices/partsSlice";
 import { InventreeItem } from "../types"; // For partContext
 import { inventreeApi } from "../store/apis/inventreeApi"; // Import the API slice
@@ -24,7 +22,7 @@ export const evaluateExpression = (
     ruleGroup: RuleGroupType,
     partContext: InventreeItem | null,
     globalContext: RootState,
-    logger: Logger, // Logger is passed but console.log is used for directness during debug
+    logger: any,
     cardInstanceId: string
 ): boolean => {
     if (!ruleGroup || !ruleGroup.rules || ruleGroup.rules.length === 0) {
@@ -63,11 +61,28 @@ const getActualValue = (
     field: string, 
     partContext: InventreeItem | null, 
     globalContext: RootState,
-    logger: Logger,
+    logger: any,
     cardInstanceId: string
 ): any => {
     let valueToReturn: any = undefined;
 
+    // --- NEW, REORDERED LOGIC ---
+    // 1. Prioritize partContext if it exists. This is the most common and efficient case.
+    if (partContext) {
+        if (field.startsWith('part_')) {
+            const attributeName = field.substring('part_'.length);
+            if (attributeName in partContext) {
+                return (partContext as any)[attributeName];
+            }
+        }
+        if (field.startsWith('param_')) {
+            const parameterName = field.substring('param_'.length);
+            const param = partContext.parameters?.find(p => p.template_detail?.name === parameterName);
+            return param?.data;
+        }
+    }
+
+    // 2. Handle fields that require a specific part PK lookup.
     const partPkAndAttributeMatch = field.match(/^part_(\d+)_(.+)$/);
     if (partPkAndAttributeMatch) {
         const pk = parseInt(partPkAndAttributeMatch[1], 10);
@@ -79,7 +94,7 @@ const getActualValue = (
         }
 
         // --- NEW LOGIC: Check RTK Query Cache first ---
-        const rtkQueryState = inventreeApi.endpoints.getPart.select(pk)(globalContext);
+        const rtkQueryState = inventreeApi.endpoints.getPart.select({ pk, cardInstanceId })(globalContext);
         if (rtkQueryState.data && attribute in rtkQueryState.data) {
             return (rtkQueryState.data as any)[attribute];
         }
@@ -96,6 +111,7 @@ const getActualValue = (
         return undefined;
     }
 
+    // 3. Handle HA entities (which are always global).
     // HA Entity State: ha_entity_state_media_player.denon_avr_x2600h
     if (field.startsWith('ha_entity_state_')) {
         const entityId = field.substring('ha_entity_state_'.length);
@@ -140,7 +156,7 @@ const getActualValue = (
 const _internalEvaluateRule = (
     rule: RuleType,
     actualValue: any,
-    logger: Logger
+    logger: any
 ): boolean => {
     const ruleValue = rule.value;
 
@@ -213,7 +229,7 @@ const evaluateRule = (
     rule: RuleType,
     partContext: InventreeItem | null,
     globalContext: RootState,
-    logger: Logger,
+    logger: any,
     cardInstanceId: string
 ): boolean => {
     const actualValue = getActualValue(rule.field, partContext, globalContext, logger, cardInstanceId);

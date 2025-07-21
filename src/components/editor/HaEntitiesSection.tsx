@@ -3,9 +3,9 @@ import type { HomeAssistant } from 'custom-card-helpers';
 // Assuming InventreeCardConfig is not directly needed here, but types might be shared elsewhere
 // import { InventreeCardConfig } from '../../types'; 
 import CustomEntityPicker from './CustomEntityPicker'; // ADD
-import { Logger } from '../../utils/logger'; // Correct path
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-const logger = Logger.getInstance();
+ConditionalLoggerEngine.getInstance().registerCategory('HaEntitiesSection', { enabled: false, level: 'info' });
 
 interface HaEntitiesSectionProps {
   hass: HomeAssistant;
@@ -18,19 +18,22 @@ const HaEntitiesSection: React.FC<HaEntitiesSectionProps> = ({
   selectedEntities,
   onEntitiesChanged,
 }) => {
+  const logger = React.useMemo(() => {
+    return ConditionalLoggerEngine.getInstance().getLogger('HaEntitiesSection');
+  }, []);
 
   const handleAddEntity = useCallback((entityId: string) => {
     if (entityId && !selectedEntities.includes(entityId)) {
       const newEntities = [...selectedEntities, entityId];
       onEntitiesChanged(newEntities);
-      logger.log('Editor:HaEntities', `Added HA entity: ${entityId}`, { newEntities });
+      logger.info('handleAddEntity', `Added HA entity: ${entityId}`, { newEntities });
     }
   }, [selectedEntities, onEntitiesChanged]);
 
   const handleRemoveEntity = useCallback((entityIdToRemove: string) => {
     const newEntities = selectedEntities.filter(id => id !== entityIdToRemove);
     onEntitiesChanged(newEntities);
-    logger.log('Editor:HaEntities', `Removed HA entity: ${entityIdToRemove}`, { newEntities });
+    logger.info('handleRemoveEntity', `Removed HA entity: ${entityIdToRemove}`, { newEntities });
   }, [selectedEntities, onEntitiesChanged]);
 
   return (

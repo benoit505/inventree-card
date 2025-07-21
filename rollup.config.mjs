@@ -71,7 +71,8 @@ export default [
       dir: 'dist',
       format: 'es',
       entryFileNames: 'inventree-card.js',
-      sourcemap: true
+      sourcemap: true,
+      inlineDynamicImports: true,
     },
     plugins: sharedPlugins,
     onwarn(warning, warn) {

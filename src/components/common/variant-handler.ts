@@ -1,57 +1,44 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeItem, InventreeCardConfig, ProcessedVariant, VariantGroup } from '../../types';
 import { VariantService } from '../../services/variant-service';
-import { Logger } from '../../utils/logger';
+import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
-// Module-scoped logger for static methods if preferred, or use Logger.getInstance() directly.
-const moduleLogger = Logger.getInstance(); 
+const logger = ConditionalLoggerEngine.getInstance().getLogger('VariantHandler');
+ConditionalLoggerEngine.getInstance().registerCategory('VariantHandler', { enabled: false, level: 'info' });
 
 export class VariantHandler {
     private variantService: VariantService;
-    private logger: Logger;
     
     constructor(private hass: HomeAssistant) {
         this.variantService = new VariantService(hass);
-        this.logger = Logger.getInstance();
     }
     
     static processItems(items: InventreeItem[], config: InventreeCardConfig): (InventreeItem | ProcessedVariant)[] {
-        moduleLogger.log('VariantHandler', 'Processing items with config:', {
-            data: {
-                auto_detect: config.auto_detect_variants,
-                variant_view_type: config.variant_view_type,
-                variants_config: config.variants
-            },
-            subsystem: 'processItems'
+        logger.debug('processItems', 'Processing items with config:', {
+            auto_detect: config.auto_detect_variants,
+            variant_view_type: config.variant_view_type,
+            variants_config: config.variants
         });
         
-        // const logger = Logger.getInstance(); // Removed local logger instance
-        
-        // Safety check - if no items, return empty array
         if (!items || items.length === 0) {
             return [];
         }
         
-        // Always return the original items if variants are disabled
         if (!config.variants?.show_variants) {
             return items;
         }
 
         try {
-            // Create a copy of items to track which ones have been processed
             const allItems = [...items];
             const processedItems: (InventreeItem | ProcessedVariant)[] = [];
             const processedPks = new Set<number>();
             
-            // If auto-detect is enabled, detect variant groups manually
             if (config.variants.auto_detect) {
-                moduleLogger.log('VariantHandler', `Auto-detecting variants from ${items.length} items`, { subsystem: 'processItems' });
+                logger.debug('processItems', `Auto-detecting variants from ${items.length} items`);
                 
-                // Find all parts with variant_of set
                 const variantParts = allItems.filter(part => part.variant_of !== null);
-                moduleLogger.log('VariantHandler', `Found ${variantParts.length} parts with variant_of set`, { subsystem: 'processItems' });
+                logger.debug('processItems', `Found ${variantParts.length} parts with variant_of set`);
                 
-                // Group variants by their parent part
                 const variantGroups: { [key: number]: InventreeItem[] } = {};
                 
                 variantParts.forEach(part => {
@@ -63,14 +50,12 @@ export class VariantHandler {
                     }
                 });
                 
-                // Process each variant group
                 Object.keys(variantGroups).forEach(parentIdStr => {
                     const parentId = Number(parentIdStr);
                     const variants = variantGroups[parentId];
                     const template = allItems.find(part => part.pk === parentId);
                     
                     if (template) {
-                        // Create a processed variant
                         processedItems.push({
                             pk: template.pk,
                             name: template.name,
@@ -79,33 +64,27 @@ export class VariantHandler {
                             totalStock: VariantHandler.calculateTotalStock(template, variants)
                         });
                         
-                        // Mark all parts in this group as processed
                         processedPks.add(template.pk);
                         variants.forEach(p => processedPks.add(p.pk));
                     }
                 });
                 
-                moduleLogger.log('VariantHandler', `Created ${processedItems.length} variant groups`, { subsystem: 'processItems' });
+                logger.debug('processItems', `Created ${processedItems.length} variant groups`);
             } 
-            // Otherwise use the configured variant groups
             else if (config.variants.variant_groups?.length) {
-                moduleLogger.log('VariantHandler', `Processing ${config.variants.variant_groups.length} configured variant groups`, { subsystem: 'processItems' });
+                logger.debug('processItems', `Processing ${config.variants.variant_groups.length} configured variant groups`);
                 
-                // Process each configured variant group
                 config.variants.variant_groups.forEach((group: VariantGroup) => {
                     const templatePk = group.templatePk;
                     const variantPks = group.variantPks || [];
                     
                     if (templatePk && variantPks.length) {
-                        // Find the template part
                         const template = allItems.find(p => p.pk === templatePk);
                         
                         if (template) {
-                            // Find all variant parts
                             const variants = allItems.filter(p => variantPks.includes(p.pk));
                             
                             if (variants.length > 0) {
-                                // Create a processed variant
                                 processedItems.push({
                                     pk: template.pk,
                                     name: group.name || template.name,
@@ -114,7 +93,6 @@ export class VariantHandler {
                                     totalStock: VariantHandler.calculateTotalStock(template, variants)
                                 });
                                 
-                                // Mark all parts in this group as processed
                                 processedPks.add(template.pk);
                                 variants.forEach(p => processedPks.add(p.pk));
                             }
@@ -123,16 +101,14 @@ export class VariantHandler {
                 });
             }
             
-            // Add all unprocessed items
             const regularItems = allItems.filter(p => !processedPks.has(p.pk));
             
-            // Combine processed variants and regular items
             const result = [...processedItems, ...regularItems];
-            moduleLogger.log('VariantHandler', `Processed ${processedItems.length} variant groups and ${regularItems.length} regular items`, { subsystem: 'processItems' });
+            logger.debug('processItems', `Processed ${processedItems.length} variant groups and ${regularItems.length} regular items`);
             
             return result;
         } catch (error) {
-            Logger.getInstance().error('VariantHandler', 'Error processing variants:', { data: error, subsystem: 'processItems' });
+            logger.error('processItems', 'Error processing variants:', error as Error);
             return items; // Return original items on error
         }
     }
@@ -156,7 +132,6 @@ export class VariantHandler {
             return items;
         }
         
-        // Get variant groups
         let variantGroups: VariantGroup[] = [];
         
         if (config.variants.auto_detect) {
@@ -165,7 +140,6 @@ export class VariantHandler {
             variantGroups = config.variants.variant_groups;
         }
         
-        // Process the variant groups
         return this.variantService.processVariantGroups(items, variantGroups);
     }
 

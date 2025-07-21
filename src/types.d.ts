@@ -132,11 +132,11 @@ export interface StyleConfig {
     image_size?: number;
 }
 
+export type ThumbnailMode = 'api' | 'local_substitutions' | 'local_only';
+
 export interface ThumbnailConfig {
-    mode?: 'auto' | 'custom' | 'local';
+    mode?: ThumbnailMode;
     custom_path?: string;
-    local_path?: string;
-    enable_bulk_import?: boolean;
 }
 
 export interface PrintConfig {
@@ -310,6 +310,7 @@ export interface InventreeCardConfig {
     performance?: PerformanceConfig; // Add performance config
     // Allow dynamic debug properties like debug_api, debug_websocket etc.
     [key: string]: any; 
+    log_queries?: LogQuery[];
 }
 
 export interface FormSchemaItem {
@@ -329,46 +330,56 @@ export interface FormSchemaItem {
 
 export interface FormSchema extends FormSchemaItem {}
 
-export interface VisualModifiers {
-    highlight?: string;
-    textColor?: string;
-    border?: string;
-    icon?: string;
-    badge?: string;
-    sort?: 'top' | 'bottom';
-    filter?: 'show' | 'hide';
-    showSection?: 'show' | 'hide';
-    priority?: 'high' | 'medium' | 'low';
-    isVisible?: boolean;
-    // NEW: Thumbnail-specific styling effects
-    thumbnailStyle?: {
-      filter?: string; // e.g., 'grayscale(100%)', 'blur(5px)'
-      opacity?: number;
-    };
-    customClasses?: string[];
+export type VisualEffect = {
+  highlight?: string;
+  textColor?: string;
+  border?: string;
+  opacity?: number;
+  icon?: string;
+  badge?: string;
+  isVisible?: boolean;
+  priority?: 'high' | 'medium' | 'low';
+  sort?: 'top' | 'bottom';
+  animation?: AnimationEffect;
+  thumbnailStyle?: React.CSSProperties;
+  customClasses?: string[];
+  cellStyles?: Record<string, React.CSSProperties>;
+};
+
+export interface AnimationEffect {
+  animate?: {
+    animate?: any;
+    transition?: any;
+    whileHover?: any;
+    whileTap?: any;
+  };
+  transition?: any;
+  whileHover?: any;
+  whileTap?: any;
 }
 
 export interface HaEntityPickerEntity {
-    entity_id: string;
-    state: string;
-    attributes: {
-        friendly_name?: string;
-        items?: any[];
-    };
-    type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action' | 'set_thumbnail_style';
-    targetElement?: string; // CSS selector for custom elements OR a predefined key for standard card areas (e.g., 'part_image_container', 'part_name_text')
-    targetDisplayKey?: DisplayConfigKey; // NEW: Specifically for type 'set_visibility' to target a standard display element (e.g., 'show_name')
-    // For set_visibility
-    isVisible?: boolean;
-    // For set_style
-    styleProperty?: string; // e.g., 'backgroundColor', 'border', 'color'
-    styleValue?: string;
-    // For set_thumbnail_style (NEW)
-    thumbnailFilter?: string; // e.g., 'grayscale(100%) blur(2px)'
-    thumbnailOpacity?: number; // e.g., 0.5
-    // For call_ha_service
-    service?: string;
-    service_data?: Record<string, any>;
+  entity_id: string;
+  name?: string;
+  state: string;
+  attributes: {
+      friendly_name?: string;
+      items?: any[];
+  };
+  type: 'set_visibility' | 'set_style' | 'call_ha_service' | 'trigger_custom_action' | 'set_thumbnail_style';
+  targetElement?: string; // CSS selector for custom elements OR a predefined key for standard card areas (e.g., 'part_image_container', 'part_name_text')
+  targetDisplayKey?: DisplayConfigKey; // NEW: Specifically for type 'set_visibility' to target a standard display element (e.g., 'show_name')
+  // For set_visibility
+  isVisible?: boolean;
+  // For set_style
+  styleProperty?: string; // e.g., 'backgroundColor', 'border', 'color'
+  styleValue?: string;
+  // For set_thumbnail_style (NEW)
+  thumbnailFilter?: string; // e.g., 'grayscale(100%) blur(2px)'
+  thumbnailOpacity?: number; // e.g., 0.5
+  // For call_ha_service
+  service?: string;
+  service_data?: Record<string, any>;
 }
 
 // Enums / Type Aliases
@@ -460,6 +471,12 @@ export type EffectDefinition = {
     service?: string,
     service_data?: Record<string, any>,
     targetPartPks?: number[] | 'all_loaded';
+  } | {
+    type: 'set_layout';
+    targetCellId: string; // e.g. "part_pk-column_id"
+    layoutProperty: 'w' | 'h' | 'x' | 'y';
+    layoutValue: number;
+    // No targetPartPks needed as it's cell-specific
   }
 );
 
@@ -527,41 +544,44 @@ export interface ActionStandardObjectTarget {
   target_details: ActionHAStandardTarget;
 }
 
-export interface ActionCallHAServiceOperation {
+export type ActionCallHAServiceOperation = {
+  type: 'call_ha_service';
   service: string; 
   // Target is now one of these specific structures, or undefined
   target?: ActionDirectEntityTarget | ActionStandardObjectTarget;
   dataTemplate?: Record<string, any>; 
 }
 
-export interface ActionUpdateInvenTreeParameterOperation {
+export type ActionUpdateInvenTreeParameterOperation = {
+  type: 'update_inventree_parameter';
   partIdContext: 'current' | number | string; // 'current' for context part, number for specific PK, string for template evaluation
   parameterName: string;
   valueTemplate: string;
 }
 
-export interface ActionDispatchReduxActionOperation {
+export type ActionDispatchReduxActionOperation = {
+  type: 'dispatch_redux_action';
   actionType: string;
   payloadTemplate?: Record<string, any>;
 }
 
-export interface ActionSetCardStateOperation { // For transient, non-Redux UI states if ever needed
+export type ActionSetCardStateOperation = { // For transient, non-Redux UI states if ever needed
+  type: 'set_card_state';
   statePath: string; // Dot-notation path to a state variable within a component or context
   valueTemplate: any;
 }
 
-export interface ActionTriggerConditionalLogicOperation {
+export type ActionTriggerConditionalLogicOperation = {
+  type: 'trigger_conditional_logic';
   logicIdToTrigger: string; // ID of a ConditionalLogicItem
 }
 
-export interface ActionOperation {
-  type: ActionOperationType;
-  callHAService?: ActionCallHAServiceOperation;
-  updateInvenTreeParameter?: ActionUpdateInvenTreeParameterOperation;
-  dispatchReduxAction?: ActionDispatchReduxActionOperation;
-  setCardState?: ActionSetCardStateOperation;
-  triggerConditionalLogic?: ActionTriggerConditionalLogicOperation;
-}
+export type ActionOperation = 
+  | ActionCallHAServiceOperation
+  | ActionUpdateInvenTreeParameterOperation
+  | ActionDispatchReduxActionOperation
+  | ActionSetCardStateOperation
+  | ActionTriggerConditionalLogicOperation;
 
 export interface ActionDefinition {
   id: string; 
@@ -581,6 +601,9 @@ export interface ActionExecutionContext {
   hassStates?: any; // Replace with specific type from genericHaStateSlice if possible
   expressionsContext?: any; // Results from expression engine evaluations
   // Potentially more context as needed
+  config?: InventreeCardConfig;
+  hass?: HomeAssistant;
+  cardInstanceId?: string;
 }
 
 // --- React Query Builder type re-exports (if not already globally available or to be more explicit) ---
@@ -812,10 +835,13 @@ declare global {
 // --- Layout Configuration --- 
 export interface LayoutConfig {
   viewType: ViewType;
-  columns?: LayoutColumn[]; // NEW: Array to define dynamic columns
-  enableFiltering?: boolean; // Optional: Show a global filter input
+  columns?: LayoutColumn[];
   rowHeight?: number;
-  // Legacy options, can be deprecated over time
+  isDraggable?: boolean;
+  isResizable?: boolean;
+  compactType?: 'vertical' | 'horizontal' | null;
+  allowOverlap?: boolean;
+  layout_overrides?: Record<string, any>;
   legacy_columns?: number;
   grid_spacing?: number;
   item_height?: number;
@@ -825,13 +851,22 @@ export interface ButtonColumnItem {
   id: string; // For React keys in the editor
   actionId: string;
   targetPartPks?: number[];
+  // Overrides
+  icon?: string;
+  label?: string;
 }
 
 export interface LayoutColumn {
   id: string;
   content: 'name' | 'thumbnail' | 'description' | 'in_stock' | 'pk' | 'IPN' | 'SKU' | 'category_detail.name' | 'location_detail.name' | 'buttons' | 'attribute' | 'template';
   header?: string;
-  width?: string;
+  
+  // Layout properties for a single row template
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+
   // For 'buttons' content
   buttons?: ButtonColumnItem[]; // Replaces buttonActionId and targetPartPks
   // For 'attribute' or 'custom' content
@@ -861,3 +896,93 @@ export type AnimationPreset = {
     whileTap?: any;
   };
 }; 
+
+// Re-exporting react-grid-layout types under a namespace for clarity
+export namespace ReactGridLayout {
+  export interface Layout {
+      i: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      minW?: number;
+      maxW?: number;
+      minH?: number;
+      maxH?: number;
+      moved?: boolean;
+      static?: boolean;
+      isDraggable?: boolean;
+      isResizable?: boolean;
+  }
+  export interface Layouts {
+      [key: string]: Layout[];
+  }
+}
+
+// =================================================================
+// Logging System Types
+// =================================================================
+
+export type LogLevel = 'verbose' | 'debug' | 'info' | 'warn' | 'error';
+
+/**
+ * Settings for a specific logger category (e.g., 'TableLayout', 'ApiService').
+ * This allows for fine-grained control over logging behavior on a per-module basis.
+ */
+export interface LoggerCategorySettings {
+  /** Is this entire category of logs enabled? */
+  enabled: boolean;
+  /** The minimum level of log to output for this category. */
+  level: LogLevel;
+  /** Is verbose logging enabled for this category? */
+  verbose?: boolean;
+}
+
+/**
+ * The global settings object, mapping each category name to its settings.
+ * This will be stored in Redux and passed to the logger engine.
+ * @example
+ * {
+ *   'TableLayout': { enabled: true, level: 'debug', verbose: false },
+ *   'ApiService': { enabled: true, level: 'warn', verbose: false }
+ * }
+ */
+export interface GlobalLogSettings {
+  [category: string]: LoggerCategorySettings;
+}
+
+export interface LogEntry {
+  id: string;
+  timestamp: string;
+  category: string;
+  level: LogLevel;
+  functionName: string;
+  message: string;
+  args?: unknown[];
+}
+
+export interface LogQuery {
+  id: string;
+  category: string;
+  functionName?: string;
+  enabled: boolean;
+}
+
+/**
+ * Interface for a logger instance that the business logic will use.
+ * It supports standard logging levels and grouping.
+ * The message parameter can be a function to allow for lazy evaluation,
+ * preventing string construction if the log level is disabled.
+ */
+export interface ILogger {
+  debug(functionName: string, message: string | (() => string), ...args: unknown[]): void;
+  info(functionName: string, message: string | (() => string), ...args: unknown[]): void;
+  warn(functionName: string, message: string | (() => string), ...args: unknown[]): void;
+  error(functionName: string, message: string | (() => string), error?: Error, ...args: unknown[]): void;
+  verbose(functionName: string, message: string | (() => string), ...args: unknown[]): void;
+  
+  group(label: string): void;
+  groupEnd(): void;
+} 
+
+export type LovelaceCardConfig = InventreeCardConfig; 
