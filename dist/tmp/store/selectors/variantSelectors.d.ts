@@ -13,7 +13,6 @@ export declare const selectProcessedVariants: ((state: {
     websocket: import("../slices/websocketSlice").WebSocketState;
     actions: import("../slices/actionsSlice").ActionsState;
     logging: import("../slices/loggingSlice").LoggingState;
-    layout: import("../slices/layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
             pk: number;
@@ -88,7 +87,6 @@ export declare const selectVariantGroups: ((state: {
     websocket: import("../slices/websocketSlice").WebSocketState;
     actions: import("../slices/actionsSlice").ActionsState;
     logging: import("../slices/loggingSlice").LoggingState;
-    layout: import("../slices/layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
             pk: number;

@@ -119,7 +119,6 @@ export class InventreeCard extends LitElement implements LovelaceCard {
                 ` : ''}
                 <div class="grid" 
                     style="
-                        --columns: ${this._config.columns || 2};
                         --grid-spacing: ${gridSpacing}px;
                         --item-height: ${itemHeight}px;
                     "

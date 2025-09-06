@@ -2,6 +2,13 @@ import { HomeAssistant, LovelaceCard, LovelaceCardConfig, LovelaceCardEditor } f
 import { LitElement, TemplateResult, PropertyValues } from 'lit';
 export declare class InventreeCard extends LitElement implements LovelaceCard {
     private logger;
+    private _lastConfigChangeTime;
+    private _lastConfigHadUIProperties;
+    private _lastUIProperties;
+    private _lastRenderError;
+    private _hasHTTP401Errors;
+    private _failed401Urls;
+    private _configChangeCount;
     constructor();
     static getConfigElement(): Promise<LovelaceCardEditor>;
     hass: HomeAssistant;
@@ -19,4 +26,6 @@ export declare class InventreeCard extends LitElement implements LovelaceCard {
     protected render(): TemplateResult | void;
     private _mountOrUpdateReactApp;
     static getStubConfig(): Record<string, unknown>;
+    private _analyzeConfigForUIProperties;
+    private _analyzeDisconnectionCause;
 }

@@ -36,11 +36,10 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, partIds, cardInst
   const gridSpacing = layoutOptions.grid_spacing || 8;
 
   const containerStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: `repeat(${columns}, 1fr)`,
-    gap: `${gridSpacing}px`,
+    '--columns': columns,
+    '--grid-spacing': `${gridSpacing}px`,
     padding: '8px',
-  };
+  } as React.CSSProperties;
 
   const scrollContainerStyle: React.CSSProperties = {
     height: '100%',
@@ -52,7 +51,7 @@ const GridLayout: React.FC<GridLayoutProps> = ({ hass, config, partIds, cardInst
 
   return (
     <div className="grid-layout-scroll-container" style={scrollContainerStyle}>
-      <div style={containerStyle}>
+      <div className="grid" style={containerStyle}>
         {partIds.map(partId => (
           <GridItem
             key={partId}

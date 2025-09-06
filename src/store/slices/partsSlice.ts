@@ -1,5 +1,5 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { InventreeItem, EnhancedStockItemEventData, RuleGroupType } from '../../types';
+import { createSlice, PayloadAction, Action } from '@reduxjs/toolkit';
+import { InventreeItem, EnhancedStockItemEventData, RuleGroupType, ConditionalLogicItem, LogicPair, EffectDefinition } from '../../types';
 import { RootState } from '../index';
 import { createSelector } from 'reselect';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
@@ -174,10 +174,10 @@ export const selectAllReferencedPartPksFromConfig = createSelector(
           }
         });
       };
-      definedLogicItems.forEach((logicItem) => {
-        logicItem.logicPairs?.forEach((pair) => {
+      definedLogicItems.forEach((logicItem: ConditionalLogicItem) => {
+        logicItem.logicPairs?.forEach((pair: LogicPair) => {
           if (pair.conditionRules) extractPksFromGroup(pair.conditionRules);
-          pair.effects?.forEach((effect) => {
+          pair.effects?.forEach((effect: EffectDefinition) => {
             if ('targetPartPks' in effect && effect.targetPartPks) {
               if (typeof effect.targetPartPks === 'number') {
                 pks.add(effect.targetPartPks);
@@ -266,7 +266,7 @@ export const selectCombinedParts = createSelector(
       combined[pk] = { ...(combined[pk] || {}), ...apiParts[pk] };
     }
     
-    const result = Object.values(combined);
+    const result: InventreeItem[] = Object.values(combined);
     console.log('%c[partsSlice] selectCombinedParts', 'color: #3498DB; font-weight: bold;', { cardInstanceId, result });
     return result;
   }
@@ -282,7 +282,7 @@ export const selectIsReadyForEvaluation = createSelector(
 
         // Find if there is at least one 'getPart' query that is fulfilled
         const atLeastOnePartLoaded = Object.values(queries).some(
-            (query) => query?.endpointName === 'getPart' && query?.status === 'fulfilled'
+            (query: any) => query?.endpointName === 'getPart' && query?.status === 'fulfilled'
         );
 
         return atLeastOnePartLoaded;
@@ -311,7 +311,7 @@ export const selectAdjustmentError = createSelector(
 export const selectAllParts = createSelector(
     [(state: RootState) => state.parts.partsByInstance],
     (partsByInstance) => {
-        return Object.values(partsByInstance).flatMap(instanceState => Object.values(instanceState.partsById));
+        return Object.values(partsByInstance).flatMap((instanceState: InstancePartsState) => Object.values(instanceState.partsById));
     }
 );
 

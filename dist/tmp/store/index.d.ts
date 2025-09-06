@@ -13,7 +13,6 @@ declare const appReducer: import("redux").Reducer<{
     websocket: import("./slices/websocketSlice").WebSocketState;
     actions: import("./slices/actionsSlice").ActionsState;
     logging: import("./slices/loggingSlice").LoggingState;
-    layout: import("./slices/layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
             pk: number;
@@ -67,7 +66,6 @@ declare const appReducer: import("redux").Reducer<{
     websocket: import("./slices/websocketSlice").WebSocketState | undefined;
     actions: import("./slices/actionsSlice").ActionsState | undefined;
     logging: import("./slices/loggingSlice").LoggingState | undefined;
-    layout: import("./slices/layoutSlice").LayoutState | undefined;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
             pk: number;
@@ -123,7 +121,6 @@ export declare const store: import("@reduxjs/toolkit").EnhancedStore<{
     websocket: import("./slices/websocketSlice").WebSocketState;
     actions: import("./slices/actionsSlice").ActionsState;
     logging: import("./slices/loggingSlice").LoggingState;
-    layout: import("./slices/layoutSlice").LayoutState;
     inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
         getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
             pk: number;
@@ -178,7 +175,6 @@ export declare const store: import("@reduxjs/toolkit").EnhancedStore<{
         websocket: import("./slices/websocketSlice").WebSocketState;
         actions: import("./slices/actionsSlice").ActionsState;
         logging: import("./slices/loggingSlice").LoggingState;
-        layout: import("./slices/layoutSlice").LayoutState;
         inventreeApi: import("@reduxjs/toolkit/query").CombinedState<{
             getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
                 pk: number;

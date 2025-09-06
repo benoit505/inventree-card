@@ -3,7 +3,9 @@ import { HomeAssistant, LovelaceCardEditor } from 'custom-card-helpers';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { RootState, store } from '../../store';
 import { useSelector, useDispatch } from 'react-redux';
-import { InventreeCardConfig, DirectApiConfig, ViewType, DisplayConfig, StyleConfig, InteractionsConfig, ConditionalLogicConfig, ParameterDetail, DataSourceConfig, RuleGroupType, LayoutConfig, ActionDefinition, InventreeParameterFetchConfig, ThumbnailOverride, LogQuery } from '../../types';
+import { InventreeCardConfig, DirectApiConfig, ViewType, DisplayConfig, StyleConfig, InteractionsConfig, ConditionalLogicConfig, ParameterDetail, DataSourceConfig, RuleGroupType, LayoutConfig, ActionDefinition, InventreeParameterFetchConfig, ThumbnailOverride, LogQuery, InventreeItem } from '../../types';
+import { inventreeApi } from '../../store/apis/inventreeApi';
+import { selectCombinedParts } from '../../store/slices/partsSlice';
 
 // Import sections
 import InventreeHassSensorsSection from './InventreeHassSensorsSection';
@@ -12,11 +14,10 @@ import InventreePkSection from './InventreePkSection';
 import InventreeParametersToFetchSection from './InventreeParametersToFetchSection';
 import InventreeApiConfigSection from './InventreeApiConfigSection';
 import LayoutSelectionSection from './LayoutSelectionSection';
-import ElementVisibilitySection from './ElementVisibilitySection';
-import CardStylingSection from './CardStylingSection';
 import ConfigurableActionsSection from './ConfigurableActionsSection';
 import ConditionalLogicSection from './ConditionalLogicSection';
 import LoggingSettingsSection from './LoggingSettingsSection';
+import ThemeToggleSection from './ThemeToggleSection';
 
 ConditionalLoggerEngine.getInstance().registerCategory('InventreeCardEditor', { enabled: true, level: 'info' });
 
@@ -28,6 +29,7 @@ export interface InventreeCardEditorProps {
   config?: InventreeCardConfig;
   cardInstanceId: string;
   onConfigChanged: (config: InventreeCardConfig) => void;
+  dispatch: (action: any) => void;
 }
 
 // Default empty rule group for conditional logic initialization
@@ -38,57 +40,55 @@ const defaultRuleGroup: RuleGroupType = {
   not: false
 };
 
-const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelace, config: initialConfig, cardInstanceId, onConfigChanged }) => {
+const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelace, config: initialConfig, cardInstanceId, onConfigChanged, dispatch }) => {
   const logger = React.useMemo(() => {
     return ConditionalLoggerEngine.getInstance().getLogger('InventreeCardEditor', cardInstanceId);
   }, [cardInstanceId]);
   
-  const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState('data');
+  const allParts = useSelector((state: RootState) => selectCombinedParts(state, cardInstanceId));
   
-  // Correctly get all parameter values from the store using RootState
-  const allParameterValues = useSelector<RootState, Record<number, Record<string, ParameterDetail>>>(
-    (state) => state.parameters.parameterValues 
-  );
-
   const currentEditorConfig = useMemo<Partial<InventreeCardConfig>>(() => {
-    // Lovelace freezes the config object. We must create a deep, mutable clone
-    // to run migrations and allow for editing.
-    const config = JSON.parse(JSON.stringify(initialConfig || {}));
-
+    // 🚀 UNIFIED SOURCE OF TRUTH: Always derive from the incoming prop
+    const baseConfig = initialConfig || {};
+    console.log('📋 EDITOR: Using config source:', baseConfig);
+    
+    // Create a deep copy to ensure we don't mutate the original
+    const config = JSON.parse(JSON.stringify(baseConfig));
+    
     // --- MIGRATION LOGIC ---
     // This handles migrating the old top-level 'columns' to the new 'layout.columns'.
-    if (config.columns && Array.isArray(config.columns)) {
+    if ((config as any).columns && Array.isArray((config as any).columns)) {
       if (!config.layout) {
         config.layout = {};
       }
-      if (!config.layout.columns || config.layout.columns.length === 0) {
-        config.layout.columns = config.columns;
-        logger.info('Migration', 'Migrated legacy `columns` to `layout.columns`');
-      }
-      // Delete the legacy property to prevent confusion
-      delete config.columns;
+      // This check is flawed; we should just remove it. Aggressive cleanup below handles it.
     }
-
+    
+    // 🚀AGGRESSIVE CLEANUP: Remove ALL other known legacy and obsolete properties
+    // This prevents ambiguous configs from being sent to Lovelace, which causes it to
+    // destroy and recreate the card preview.
+    delete (config as any).grid_options;
+    delete (config as any).columns; // Always remove top-level columns
+    
     if (config.layout) {
+      delete (config.layout as any).legacy_columns;
+      delete (config.layout as any).grid_spacing;
+      delete (config.layout as any).item_height;
+      delete (config.layout as any).part_overrides;
+      delete (config.layout as any).columns; // Also remove from layout object
+      
       // Scrub obsolete 'width' property from columns
-      if (Array.isArray(config.layout.columns)) {
-        config.layout.columns = config.layout.columns.map((c: any) => {
-          if (c.width === undefined) {
-            return c;
-          }
-          const { width, ...rest } = c;
-          return rest;
-        });
-      }
+      // This is now also obsolete since layout.columns itself is obsolete
+      
       // Migrate legacy 'row_height' to 'rowHeight' and remove it
-      if (config.layout.row_height !== undefined) {
-        config.layout.rowHeight = config.layout.row_height;
-        delete config.layout.row_height;
+      if ((config.layout as any).row_height !== undefined) {
+        config.layout.rowHeight = (config.layout as any).row_height;
+        delete (config.layout as any).row_height;
       }
       // Remove the obsolete 'layouts' object
-      if (config.layout.layouts !== undefined) {
-        delete config.layout.layouts;
+      if ((config.layout as any).layouts !== undefined) {
+        delete (config.layout as any).layouts;
       }
     }
 
@@ -102,7 +102,7 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
       inventree_pk_thumbnail_overrides: config.data_sources?.inventree_pk_thumbnail_overrides || [],
     };
     config.direct_api = config.direct_api || { enabled: false, url: '', api_key: '' };
-    config.layout = config.layout || { viewType: 'detail' };
+    config.layout = config.layout || {};
     config.display = config.display || { show_header: true, show_image: true, show_name: true, show_stock: true };
     config.style = config.style || { background: 'var(--ha-card-background, var(--card-background-color, white))', spacing: 8, image_size: 50 };
     config.interactions = config.interactions || { buttons: [] };
@@ -110,10 +110,24 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
     config.conditional_logic = config.conditional_logic || { definedLogics: [] };
     config.logging = config.logging || { queries: [] };
     return config;
-  }, [initialConfig]);
+  }, [initialConfig, logger]);
+
+  // Fetch parts data when the editor is first loaded
+  useEffect(() => {
+    const partIdsToFetch = currentEditorConfig.data_sources?.inventree_pks || [];
+    partIdsToFetch.forEach((pk: number) => {
+      dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
+    });
+  }, [dispatch, cardInstanceId, currentEditorConfig.data_sources?.inventree_pks]);
+
+  // Correctly get all parameter values from the store using RootState
+  const allParameterValues = useSelector<RootState, Record<number, Record<string, ParameterDetail>>>(
+    (state) => state.parameters.parameterValues 
+  );
 
   const handleConfigChanged = useCallback((newConfig: Partial<InventreeCardConfig>) => {
     logger.debug('handleConfigChanged', 'Editor config changed.', { newConfig });
+    console.log('🔄 EDITOR: Config changed, firing onConfigChanged:', newConfig);
     onConfigChanged(newConfig as InventreeCardConfig);
   }, [onConfigChanged, logger]);
 
@@ -249,20 +263,14 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
           layoutConfig={currentEditorConfig.layout!}
           onLayoutConfigChanged={handleLayoutConfigChanged}
           actions={currentEditorConfig.actions || []}
+          parts={allParts}
+          cardInstanceId={cardInstanceId}
         />
       )}
 
       {activeTab === 'appearance' && (
         <>
-          <ElementVisibilitySection
-            displayConfig={currentEditorConfig.display!}
-            onDisplayConfigChanged={handleDisplayConfigChanged}
-            definedLogics={currentEditorConfig.conditional_logic?.definedLogics || []}
-          />
-          <CardStylingSection
-            styleConfig={currentEditorConfig.style!}
-            onStyleConfigChanged={handleStyleConfigChanged}
-          />
+          <ThemeToggleSection />
         </>
       )}
 
@@ -280,6 +288,9 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
             hass={hass}
             directApiConfig={currentEditorConfig.direct_api}
             allParameterValues={allParameterValues}
+            cardInstanceId={cardInstanceId}
+            parts={allParts}
+            cells={currentEditorConfig.layout?.cells || []}
           />
         </>
       )}

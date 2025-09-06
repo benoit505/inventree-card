@@ -1,5 +1,5 @@
 import { RuleGroupType, RuleType, ParameterOperator } from "../types";
-import { RootState } from "../store";
+import { RootState, AppDispatch } from "../store";
 import { selectGenericHaEntityActualState, selectGenericHaEntityAttribute } from "../store/slices/genericHaStateSlice";
 import { selectPartById } from "../store/slices/partsSlice";
 import { InventreeItem } from "../types"; // For partContext
@@ -23,7 +23,8 @@ export const evaluateExpression = (
     partContext: InventreeItem | null,
     globalContext: RootState,
     logger: any,
-    cardInstanceId: string
+    cardInstanceId: string,
+    dispatch?: AppDispatch
 ): boolean => {
     if (!ruleGroup || !ruleGroup.rules || ruleGroup.rules.length === 0) {
         logger.warn('evaluateExpression', 'Empty or invalid rule group provided. ID: ' + (ruleGroup?.id || 'undefined'));
@@ -33,10 +34,10 @@ export const evaluateExpression = (
     const results: boolean[] = [];
     for (const ruleOrGroup of ruleGroup.rules) {
         if ('combinator' in ruleOrGroup) { // It's a nested RuleGroupType
-            const nestedResult = evaluateExpression(ruleOrGroup as RuleGroupType, partContext, globalContext, logger, cardInstanceId);
+            const nestedResult = evaluateExpression(ruleOrGroup as RuleGroupType, partContext, globalContext, logger, cardInstanceId, dispatch);
             results.push(nestedResult);
         } else { // It's a RuleType
-            const ruleResult = evaluateRule(ruleOrGroup as RuleType, partContext, globalContext, logger, cardInstanceId);
+            const ruleResult = evaluateRule(ruleOrGroup as RuleType, partContext, globalContext, logger, cardInstanceId, dispatch);
             results.push(ruleResult);
         }
     }
@@ -62,7 +63,8 @@ const getActualValue = (
     partContext: InventreeItem | null, 
     globalContext: RootState,
     logger: any,
-    cardInstanceId: string
+    cardInstanceId: string,
+    dispatch?: AppDispatch
 ): any => {
     let valueToReturn: any = undefined;
 
@@ -105,9 +107,20 @@ const getActualValue = (
             return (part as any)[attribute];
         }
 
-        // --- If not found in either, log and return undefined ---
+        // --- 🚀 SMART AUTO-FETCHING: If data is missing, auto-fetch it! ---
+        if (dispatch && (rtkQueryState.status === 'uninitialized' || (!rtkQueryState.data && rtkQueryState.status !== 'rejected'))) {
+            logger.info('getActualValue', `🚀 Auto-fetching missing part ${pk} for rule evaluation (field: ${field})`);
+            
+            // Trigger the fetch - this will populate the cache for next evaluation
+            dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
+            
+            // For now, return undefined but log that we triggered a fetch
+            logger.debug('getActualValue', `Part ${pk} fetch initiated, will be available on next evaluation cycle`);
+        }
+
+        // --- If not found in either, log current status ---
         const partStatus = rtkQueryState.status;
-        logger.warn('getActualValue', `Part with PK ${pk} not found in RTK Query cache (status: ${partStatus}) or partsSlice, or attribute '${attribute}' does not exist.`);
+        logger.debug('getActualValue', `Part with PK ${pk} not found in RTK Query cache (status: ${partStatus}) or partsSlice, or attribute '${attribute}' does not exist.`);
         return undefined;
     }
 
@@ -230,8 +243,9 @@ const evaluateRule = (
     partContext: InventreeItem | null,
     globalContext: RootState,
     logger: any,
-    cardInstanceId: string
+    cardInstanceId: string,
+    dispatch?: AppDispatch
 ): boolean => {
-    const actualValue = getActualValue(rule.field, partContext, globalContext, logger, cardInstanceId);
+    const actualValue = getActualValue(rule.field, partContext, globalContext, logger, cardInstanceId, dispatch);
     return memoizedInternalEvaluateRule(rule, actualValue, logger);
 }; 

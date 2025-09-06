@@ -10,12 +10,15 @@ import {
     EffectDefinition,       // Imported for future use
     LogicPair,              // <<<< CORRECTED IMPORT
     RuleGroupType,         // Our internal, stricter RuleGroupType
-    RuleType             // Our internal RuleType
+    RuleType,             // Our internal RuleType
+    InventreeItem,
+    CellDefinition
 } from '../../types';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { HomeAssistant } from 'custom-card-helpers';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
 import EffectsConfiguration from './EffectsConfiguration'; // ADDED IMPORT
+import DataAvailabilityIndicator from './DataAvailabilityIndicator';
 
 ConditionalLoggerEngine.getInstance().registerCategory('ConditionalLogicSection', { enabled: false, level: 'info' });
 
@@ -25,7 +28,10 @@ interface ConditionalLogicSectionProps {
   configuredDataSources?: DataSourceConfig;
   hass?: HomeAssistant;
   directApiConfig?: DirectApiConfig;
-  allParameterValues?: Record<number, Record<string, ParameterDetail>>;
+  allParameterValues?: Record<string, Record<string, ParameterDetail>>;
+  cardInstanceId?: string;
+  parts: InventreeItem[];
+  cells: CellDefinition[];
 }
 
 const getParameterInputType = (paramDetail?: ParameterDetail): 'text' | 'number' | 'boolean' => {
@@ -39,7 +45,7 @@ const generateFieldsFromDataSources = (
   dataSources: DataSourceConfig | undefined,
   hass: HomeAssistant | undefined,
   directApiConfig: DirectApiConfig | undefined,
-  allParameterValues: Record<number, Record<string, ParameterDetail>> | undefined,
+  allParameterValues: Record<string, Record<string, ParameterDetail>> | undefined,
   logger: any // Pass logger as an argument
 ): Field[] => {
   const fields: Field[] = [];
@@ -263,7 +269,10 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
   configuredDataSources,
   hass,
   directApiConfig,
-  allParameterValues
+  allParameterValues,
+  cardInstanceId,
+  parts,
+  cells
 }) => {
   const logger = React.useMemo(() => {
     return ConditionalLoggerEngine.getInstance().getLogger('ConditionalLogicSection');
@@ -296,7 +305,7 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
       })) : [getNewLogicPair()],
     }));
     onConfigChanged({ definedLogics: sanitizedLogics });
-  }, [stringifiedLogicConfig, onConfigChanged]);
+  }, [stringifiedLogicConfig]);
 
   const handleAddLogicBlock = () => {
     const newLogicItem: ConditionalLogicItem = {
@@ -449,6 +458,11 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
         Define rules to dynamically change the card's appearance based on part data or Home Assistant states.
       </p>
 
+      <DataAvailabilityIndicator 
+        conditionalLogicItems={definedLogics} 
+        cardInstanceId={cardInstanceId || 'unknown'} 
+      />
+
       {definedLogics.map(logicItem => {
         const isCollapsed = collapsedLogicItems[logicItem.id];
         return (
@@ -523,6 +537,8 @@ const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps> = ({
                       onAddEffect={() => handleLogicPairAddEffect(logicItem.id, pair.id)}
                       onUpdateEffect={(effect) => handleLogicPairUpdateEffect(logicItem.id, pair.id, effect)}
                       onRemoveEffect={(effectId) => handleLogicPairRemoveEffect(logicItem.id, pair.id, effectId)}
+                      parts={parts}
+                      cells={cells}
                     />
                   </div>
                 ))}

@@ -1,6 +1,7 @@
 import React from 'react';
 import 'react-querybuilder/dist/query-builder.css';
-import { DataSourceConfig, DirectApiConfig, ParameterDetail, ConditionalLogicConfig } from '../../types';
+import { DataSourceConfig, DirectApiConfig, ParameterDetail, ConditionalLogicConfig, // Our internal RuleType
+InventreeItem, CellDefinition } from '../../types';
 import { HomeAssistant } from 'custom-card-helpers';
 interface ConditionalLogicSectionProps {
     conditionalLogicConfig?: ConditionalLogicConfig;
@@ -8,7 +9,10 @@ interface ConditionalLogicSectionProps {
     configuredDataSources?: DataSourceConfig;
     hass?: HomeAssistant;
     directApiConfig?: DirectApiConfig;
-    allParameterValues?: Record<number, Record<string, ParameterDetail>>;
+    allParameterValues?: Record<string, Record<string, ParameterDetail>>;
+    cardInstanceId?: string;
+    parts: InventreeItem[];
+    cells: CellDefinition[];
 }
 declare const ConditionalLogicSection: React.FC<ConditionalLogicSectionProps>;
 export default ConditionalLogicSection;

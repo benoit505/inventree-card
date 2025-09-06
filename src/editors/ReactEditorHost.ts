@@ -5,7 +5,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { store } from '../store';
-import { InventreeCardConfig, ILogger } from '../types';
+import { InventreeCardConfig, ILogger, CellDefinition } from '../types';
 import ReactInventreeCardEditor from '../components/editor/InventreeCardEditor';
 import { CARD_NAME } from '../core/constants'; // Assuming CARD_NAME is 'inventree-card'
 import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
@@ -44,6 +44,7 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
   `;
 
   public setConfig(config: InventreeCardConfig): void {
+    // 🚀 SIMPLIFIED: Always accept the new config - let React handle the diffing
     this._config = config;
     this._cardInstanceId = generateStableCardInstanceId(config);
     this.logger = ConditionalLoggerEngine.getInstance().getLogger('ReactEditorHost', this._cardInstanceId);
@@ -88,8 +89,29 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
     }
   }
 
+  private _sanitizeConfigForLovelace(config: InventreeCardConfig): InventreeCardConfig {
+    const sanitized = JSON.parse(JSON.stringify(config)); // Deep copy
+
+    if (sanitized.layout?.cells) {
+      sanitized.layout.cells = sanitized.layout.cells.map((cell: any) => {
+        // Lovelace rejects configs containing properties that look like transient UI state.
+        // The 'header' property was generated on-the-fly and caused this error.
+        // We have now removed it from the type system entirely, but this sanitizer remains
+        // as a safeguard in case any old configs still have it. The `id` is required
+        // by the layout system and is safe to save.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { header, ...rest } = cell; 
+        return rest;
+      });
+    }
+
+    return sanitized;
+  }
+
   private _handleReactConfigChange = (newConfig: InventreeCardConfig) => {
     this.logger.debug('_handleReactConfigChange', 'React editor changed config, attempting to fire event.', { newConfig });
+    
+    const sanitizedConfig = this._sanitizeConfigForLovelace(newConfig);
 
     let eventTargetElement: HTMLElement = this; // Default to 'this' (the custom element itself)
 
@@ -103,10 +125,12 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
     }
 
     try {
-      fireEvent(eventTargetElement, 'config-changed', { config: newConfig });
+      fireEvent(eventTargetElement, 'config-changed', { config: sanitizedConfig });
       this.logger.info('_handleReactConfigChange', 'Successfully fired config-changed event.', { target: eventTargetElement === this ? 'self' : 'lovelace' });
+      console.log('✅ EDITOR: config-changed event fired successfully!', { target: eventTargetElement === this ? 'self' : 'lovelace' });
     } catch (e) {
       this.logger.error('_handleReactConfigChange', 'Error firing config-changed event:', e as Error, { target: eventTargetElement, newConfig });
+      console.log('❌ EDITOR: ERROR firing config-changed event:', e);
     }
   };
 
@@ -154,6 +178,7 @@ export class ReactEditorHost extends LitElement implements LovelaceCardEditor {
       config: this._config,
       cardInstanceId: this._cardInstanceId,
       onConfigChanged: this._handleReactConfigChange,
+      dispatch: store.dispatch,
     };
     
     const editorElement = React.createElement(ReactInventreeCardEditor, reactEditorProps);

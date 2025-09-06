@@ -1,5 +1,5 @@
 import { RuleGroupType } from "../types";
-import { RootState } from "../store";
+import { RootState, AppDispatch } from "../store";
 import { InventreeItem } from "../types";
 /**
  * Placeholder for a sophisticated expression evaluation engine.
@@ -13,4 +13,4 @@ import { InventreeItem } from "../types";
  * @param cardInstanceId The ID of the card instance.
  * @returns boolean - True if the conditions are met, false otherwise.
  */
-export declare const evaluateExpression: (ruleGroup: RuleGroupType, partContext: InventreeItem | null, globalContext: RootState, logger: any, cardInstanceId: string) => boolean;
+export declare const evaluateExpression: (ruleGroup: RuleGroupType, partContext: InventreeItem | null, globalContext: RootState, logger: any, cardInstanceId: string, dispatch?: AppDispatch) => boolean;

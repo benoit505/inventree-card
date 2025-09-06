@@ -15,7 +15,6 @@ import partsReducer from './slices/partsSlice';
 import uiReducer from './slices/uiSlice';
 import visualEffectsReducer from './slices/visualEffectsSlice';
 import websocketReducer from './slices/websocketSlice';
-import layoutReducer from './slices/layoutSlice';
 import { inventreeApi } from './apis/inventreeApi';
 import { loggingApi } from './apis/loggingApi';
 import actionsReducer from './slices/actionsSlice';
@@ -41,7 +40,6 @@ const appReducer = combineReducers({
   websocket: websocketReducer,
   actions: actionsReducer,
   logging: loggingReducer,
-  layout: layoutReducer,
   [inventreeApi.reducerPath]: inventreeApi.reducer,
   [loggingApi.reducerPath]: loggingApi.reducer,
 });
@@ -53,7 +51,7 @@ export type RootState = ReturnType<typeof appReducer>;
 const persistConfig = {
   key: 'inventree-card-root',
   storage,
-  whitelist: ['config', 'layout'],
+  whitelist: ['config'],
 };
 
 // 4. Create the persisted reducer

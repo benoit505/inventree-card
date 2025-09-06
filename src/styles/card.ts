@@ -22,7 +22,6 @@ export const cardStyles = css`
 
     .grid {
         display: grid;
-        grid-template-columns: repeat(var(--columns, 2), 1fr);
         gap: var(--grid-spacing, var(--default-spacing));
         padding: var(--grid-spacing, var(--default-spacing));
         overflow-y: auto;

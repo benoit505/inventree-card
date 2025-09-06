@@ -15,6 +15,7 @@ export declare class ReactEditorHost extends LitElement implements LovelaceCardE
     setConfig(config: InventreeCardConfig): void;
     protected firstUpdated(_changedProperties: PropertyValues): void;
     protected updated(changedProperties: PropertyValues): void;
+    private _sanitizeConfigForLovelace;
     private _handleReactConfigChange;
     private _renderReactApp;
     disconnectedCallback(): void;

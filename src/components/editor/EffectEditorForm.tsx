@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, CSSProperties } from 'react';
-import { EffectDefinition, ActionDefinition, DisplayConfigKey, AnimationPreset, LayoutColumn, VisualEffect } from '../../types';
+import { EffectDefinition, ActionDefinition, DisplayConfigKey, AnimationPreset, VisualEffect, CellDefinition, InventreeItem } from '../../types';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
@@ -12,11 +12,15 @@ ConditionalLoggerEngine.getInstance().registerCategory('EffectEditorForm', { ena
 interface EffectEditorFormProps {
   effect: EffectDefinition;
   onUpdate: (updatedEffect: EffectDefinition) => void;
+  parts: InventreeItem[];
+  cells: CellDefinition[];
 }
 
 const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   effect,
   onUpdate,
+  parts,
+  cells,
 }) => {
   const [effectType, setEffectType] = useState<EffectDefinition['type']>(effect.type);
   const [styleTarget, setStyleTarget] = useState<string>('Row');
@@ -26,8 +30,17 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
   const [targetDisplayKey, setTargetDisplayKey] = useState<DisplayConfigKey | undefined>(undefined);
   const [animationPreset, setAnimationPreset] = useState<string>('none');
   const [customActionId, setCustomActionId] = useState<string | undefined>(undefined);
-  const [targetPartPksInput, setTargetPartPksInput] = useState<string>('');
+  const [selectedPartPk, setSelectedPartPk] = useState<string>('');
+  const [selectedCellId, setSelectedCellId] = useState<string>('');
   
+  // State for all other effect types
+  const [thumbnailFilter, setThumbnailFilter] = useState<string | undefined>();
+  const [thumbnailOpacity, setThumbnailOpacity] = useState<number | undefined>();
+  const [service, setService] = useState<string | undefined>();
+  const [serviceData, setServiceData] = useState<Record<string, any> | undefined>();
+  const [layoutProperty, setLayoutProperty] = useState<'w' | 'h' | 'x' | 'y'>('w');
+  const [layoutValue, setLayoutValue] = useState<number>(1);
+
   const layoutColumns = useSelector((state: RootState) => {
     // In the editor, we don't have a single card instance.
     // We'll take the layout from the first available configured card instance.
@@ -50,13 +63,17 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     return allActionDefinitions || [];
   }, [allActionDefinitions]);
 
-  const parseTargetPks = (input: string): number[] | 'all_loaded' | undefined => {
-    const trimmedInput = input.trim();
-    if (trimmedInput.toLowerCase() === 'all_loaded') return 'all_loaded';
-    if (trimmedInput === '') return undefined;
-    const pks = trimmedInput.split(',').map(pk => parseInt(pk.trim(), 10)).filter(pk => !isNaN(pk));
-    return pks.length > 0 ? pks : undefined;
-  };
+  const availablePartsInCells = useMemo(() => {
+    if (!cells || !parts) return [];
+    const partPksInCells = new Set(cells.map(cell => cell.partPk));
+    return parts.filter(part => partPksInCells.has(part.pk));
+  }, [cells, parts]);
+
+  const availableCellsForPart = useMemo(() => {
+    if (!selectedPartPk || !cells) return [];
+    const pk = parseInt(selectedPartPk, 10);
+    return cells.filter(cell => cell.partPk === pk);
+  }, [selectedPartPk, cells]);
   
   useEffect(() => {
     setEffectType(effect.type);
@@ -69,6 +86,15 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     setTargetDisplayKey(undefined);
     setAnimationPreset('none');
     setCustomActionId(undefined);
+    setSelectedPartPk('');
+    setSelectedCellId('');
+    // Reset new state
+    setThumbnailFilter(undefined);
+    setThumbnailOpacity(undefined);
+    setService(undefined);
+    setServiceData(undefined);
+    setLayoutProperty('w');
+    setLayoutValue(1);
 
     if (effect.type === 'set_style') {
       setStyleTarget(effect.styleTarget || 'Row');
@@ -81,56 +107,89 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
       setAnimationPreset(effect.preset || 'none');
     } else if (effect.type === 'trigger_custom_action') {
       setCustomActionId(effect.customActionId);
+    } else if (effect.type === 'set_thumbnail_style') {
+      setThumbnailFilter(effect.thumbnailFilter);
+      setThumbnailOpacity(effect.thumbnailOpacity);
+    } else if (effect.type === 'call_ha_service') {
+      setService(effect.service);
+      setServiceData(effect.service_data);
+    } else if (effect.type === 'set_layout') {
+      setLayoutProperty(effect.layoutProperty);
+      setLayoutValue(effect.layoutValue);
     }
 
-    if ('targetPartPks' in effect && effect.targetPartPks) {
-      if (typeof effect.targetPartPks === 'string') {
-        setTargetPartPksInput(effect.targetPartPks);
-      } else if (Array.isArray(effect.targetPartPks)) {
-        setTargetPartPksInput(effect.targetPartPks.join(', '));
+    if ('targetCellId' in effect && effect.targetCellId) {
+      const targetCell = cells.find(c => c.id === effect.targetCellId);
+      if (targetCell) {
+        setSelectedPartPk(String(targetCell.partPk));
+        setSelectedCellId(targetCell.id);
       }
-    } else {
-      setTargetPartPksInput('');
     }
-  }, [effect]);
+  }, [effect, cells]);
 
-  const handleUpdate = (update: Partial<EffectDefinition>) => {
-    // This is a bit unsafe, but necessary as we build the object incrementally
-    const baseEffect: Partial<EffectDefinition> = { ...effect };
+  // This effect listens to all form state changes and constructs a valid EffectDefinition
+  useEffect(() => {
+    let updatedEffect: EffectDefinition;
+
+    switch (effectType) {
+      case 'set_style':
+        updatedEffect = { id: effect.id, type: 'set_style', styleTarget: styleTarget, styleProperty: styleProperty || '', styleValue, targetCellId: selectedCellId || undefined };
+        break;
+      case 'set_visibility':
+        updatedEffect = { id: effect.id, type: 'set_visibility', isVisible, targetDisplayKey, targetCellId: selectedCellId || undefined };
+        break;
+      case 'animate_style':
+        updatedEffect = { id: effect.id, type: 'animate_style', preset: animationPreset, targetCellId: selectedCellId || undefined };
+        break;
+      case 'trigger_custom_action':
+        updatedEffect = { id: effect.id, type: 'trigger_custom_action', customActionId: customActionId || '', targetCellId: selectedCellId || undefined };
+        break;
+      case 'set_thumbnail_style':
+        updatedEffect = { id: effect.id, type: 'set_thumbnail_style', thumbnailFilter, thumbnailOpacity, targetCellId: selectedCellId || undefined };
+        break;
+      case 'call_ha_service':
+        updatedEffect = { id: effect.id, type: 'call_ha_service', service, service_data: serviceData, targetCellId: selectedCellId || undefined };
+        break;
+      case 'set_layout':
+        updatedEffect = { id: effect.id, type: 'set_layout', targetCellId: selectedCellId || '', layoutProperty: layoutProperty || 'w', layoutValue: layoutValue || 1 };
+        break;
+      default:
+        // This should not be reachable if all types are handled, but as a safe fallback:
+        updatedEffect = effect;
+        break;
+    }
     
-    // Only add targetPartPks if it's not a set_layout effect
-    if (baseEffect.type !== 'set_layout') {
-        (baseEffect as any).targetPartPks = parseTargetPks(targetPartPksInput);
+    // Prevent infinite loops by only calling onUpdate when the generated object differs from the source prop
+    if (JSON.stringify(updatedEffect) !== JSON.stringify(effect)) {
+      onUpdate(updatedEffect);
     }
-
-    onUpdate({ ...baseEffect, ...update } as EffectDefinition);
-  };
+  }, [
+    effect, onUpdate, effectType, styleTarget, styleProperty, styleValue, 
+    isVisible, targetDisplayKey, animationPreset, customActionId, selectedCellId,
+    thumbnailFilter, thumbnailOpacity, service, serviceData, layoutProperty, layoutValue
+  ]);
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = e.target.value as EffectDefinition['type'];
-    
-    // Create a base new effect with a default state for that type
-    let newEffect: EffectDefinition;
+    setEffectType(newType);
 
-    switch (newType) {
-      case 'set_style':
-        newEffect = { id: effect.id, type: 'set_style', styleTarget: 'Row', styleProperty: '', styleValue: '' };
-        break;
-      case 'set_visibility':
-        newEffect = { id: effect.id, type: 'set_visibility', isVisible: true };
-        break;
-      case 'animate_style':
-        newEffect = { id: effect.id, type: 'animate_style', preset: 'none' };
-        break;
-      case 'trigger_custom_action':
-        newEffect = { id: effect.id, type: 'trigger_custom_action', customActionId: '' };
-        break;
-      default:
-        // Fallback for any unhandled types
-        newEffect = { id: effect.id, type: newType } as EffectDefinition;
-    }
-    
-    onUpdate(newEffect);
+    // Reset state for other types to defaults
+    setStyleTarget('Row');
+    setStyleProperty(undefined);
+    setStyleValue('');
+    setIsVisible(true);
+    setTargetDisplayKey(undefined);
+    setAnimationPreset('none');
+    setCustomActionId(undefined);
+    setSelectedPartPk('');
+    setSelectedCellId('');
+    // Reset new state
+    setThumbnailFilter(undefined);
+    setThumbnailOpacity(undefined);
+    setService(undefined);
+    setServiceData(undefined);
+    setLayoutProperty('w');
+    setLayoutValue(1);
   };
   
   const rowStylePropertyOptions: { value: keyof VisualEffect, label: string }[] = [
@@ -161,6 +220,8 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
     // Add other display keys as needed
   ];
 
+  const needsTarget = effect.type === 'animate_style' || effect.type === 'set_visibility' || effect.type === 'trigger_custom_action' || effect.type === 'set_thumbnail_style' || effect.type === 'call_ha_service' || (effect.type === 'set_style' && styleTarget === 'Row');
+
   return (
     <div className="effect-editor-form" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -177,23 +238,25 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
           <div>
             <label htmlFor={`effect-style-target-${effect.id}`} style={{ marginRight: '5px' }}>Style Target:</label>
-            <select id={`effect-style-target-${effect.id}`} value={styleTarget} onChange={(e) => handleUpdate({ type: 'set_style', styleTarget: e.target.value })}>
-              <option value="Row">Row</option>
-              {layoutColumns.map((col: LayoutColumn) => (
-                <option key={col.id} value={col.id}>{col.header || `(Column: ${col.content})`}</option>
-              ))}
+            <select id={`effect-style-target-${effect.id}`} value={styleTarget} onChange={(e) => setStyleTarget(e.target.value)}>
+              <option value="Row">Part (Row)</option>
+              {cells.map((cell: CellDefinition) => {
+                const part = parts.find(p => p.pk === cell.partPk);
+                const header = part ? `${part.name} - ${cell.content}` : `Part ${cell.partPk} - ${cell.content}`;
+                return <option key={cell.id} value={cell.id}>{header}</option>;
+              })}
             </select>
           </div>
           
           {styleTarget === 'Row' ? (
-            <select value={styleProperty || ''} onChange={(e) => handleUpdate({ type: 'set_style', styleProperty: e.target.value as keyof CSSProperties })}>
+            <select value={styleProperty || ''} onChange={(e) => setStyleProperty(e.target.value as keyof CSSProperties)}>
               <option value="">Select property...</option>
               {rowStylePropertyOptions.map(opt => (
                 <option key={String(opt.value)} value={String(opt.value)}>{opt.label}</option>
               ))}
             </select>
           ) : (
-            <select value={styleProperty || ''} onChange={(e) => handleUpdate({ type: 'set_style', styleProperty: e.target.value as keyof CSSProperties })}>
+            <select value={styleProperty || ''} onChange={(e) => setStyleProperty(e.target.value as keyof CSSProperties)}>
               <option value="">Select property...</option>
               {cellStylePropertyOptions.map(opt => (
                 <option key={String(opt.value)} value={String(opt.value)}>{opt.label}</option>
@@ -201,7 +264,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
             </select>
           )}
 
-          <input type="text" value={styleValue || ''} onChange={(e) => handleUpdate({ type: 'set_style', styleValue: e.target.value })} placeholder="Value (e.g. red, bold, 1px solid)"/>
+          <input type="text" value={styleValue || ''} onChange={(e) => setStyleValue(e.target.value)} placeholder="Value (e.g. red, bold, 1px solid)"/>
         </div>
       )}
 
@@ -212,7 +275,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
             type="checkbox"
             id={`effect-visible-${effect.id}`}
             checked={isVisible === true}
-            onChange={(e) => handleUpdate({ type: 'set_visibility', isVisible: e.target.checked })}
+            onChange={(e) => setIsVisible(e.target.checked)}
           />
         </div>
       )}
@@ -223,7 +286,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
           <select 
             id={`effect-anim-preset-${effect.id}`} 
             value={animationPreset}
-            onChange={(e) => handleUpdate({ type: 'animate_style', preset: e.target.value })}
+            onChange={(e) => setAnimationPreset(e.target.value)}
           >
             <option value="none">None</option>
             {Object.values(ANIMATION_PRESETS).map((preset: AnimationPreset) => (
@@ -241,7 +304,7 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
           <select
             id={`effect-custom-action-${effect.id}`}
             value={customActionId || ''}
-            onChange={(e) => handleUpdate({ type: 'trigger_custom_action', customActionId: e.target.value })}
+            onChange={(e) => setCustomActionId(e.target.value)}
           >
             <option value="">Select an action...</option>
             {availableActions.map((action) => (
@@ -251,28 +314,42 @@ const EffectEditorForm: React.FC<EffectEditorFormProps> = ({
         </div>
       )}
 
-      <div style={{ marginTop: '10px' }}>
-        <label htmlFor={`effect-target-pks-${effect.id}`} style={{ marginRight: '5px' }}>Target Part PKs (optional):</label>
-        <input
-          type="text"
-          id={`effect-target-pks-${effect.id}`}
-          value={targetPartPksInput}
-          onChange={(e) => setTargetPartPksInput(e.target.value)}
-          onBlur={(e) => {
-            const currentEffect = { ...effect };
-            if (currentEffect.type !== 'set_layout') {
-              (currentEffect as any).targetPartPks = parseTargetPks(e.target.value);
-            }
-            onUpdate(currentEffect);
-          }}
-          placeholder="e.g., 1, 2, 3 or 'all_loaded'"
-          style={{ width: '100%', boxSizing: 'border-box' }}
-          disabled={effect.type === 'set_layout'}
-        />
-        <p style={{ fontSize: '0.8em', color: 'gray', margin: '2px 0 0 0' }}>
-          Overrides the part that triggered the rule. Leave blank to target the triggering part.
-        </p>
-      </div>
+      {needsTarget && (
+        <div style={{ marginTop: '10px' }}>
+          <label>Target Cell (optional):</label>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <select
+              value={selectedPartPk}
+              onChange={(e) => {
+                setSelectedPartPk(e.target.value);
+                setSelectedCellId(''); // Reset cell when part changes
+              }}
+              style={{ flex: 1 }}
+            >
+              <option value="">-- Select Part --</option>
+              {availablePartsInCells.map(part => (
+                <option key={part.pk} value={part.pk}>{part.name}</option>
+              ))}
+            </select>
+            <select
+              value={selectedCellId}
+              onChange={(e) => setSelectedCellId(e.target.value)}
+              disabled={!selectedPartPk}
+              style={{ flex: 1 }}
+            >
+              <option value="">-- Select Cell --</option>
+              {availableCellsForPart.map(cell => {
+                const part = parts.find(p => p.pk === cell.partPk);
+                const header = part ? `${part.name} - ${cell.content}` : `Part ${cell.partPk} - ${cell.content}`;
+                return <option key={cell.id} value={cell.id}>{header}</option>;
+              })}
+            </select>
+          </div>
+          <p style={{ fontSize: '0.8em', color: 'gray', margin: '2px 0 0 0' }}>
+            Overrides the part that triggered the rule. Leave blank to target the triggering part.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,13 +1,15 @@
 import React from 'react';
-import { EffectDefinition } from '../../types'; // Corrected path again
-import EffectEditorForm from './EffectEditorForm'; // UNCOMMENTED
+import { EffectDefinition, InventreeItem, CellDefinition } from '../../types';
+import EffectEditorForm from './EffectEditorForm';
 
 interface EffectsConfigurationProps {
   effects: EffectDefinition[];
-  logicBlockId: string; // To ensure unique keys for effects within this block
+  logicBlockId: string;
   onAddEffect: () => void;
   onUpdateEffect: (updatedEffect: EffectDefinition) => void;
   onRemoveEffect: (effectId: string) => void;
+  parts: InventreeItem[];
+  cells: CellDefinition[];
 }
 
 const EffectsConfiguration: React.FC<EffectsConfigurationProps> = ({
@@ -16,6 +18,8 @@ const EffectsConfiguration: React.FC<EffectsConfigurationProps> = ({
   onAddEffect,
   onUpdateEffect,
   onRemoveEffect,
+  parts,
+  cells,
 }) => {
   return (
     <div style={{ marginTop: '10px', paddingLeft: '20px', borderLeft: '2px solid #eee' }}>
@@ -26,7 +30,8 @@ const EffectsConfiguration: React.FC<EffectsConfigurationProps> = ({
           <EffectEditorForm
             effect={effect}
             onUpdate={(updatedEffect) => onUpdateEffect(updatedEffect)}
-            // onRemove is handled by the button below for now, but EffectEditorForm could have its own remove if needed
+            parts={parts}
+            cells={cells}
           />
           <button 
             onClick={() => onRemoveEffect(effect.id)} 

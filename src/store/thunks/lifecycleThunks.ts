@@ -12,7 +12,6 @@ import { processHassEntities, initializeGenericHaStatesFromConfig } from './syst
 import { fetchConfiguredParameters } from './parameterThunks';
 import { registerComponent, removeComponent } from '../slices/componentSlice';
 import { partsSlice } from '../slices/partsSlice';
-import { removeInstance as removeLayoutInstance } from '../slices/layoutSlice';
 import { removeInstance as removeLoggingInstance } from '../slices/loggingSlice';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 
@@ -113,7 +112,6 @@ export const removeCardInstanceThunk = createAsyncThunk<
   logger.info('removeCardInstanceThunk', `Component removed. Active components: [${activeComponentIds.join(', ')}]`);
   dispatch(removeConfigAction({ cardInstanceId }));
   dispatch(partsSlice.actions.removeInstance({ cardInstanceId }));
-  dispatch(removeLayoutInstance({ cardInstanceId }));
   dispatch(removeLoggingInstance({ cardInstanceId }));
   logger.info('removeCardInstanceThunk', `Card instance ${cardInstanceId} fully removed.`);
 });

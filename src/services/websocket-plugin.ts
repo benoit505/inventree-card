@@ -108,6 +108,13 @@ export class WebSocketPlugin {
   public configure(config: DirectApiConfig): void {
     this._config = config;
 
+    // 🚀 FIX: Only configure a URL if websockets are explicitly enabled
+    if (!config.enabled || config.method !== 'websocket') {
+      this._url = '';
+      logger.info('configure', 'WebSockets are disabled in config. No URL will be configured.', { enabled: config.enabled, method: config.method });
+      return;
+    }
+
     // Determine the WebSocket URL to use
     if (config.websocket_url && config.websocket_url.trim() !== '') {
       this._url = config.websocket_url.trim();

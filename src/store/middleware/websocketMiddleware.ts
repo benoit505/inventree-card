@@ -24,8 +24,8 @@ const initializeThrottledEvaluator = (storeAPI: MiddlewareAPI<AppDispatch, RootS
   const state = storeAPI.getState();
   // In a multi-instance world, find the most frequent (lowest) requested evaluation frequency.
   const allConfigs = Object.values(state.config.configsByInstance);
-  const conditionEvalFrequency = allConfigs.reduce((min, configState) => {
-    const freq = configState.config?.performance?.parameters?.conditionEvalFrequency ?? 1000;
+  const conditionEvalFrequency = allConfigs.reduce((min: number, configState: { config?: { performance?: { parameters?: { conditionEvalFrequency?: number } } } } | undefined) => {
+    const freq = configState?.config?.performance?.parameters?.conditionEvalFrequency ?? 1000;
     return Math.min(min, freq);
   }, 1000); // Default to 1000ms
   
@@ -53,9 +53,19 @@ export const websocketMiddleware: Middleware<{}, RootState, AppDispatch> =
 
     // Check if the action is one of the HA entity state updates
     if (setEntityState.match(actionWithType as Action) || setEntityStatesBatch.match(actionWithType as Action)) {
-      logger.debug('middleware', `HA entity state updated (action: ${actionWithType.type}), triggering (throttled) effects re-evaluation.`);
+      const entityData = setEntityStatesBatch.match(actionWithType as Action) 
+        ? actionWithType.payload 
+        : [actionWithType.payload];
+      
+      logger.info('middleware', `🚀 HA entity state updated (action: ${actionWithType.type}), triggering effects re-evaluation.`, {
+        entityCount: Array.isArray(entityData) ? entityData.length : 1,
+        entities: Array.isArray(entityData) ? entityData.map(e => `${e?.entity_id}=${e?.state}`) : [`${entityData?.entity_id}=${entityData?.state}`]
+      });
+      
       if (throttledEvaluateEffects) {
         throttledEvaluateEffects();
+      } else {
+        logger.warn('middleware', 'throttledEvaluateEffects is not initialized!');
       }
     }
 

@@ -1,4 +1,4 @@
-import { InventreeCardConfig, DisplayConfig, ConditionalLogicItem, ActionDefinition } from '../../types';
+import { InventreeCardConfig, DisplayConfig, ConditionalLogicItem, ActionDefinition, LayoutConfig } from '../../types';
 export interface InstanceConfigState {
     config: InventreeCardConfig;
     cardInstanceId: string;
@@ -16,7 +16,10 @@ export declare const setConfigAction: import("@reduxjs/toolkit").ActionCreatorWi
     config: InventreeCardConfig;
 }, "config/setConfigAction">, removeConfigAction: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;
-}, "config/removeConfigAction">;
+}, "config/removeConfigAction">, updateLayout: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    cardInstanceId: string;
+    layout: Partial<LayoutConfig>;
+}, "config/updateLayout">;
 export declare const selectConfigByInstanceId: ((state: any, cardInstanceId: string) => InventreeCardConfig) & {
     clearCache: () => void;
     resultsCount: () => number;

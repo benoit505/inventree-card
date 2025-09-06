@@ -7,6 +7,7 @@ export declare class ActionEngine {
     private isExecuting;
     private constructor();
     static getInstance(): ActionEngine;
+    evaluateExpression(expressionId: string, context: ActionExecutionContext, cardInstanceId: string): boolean;
     executeAction(actionId: string, context: ActionExecutionContext, cardInstanceId: string): void;
     private handleOperation;
     private handleCallHAService;

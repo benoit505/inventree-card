@@ -13,7 +13,8 @@ import { CSSProperties } from 'react';
 import { 
     setConditionalPartEffectsBatch, 
     clearConditionalPartEffectsForCard,
-    setConditionalLayoutEffect
+    setConditionalLayoutEffect,
+    setConditionalCellEffect
 } from '../store/slices/visualEffectsSlice';
 import { selectAllGenericHaStates } from '../store/slices/genericHaStateSlice';
 import { evaluateExpression } from '../utils/evaluateExpression';
@@ -64,9 +65,39 @@ export class ConditionalEffectsEngine {
         effects: Exclude<EffectDefinition, { type: 'set_layout' }>[],
         effectsToApply: Record<number, VisualEffect>,
         allParts: InventreeItem[],
+        cardInstanceId: string,
         contextPartPk?: number
     ) {
         for (const effect of effects) {
+            // --- NEW: Cell-specific effects are handled and dispatched immediately ---
+            if (((effect.type === 'animate_style' || effect.type === 'set_style') && effect.targetCellId) || (effect.type === 'set_visibility' && effect.targetCellId)) {
+                let effectPayload: Partial<VisualEffect> = {};
+
+                if (effect.type === 'animate_style') {
+                    const presetKey = effect.preset?.toLowerCase();
+                    if (presetKey && presetKey !== 'none' && ANIMATION_PRESETS[presetKey]) {
+                        effectPayload = { animation: ANIMATION_PRESETS[presetKey].animation };
+                    } else if (effect.animation) {
+                        effectPayload = { animation: effect.animation };
+                    }
+                }
+                
+                if (effect.type === 'set_style') {
+                    effectPayload = { cellStyles: { [effect.targetCellId]: { [effect.styleProperty]: effect.styleValue } } };
+                }
+
+                if (effect.type === 'set_visibility') {
+                    effectPayload = { isVisible: effect.isVisible };
+                }
+
+                this.dispatch(setConditionalCellEffect({
+                    cardInstanceId,
+                    cellId: effect.targetCellId,
+                    effect: effectPayload
+                }));
+                continue; // This effect is handled, move to the next one
+            }
+
             let targetPksForThisEffect: number[] = [];
 
             // Ensure incoming target PKs are numbers
@@ -102,6 +133,9 @@ export class ConditionalEffectsEngine {
                                 (currentPartVisualEffects as any)[visualEffectKey] = effect.styleValue;
                             }
                         } else {
+                            // DEPRECATED LOGIC: This styles a cell via the Part's visual effect, which is indirect.
+                            // The new logic above handles direct cell styling via `targetCellId`.
+                            // This block is kept for backward compatibility for now.
                             const columnId = effect.styleTarget;
                             if (columnId && effect.styleProperty && effect.styleValue !== undefined) {
                                 if (!currentPartVisualEffects.cellStyles) currentPartVisualEffects.cellStyles = {};
@@ -111,6 +145,9 @@ export class ConditionalEffectsEngine {
                         }
                         break;
                     case 'animate_style':
+                        // DEPRECATED LOGIC: This applies animation to an entire Part.
+                        // The new logic above handles direct cell animation via `targetCellId`.
+                        // This block is kept for backward compatibility for now.
                         const presetKey = effect.preset?.toLowerCase();
                         if (presetKey === 'none') {
                             delete currentPartVisualEffects.animation;
@@ -158,9 +195,9 @@ export class ConditionalEffectsEngine {
             for (const pair of logicItem.logicPairs) {
                 if (isRuleGroupGeneric(pair.conditionRules)) {
                     try {
-                        if (evaluateExpression(pair.conditionRules, null, state, logger, cardInstanceId)) {
+                        if (evaluateExpression(pair.conditionRules, null, state, logger, cardInstanceId, this.dispatch)) {
                             const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
-                            this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts);
+                            this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, cardInstanceId);
                             
                             for (const effect of pair.effects) {
                                 if (effect.type === 'set_layout') {
@@ -184,9 +221,9 @@ export class ConditionalEffectsEngine {
                 for (const pair of logicItem.logicPairs) {
                     if (!isRuleGroupGeneric(pair.conditionRules)) {
                         try {
-                            if (evaluateExpression(pair.conditionRules, part, state, logger, cardInstanceId)) {
+                            if (evaluateExpression(pair.conditionRules, part, state, logger, cardInstanceId, this.dispatch)) {
                                 const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
-                                this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, part.pk);
+                                this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, cardInstanceId, part.pk);
 
                                 for (const effect of pair.effects) {
                                     if (effect.type === 'set_layout') {

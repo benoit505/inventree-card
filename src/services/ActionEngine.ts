@@ -10,6 +10,9 @@ import {
   ActionOperation,
   ActionHAStandardTarget,
   InventreeItem,
+  RuleGroupType,
+  RuleType,
+  ConditionRuleDefinition, // 🚀 Import the correct type
 } from '../types';
 import { store, RootState, AppDispatch } from '../store';
 import {
@@ -17,6 +20,7 @@ import {
   selectActionDefinitionForInstance,
   selectAllActionDefinitionsForInstance,
 } from '../store/slices/actionsSlice';
+import { selectConditionalLogic } from '../store/slices/configSlice'; // 🚀 Corrected import
 import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
 import { evaluateAndApplyEffectsThunk } from '../store/thunks/conditionalLogicThunks';
 import { inventreeApi } from '../store/apis/inventreeApi';
@@ -24,6 +28,7 @@ import { setActiveView, setSelectedPart, toggleDebugPanel } from '../store/slice
 import { setLocatingPartId } from '../store/slices/partsSlice';
 import { selectActiveCardInstanceIds } from '../store/slices/componentSlice';
 import { updateParameterValue } from '../store/thunks/parameterThunks';
+import { get } from 'lodash';
 
 const logger = ConditionalLoggerEngine.getInstance().getLogger('ActionEngine');
 ConditionalLoggerEngine.getInstance().registerCategory('ActionEngine', { enabled: true, level: 'info' });
@@ -120,6 +125,65 @@ export class ActionEngine {
       ActionEngine.instance = new ActionEngine();
     }
     return ActionEngine.instance;
+  }
+
+  public evaluateExpression(expressionId: string, context: ActionExecutionContext, cardInstanceId: string): boolean {
+    const state = store.getState();
+    const definedLogics = selectConditionalLogic(state, cardInstanceId); // 🚀 Use correct selector
+    const logic = definedLogics.find(l => l.id === expressionId);
+
+    if (!logic) {
+      logger.warn('evaluateExpression', `Could not find defined logic with ID: ${expressionId}`);
+      return true; // Default to true if expression not found
+    }
+
+    // This is a simplified, synchronous version of the logic in evaluateAndApplyEffectsThunk
+    // It only checks the 'condition' part.
+    const checkCondition = (condition: RuleType): boolean => {
+      // In your system, the 'field' property holds the entity_id
+      const { field: entity_id, operator, value } = condition;
+      if (!entity_id) return false;
+
+      // The 'attribute' is parsed from the entity_id string if it contains a '.'
+      const parts = entity_id.split('.');
+      const entityIdOnly = parts.length > 1 ? `${parts[0]}.${parts[1]}` : entity_id;
+      const attribute = parts.length > 2 ? parts.slice(2).join('.') : undefined;
+      
+      const entityState = (state as any).genericHaStates.entities[entityIdOnly];
+      if (!entityState) return false;
+
+      const actualValue = attribute ? get(entityState.attributes, attribute) : entityState.state;
+
+      switch (operator) {
+        case '==': return actualValue == value;
+        case '!=': return actualValue != value;
+        case '>': return actualValue > value;
+        case '<': return actualValue < value;
+        case '>=': return actualValue >= value;
+        case '<=': return actualValue <= value;
+        case 'in': return String(value).includes(actualValue);
+        case 'not in': return !String(value).includes(actualValue);
+        default: return false;
+      }
+    };
+    
+    const evaluateGroup = (group: RuleGroupType): boolean => {
+      const results = group.rules.map((rule) => {
+        if ('combinator' in rule) { // It's a nested group
+          return evaluateGroup(rule as RuleGroupType);
+        }
+        return checkCondition(rule as RuleType);
+      });
+
+      if (group.combinator === 'and') {
+        return results.every(Boolean);
+      } else {
+        return results.some(Boolean);
+      }
+    };
+
+    // A single ConditionalLogicItem can have multiple pairs. We assume for now that if ANY pair's condition is met, the expression is true.
+    return logic.logicPairs.some(pair => evaluateGroup(pair.conditionRules));
   }
 
   public executeAction(actionId: string, context: ActionExecutionContext, cardInstanceId: string): void {

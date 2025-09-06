@@ -1,9 +1,12 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
-import { ActionDefinition, LayoutColumn, LayoutConfig, ReactGridLayout, InventreeItem } from '../../types';
-import LayoutBuilder from './LayoutBuilder';
+import { CellDefinition, ActionDefinition, LayoutConfig, ReactGridLayout, InventreeItem, ButtonCellItem } from '../../types';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import { CellRenderer } from '../layouts/CellRenderer';
+import { useTheme } from '../../hooks/useTheme';
+import { v4 as uuidv4 } from 'uuid'; // 🚀 For generating unique cell IDs
+import { isEqual } from 'lodash';
 
 const ResponsiveReactGridLayout = WidthProvider(Responsive);
 
@@ -26,77 +29,187 @@ const CustomResizeHandle = (
   />
 );
 
-// A mock part for preview purposes
-const MOCK_PART: InventreeItem = {
-  pk: 1,
-  name: 'Sample Part',
-  description: 'This is a sample part for layout preview.',
-  thumbnail: '/assets/images/brand-header.png',
-  quantity: 10,
-  variant_of: 0,
-  pathstring: '',
-  stock_item_count: 0,
-  barcode_hash: '',
-};
-
 interface LayoutSelectionSectionProps {
   layoutConfig: LayoutConfig;
   onLayoutConfigChanged: (newLayoutConfig: LayoutConfig) => void;
   actions: ActionDefinition[];
+  parts: InventreeItem[];
+  cardInstanceId: string;
 }
 
-const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutConfig, onLayoutConfigChanged, actions }) => {
-  
-  const [columns, setColumns] = useState<LayoutColumn[]>(layoutConfig.columns || []);
+// Define the specific type for LayoutColumn content to avoid ambiguity
+type CellContentType = 'name' | 'thumbnail' | 'description' | 'in_stock' | 'pk' | 'IPN' | 'SKU' | 'category_detail.name' | 'location_detail.name' | 'buttons' | 'attribute' | 'template';
 
-  // When the config from props changes (e.g., initial load), update our internal state
-  useEffect(() => {
-    setColumns(layoutConfig.columns || []);
-  }, [layoutConfig.columns]);
+const AVAILABLE_COLUMNS: { value: CellContentType, label: string }[] = [
+  { value: 'name', label: 'Part Name' },
+  { value: 'description', label: 'Description' },
+  { value: 'in_stock', label: 'In Stock' },
+  { value: 'pk', label: 'Part ID (PK)' },
+  { value: 'IPN', label: 'IPN' },
+  { value: 'SKU', label: 'SKU' },
+  { value: 'thumbnail', label: 'Thumbnail' },
+  { value: 'category_detail.name', label: 'Category Name' },
+  { value: 'location_detail.name', label: 'Location Name' },
+  { value: 'buttons', label: 'Action Buttons' },
+  { value: 'attribute', label: 'Custom Attribute' },
+  { value: 'template', label: 'Custom Template' },
+];
+
+const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutConfig, onLayoutConfigChanged, actions, parts, cardInstanceId }) => {
+  const { theme } = useTheme();
   
-  const handleNonColumnLayoutChange = useCallback((key: keyof Omit<LayoutConfig, 'columns'>, value: any) => {
-    onLayoutConfigChanged({
-      ...layoutConfig,
+  const actualLayoutConfig = layoutConfig;
+  
+  // 🚀 Local state for the new cell adder form
+  const [newCellPartPk, setNewCellPartPk] = useState<string>('');
+  const [newCellContent, setNewCellContent] = useState<CellContentType>('name');
+  
+  // 🚨 DEBUGGING: Wrap onLayoutConfigChanged to catch what's happening
+  const wrappedOnLayoutConfigChanged = useCallback((newConfig: LayoutConfig) => {
+    console.log('🚨 CONFIG UPDATE: onLayoutConfigChanged called with:', {
+      cells: newConfig.cells?.length || 0,
+      newConfig
+    });
+    onLayoutConfigChanged(newConfig);
+  }, [onLayoutConfigChanged]);
+
+  const handleNonCellLayoutChange = useCallback((key: keyof Omit<LayoutConfig, 'cells'>, value: any) => {
+    wrappedOnLayoutConfigChanged({
+      ...actualLayoutConfig,
       [key]: value,
     });
-  }, [layoutConfig, onLayoutConfigChanged]);
-  
-  const handleColumnsChanged = (newColumns: LayoutColumn[]) => {
-    setColumns(newColumns);
-    onLayoutConfigChanged({
-      ...layoutConfig,
-      columns: newColumns,
-    });
+  }, [actualLayoutConfig, wrappedOnLayoutConfigChanged]);
+
+  // 🚀 Handler to add a new cell
+  const handleAddCell = () => {
+    if (!newCellPartPk) {
+      alert('Please select a part.');
+      return;
+    }
+
+    const part = parts.find(p => p.pk === parseInt(newCellPartPk, 10));
+
+    if (!part) {
+      alert('Could not find the selected part data. The parts list might be refreshing. Please try again.');
+      return;
+    }
+
+    const newCell: CellDefinition = {
+      id: uuidv4(),
+      partPk: parseInt(newCellPartPk, 10),
+      content: newCellContent,
+      x: 0, // Default position, can be adjusted by user
+      y: 0,
+      w: 2, // Default size
+      h: 1,
+    };
+    
+    const newCells = [...(actualLayoutConfig.cells || []), newCell];
+    wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+  };
+
+  // 🚀 Handler to remove a cell
+  const handleRemoveCell = (cellId: string) => {
+    const newCells = (actualLayoutConfig.cells || []).filter((cell: CellDefinition) => cell.id !== cellId);
+    wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
   };
 
   const onLayoutChange = (layout: ReactGridLayout.Layout[]) => {
-    // This is the core logic that updates the column template from the grid preview
-    const updatedColumns = columns.map(col => {
-      const layoutItem = layout.find(l => l.i === `mock-1-${col.id}`);
+    console.log('🔄 RESIZE: onLayoutChange called');
+    
+    const updatedCells = (actualLayoutConfig.cells || []).map((cell: CellDefinition) => {
+      const layoutItem = layout.find(l => l.i === cell.id);
       if (layoutItem) {
-        return { ...col, x: layoutItem.x, y: layoutItem.y, w: layoutItem.w, h: layoutItem.h };
+        const updatedCell = { 
+          ...cell, 
+          x: layoutItem.x, 
+          y: layoutItem.y, 
+          w: layoutItem.w, 
+          h: layoutItem.h 
+        };
+        
+        // 🔍 DEBUG: Log if this cell changed
+        if (cell.x !== layoutItem.x || cell.y !== layoutItem.y || cell.w !== layoutItem.w || cell.h !== layoutItem.h) {
+          console.log(`🔍 CELL CHANGED [${cell.id}]:`, {
+            old: { x: cell.x, y: cell.y, w: cell.w, h: cell.h },
+            new: { x: layoutItem.x, y: layoutItem.y, w: layoutItem.w, h: layoutItem.h }
+          });
+        }
+        
+        return updatedCell;
       }
-      return col;
+      return cell;
     });
 
-    setColumns(updatedColumns);
-    onLayoutConfigChanged({
-      ...layoutConfig,
-      columns: updatedColumns,
-    });
+    // Check if anything actually changed to prevent infinite loops
+    if (!isEqual(updatedCells, actualLayoutConfig.cells)) {
+      console.log('🔍 LAYOUT CONFIG CHANGE: Cells updated, calling onLayoutConfigChanged');
+      wrappedOnLayoutConfigChanged({
+        ...actualLayoutConfig,
+        cells: updatedCells,
+      });
+    } else {
+      console.log('🔍 LAYOUT CONFIG CHANGE: No changes detected, skipping update');
+    }
   };
 
   const generatedLayouts = useMemo<ReactGridLayout.Layouts>(() => {
-    // Generate the layout for the preview grid from the column definitions
-    const generated: ReactGridLayout.Layout[] = columns.map((col, index) => ({
-      i: `mock-1-${col.id}`,
-      x: col.x ?? (index % 6) * 2,
-      y: col.y ?? 0,
-      w: col.w ?? 2,
-      h: col.h ?? 1,
+    const cells = actualLayoutConfig.cells || [];
+    console.log('🔄 PREVIEW: Generating layouts from', cells.length, 'cells.');
+
+    // In the new system, the layouts array is a direct mapping of cells.
+    const layouts: ReactGridLayout.Layout[] = cells.map((cell: CellDefinition) => ({
+      i: cell.id,
+      x: cell.x,
+      y: cell.y,
+      w: cell.w,
+      h: cell.h,
     }));
-    return { lg: generated };
-  }, [columns]);
+
+    return { lg: layouts };
+  }, [actualLayoutConfig.cells]);
+
+  // 🚀 State for editing a specific cell's buttons
+  const [editingCellId, setEditingCellId] = useState<string | null>(null);
+  const editingCell = actualLayoutConfig.cells?.find((cell: CellDefinition) => cell.id === editingCellId);
+
+  // 🚀 Handlers for button configuration
+  const handleUpdateButton = useCallback((cellId: string, btnIndex: number, updatedButton: any) => {
+    const newCells = (actualLayoutConfig.cells || []).map((cell: CellDefinition) => {
+      if (cell.id === cellId) {
+        const newButtons = [...(cell.buttons || [])];
+        newButtons[btnIndex] = updatedButton;
+        return { ...cell, buttons: newButtons };
+      }
+      return cell;
+    });
+    wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+  }, [actualLayoutConfig, wrappedOnLayoutConfigChanged]);
+
+  const handleRemoveButton = useCallback((cellId: string, btnIndex: number) => {
+    const newCells = (actualLayoutConfig.cells || []).map((cell: CellDefinition) => {
+      if (cell.id === cellId) {
+        const newButtons = [...(cell.buttons || [])];
+        newButtons.splice(btnIndex, 1);
+        return { ...cell, buttons: newButtons };
+      }
+      return cell;
+    });
+    wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+  }, [actualLayoutConfig, wrappedOnLayoutConfigChanged]);
+
+  const handleAddButton = useCallback((cellId: string) => {
+    const newCells = (actualLayoutConfig.cells || []).map((cell: CellDefinition) => {
+      if (cell.id === cellId) {
+        return {
+          ...cell,
+          buttons: [...(cell.buttons || []), { id: uuidv4(), actionId: '', icon: '', label: '' }]
+        };
+      }
+      return cell;
+    });
+    wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+  }, [actualLayoutConfig, wrappedOnLayoutConfigChanged]);
 
   return (
     <div className="layout-selection-section" style={{ border: '1px solid #ccc', padding: '10px', margin: '10px 0', borderRadius: '5px' }}>
@@ -108,72 +221,203 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
           <input
             type="number"
             name="rowHeight"
-            value={layoutConfig.rowHeight || 50}
-            onChange={(e) => handleNonColumnLayoutChange('rowHeight', parseInt(e.target.value, 10))}
+            value={actualLayoutConfig.rowHeight || 50}
+            onChange={(e) => handleNonCellLayoutChange('rowHeight', parseInt(e.target.value, 10))}
             style={{ marginLeft: '5px', width: '60px' }}
           />
         </label>
         <label style={{ marginRight: '10px' }}>
-          Compact Type:
-          <select
-            name="compactType"
-            value={layoutConfig.compactType === null ? 'null' : layoutConfig.compactType || 'vertical'}
-            onChange={(e) => handleNonColumnLayoutChange('compactType', e.target.value === 'null' ? null : (e.target.value as 'vertical' | 'horizontal'))}
-            style={{ marginLeft: '5px' }}
-          >
-            <option value="vertical">Vertical</option>
-            <option value="horizontal">Horizontal</option>
-            <option value="null">None</option>
-          </select>
-        </label>
-        <label>
           Allow Overlap:
           <input
             type="checkbox"
             name="allowOverlap"
-            checked={!!layoutConfig.allowOverlap}
-            onChange={(e) => handleNonColumnLayoutChange('allowOverlap', e.target.checked)}
+            checked={!!actualLayoutConfig.allowOverlap}
+            onChange={(e) => handleNonCellLayoutChange('allowOverlap', e.target.checked)}
+            style={{ marginLeft: '5px' }}
+          />
+        </label>
+        <label style={{ marginRight: '10px' }}>
+          Show Filter:
+          <input
+            type="checkbox"
+            name="showFilter"
+            checked={!!actualLayoutConfig.show_filter}
+            onChange={(e) => handleNonCellLayoutChange('show_filter', e.target.checked)}
+            style={{ marginLeft: '5px' }}
+          />
+        </label>
+        <label>
+          No Borders:
+          <input
+            type="checkbox"
+            name="noBorders"
+            checked={!!actualLayoutConfig.no_borders}
+            onChange={(e) => handleNonCellLayoutChange('no_borders', e.target.checked)}
             style={{ marginLeft: '5px' }}
           />
         </label>
       </div>
 
-      <LayoutBuilder 
-        columns={columns}
-        onColumnsChanged={handleColumnsChanged}
-        actions={actions}
-      />
+      {/* 🚀 New Cell Management UI */}
+      <div className="cell-manager" style={{ marginTop: '20px', padding: '10px', border: '1px solid #e0e0e0' }}>
+        <h5>Manage Grid Cells</h5>
+        <div className="add-cell-form" style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+          <select value={newCellPartPk} onChange={(e) => setNewCellPartPk(e.target.value)}>
+            <option value="">-- Select Part --</option>
+            {parts.map(part => (
+              <option key={part.pk} value={part.pk}>{part.name} (PK: {part.pk})</option>
+            ))}
+          </select>
+          <select value={newCellContent} onChange={(e) => setNewCellContent(e.target.value as CellContentType)}>
+            {AVAILABLE_COLUMNS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <button onClick={handleAddCell}>Add Cell</button>
+        </div>
+
+        <div className="cell-list" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+          {(actualLayoutConfig.cells || []).map((cell: CellDefinition) => {
+            const part = parts.find(p => p.pk === cell.partPk);
+            const header = part ? `${part.name} - ${cell.content}` : `Part ${cell.partPk} - ${cell.content}`;
+            return (
+              <div key={cell.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px', borderBottom: '1px solid #eee' }}>
+                <span>{header}</span>
+                <div>
+                  {cell.content === 'buttons' && (
+                    <button 
+                      onClick={() => setEditingCellId(editingCellId === cell.id ? null : cell.id)}
+                      style={{ marginRight: '8px' }}
+                    >
+                      {editingCellId === cell.id ? 'Close' : 'Configure'}
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => handleRemoveCell(cell.id)}
+                    style={{ backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 🚀 Button Configuration UI (conditionally rendered) */}
+        {editingCell && editingCell.content === 'buttons' && (() => {
+          const part = parts.find(p => p.pk === editingCell.partPk);
+          const header = part ? `${part.name} - ${editingCell.content}` : `Part ${editingCell.partPk} - ${editingCell.content}`;
+          return (
+            <div style={{ marginTop: '10px', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
+              <h6>Configure Buttons for "{header}"</h6>
+              {(editingCell.buttons || []).map((buttonItem: ButtonCellItem, btnIndex: number) => (
+                <div key={buttonItem.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px', flexWrap: 'wrap' }}>
+                  <select
+                    value={buttonItem.actionId}
+                    onChange={(e) => handleUpdateButton(editingCell.id, btnIndex, { ...buttonItem, actionId: e.target.value })}
+                  >
+                    <option value="">- Select Action -</option>
+                    {actions.filter(a => a.trigger.type.startsWith('ui_')).map(action => (
+                      <option key={action.id} value={action.id}>{action.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Override Icon"
+                    value={buttonItem.icon || ''}
+                    onChange={(e) => handleUpdateButton(editingCell.id, btnIndex, { ...buttonItem, icon: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Override Label"
+                    value={buttonItem.label || ''}
+                    onChange={(e) => handleUpdateButton(editingCell.id, btnIndex, { ...buttonItem, label: e.target.value })}
+                  />
+                  <button onClick={() => handleRemoveButton(editingCell.id, btnIndex)}>Remove</button>
+                </div>
+              ))}
+              <button onClick={() => handleAddButton(editingCell.id)}>Add Button</button>
+            </div>
+          );
+        })()}
+      </div>
       
       <div className="layout-preview" style={{ marginTop: '20px', borderTop: '1px dashed #ccc', paddingTop: '10px' }}>
         <h5>Live Layout Preview</h5>
-        <div style={{ border: '1px solid #ddd', background: '#f9f9f9', minHeight: '120px', position: 'relative' }}>
+        <div style={{ 
+          border: `1px solid ${theme.borderColor}`, 
+          background: theme.backgroundGradient, 
+          minHeight: '120px', 
+          position: 'relative',
+          borderRadius: '16px',
+          padding: '16px',
+          backdropFilter: 'blur(5px)'
+        }}>
+           {(() => {
+             const gridKey = `grid-${JSON.stringify({ cells: actualLayoutConfig.cells || [], rowHeight: actualLayoutConfig.rowHeight, allowOverlap: actualLayoutConfig.allowOverlap })}`;
+             console.log('🔄 GRID KEY: Using key:', gridKey);
+             return (
            <ResponsiveReactGridLayout
+              key={gridKey}
               className="layout"
               layouts={generatedLayouts}
               breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-              cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-              rowHeight={layoutConfig.rowHeight || 50}
+              cols={{ lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 }}
+              rowHeight={actualLayoutConfig.rowHeight || 50}
               isDraggable={true}
               isResizable={true}
-              draggableHandle=".drag-handle" // Specify the drag handle
-              resizeHandle={CustomResizeHandle} // Use our custom resize handle
-              compactType={layoutConfig.compactType}
-              allowOverlap={!!layoutConfig.allowOverlap}
+              draggableHandle=".drag-handle"
+              draggableCancel=".no-drag" // 🚀 Add this prop
+              resizeHandle={CustomResizeHandle}
+              compactType={null}
+              allowOverlap={!!actualLayoutConfig.allowOverlap}
               onLayoutChange={onLayoutChange}
             >
-              {columns.map((column) => (
-                <div key={`mock-1-${column.id}`} style={{ border: '1px solid #ccc', background: 'white' }}>
-                  <div style={{width: '100%', height: '100%', display: 'flex', flexDirection: 'column'}}>
-                    <div className="drag-handle" style={{ cursor: 'grab', background: '#eee', padding: '2px', textAlign: 'center', borderBottom: '1px solid #ccc' }}>
-                      <span className="mdi mdi-drag-horizontal" />
+              {(actualLayoutConfig.cells || []).map((cell: CellDefinition) => {
+                  const isHidden = cell.isHidden ?? false;
+
+                  return (
+                    <div key={cell.id} style={{ 
+                      border: 'none', 
+                      background: theme.cardBackground, 
+                      position: 'relative', 
+                      opacity: isHidden ? 0.5 : 1,
+                      borderRadius: '12px',
+                      boxShadow: `0 2px 8px ${theme.shadowColor}`,
+                      backdropFilter: 'blur(10px)',
+                      overflow: 'hidden'
+                    }}>
+                      <div className="drag-handle" style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '20px', cursor: 'grab', zIndex: 10 }} title="Drag to move">
+                        <span className="mdi mdi-drag" style={{ fontSize: '16px', color: '#666' }}></span>
+                      </div>
+                      <div 
+                        className="visibility-toggle" 
+                        style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '20px', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                        title={isHidden ? 'Show' : 'Hide'}
+                        onClick={() => {
+                          const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                            c.id === cell.id ? { ...c, isHidden: !isHidden } : c
+                          );
+                          wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                        }}
+                      >
+                        <span className={`mdi mdi-${isHidden ? 'eye-off' : 'eye'}`} style={{ fontSize: '16px', color: '#666' }}></span>
+                      </div>
+                      <div style={{ zIndex: 1, width: '100%', height: '100%' }}>
+                        <CellRenderer
+                          cell={cell} // 🚀 Pass the entire cell object
+                          isSelected={false} // isSelected logic can be re-added if needed
+                          cardInstanceId={cardInstanceId}
+                        />
+                      </div>
                     </div>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}>
-                      <span style={{ textAlign: 'center', fontSize: '0.9em' }}>{column.header || `Content: ${column.content}`}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  );
+                })
+              }
             </ResponsiveReactGridLayout>
+           );
+           })()}
         </div>
       </div>
     </div>

@@ -13,7 +13,8 @@ import {
     ConditionalLogicItem,
     HierarchicalDebugConfig, 
     SubsystemDebugConfig,
-    ActionDefinition
+    ActionDefinition,
+    LayoutConfig
 } from '../../types';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { createSelector } from 'reselect';
@@ -59,10 +60,17 @@ const configSlice = createSlice({
       delete state.configsByInstance[cardInstanceId];
       logger.debug('removeConfigAction', `Configuration removed for instance ${cardInstanceId}`);
     },
+    updateLayout(state, action: PayloadAction<{ cardInstanceId: string, layout: Partial<LayoutConfig> }>) {
+      const { cardInstanceId, layout } = action.payload;
+      const instance = state.configsByInstance[cardInstanceId];
+      if (instance?.config?.layout) {
+        instance.config.layout = { ...instance.config.layout, ...layout };
+      }
+    },
   },
 });
 
-export const { setConfigAction, removeConfigAction } = configSlice.actions;
+export const { setConfigAction, removeConfigAction, updateLayout } = configSlice.actions;
 
 // Selectors
 const selectConfigsByInstance = (state: { config: ConfigState }) => state.config.configsByInstance;

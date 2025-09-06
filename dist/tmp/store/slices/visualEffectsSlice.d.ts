@@ -11,6 +11,7 @@ export interface VisualEffectsState {
         y?: number;
     }>>;
     layoutEffectsByCell: Record<string, Record<string, Partial<React.CSSProperties>>>;
+    effectsByCellId: Record<string, Record<string, VisualEffect>>;
 }
 export declare const setVisualEffect: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;
@@ -49,7 +50,11 @@ export declare const setVisualEffect: import("@reduxjs/toolkit").ActionCreatorWi
     cardInstanceId: string;
     cellId: string;
     layout: Partial<React.CSSProperties>;
-}, "visualEffects/setConditionalLayoutEffect">;
+}, "visualEffects/setConditionalLayoutEffect">, setConditionalCellEffect: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    cardInstanceId: string;
+    cellId: string;
+    effect: Partial<VisualEffect>;
+}, "visualEffects/setConditionalCellEffect">;
 export declare const selectVisualEffectForPart: (state: RootState, cardInstanceId: string, partId: number) => VisualEffect | undefined;
 export declare const selectAllVisualEffectsForCard: (state: RootState, cardInstanceId: string) => Record<number, VisualEffect> | undefined;
 export declare const selectAllEffectsByCardInstance: (state: RootState) => Record<string, Record<number, VisualEffect>>;
@@ -58,5 +63,6 @@ export declare const selectVisualEffectsForCard: (state: RootState, cardInstance
 export declare const selectElementVisibility: (state: RootState, cardInstanceId: string, displayKey: DisplayConfigKey) => boolean | undefined;
 export declare const selectAllElementVisibilitiesForCard: (state: RootState, cardInstanceId: string) => Partial<Record<DisplayConfigKey, boolean>> | undefined;
 export declare const selectLayoutEffectsForCell: (state: RootState, cardInstanceId: string, cellId: string) => Partial<React.CSSProperties> | undefined;
+export declare const selectVisualEffectsForCell: (state: RootState, cardInstanceId: string, cellId: string) => VisualEffect | undefined;
 declare const _default: import("redux").Reducer<VisualEffectsState>;
 export default _default;

@@ -20,9 +20,27 @@ const topLevelLogger = ConditionalLoggerEngine.getInstance().getLogger('Inventre
 topLevelLogger.info('Top-level', `NEWEST VERSION LOADED - v${new Date().getTime()}`);
 topLevelLogger.debug('Top-level', 'inventree-card.ts script executing');
 
+ConditionalLoggerEngine.getInstance().registerCategory('InventreeCard', { enabled: true, level: 'info', verbose: false });
+
+// 🔍 DIAGNOSTIC TYPES
+interface DisconnectionAnalysis {
+  code: string;
+  reason: string;
+  details: any;
+}
+
 @customElement(CARD_NAME)
 export class InventreeCard extends LitElement implements LovelaceCard {
   private logger: ILogger;
+
+  // 🔍 DIAGNOSTIC TRACKING VARIABLES
+  private _lastConfigChangeTime = 0;
+  private _lastConfigHadUIProperties = false;
+  private _lastUIProperties: string[] = [];
+  private _lastRenderError: Error | null = null;
+  private _hasHTTP401Errors = false;
+  private _failed401Urls: string[] = [];
+  private _configChangeCount = 0;
 
   constructor() {
     super();
@@ -58,11 +76,17 @@ export class InventreeCard extends LitElement implements LovelaceCard {
   `;
 
   public setConfig(config: LovelaceCardConfig): void {
-    console.log('%c[LIFECYCLE-LOG] setConfig: Lovelace is providing a new configuration.', 'color: #FF6F00; font-weight: bold;', { config });
+    this.logger.info('setConfig', 'Lovelace is providing a new configuration.', { config });
     
     if (!config) {
       throw new Error('Invalid configuration');
     }
+
+    // 🔍 DIAGNOSTIC: Track config changes
+    this._lastConfigChangeTime = Date.now();
+    this._configChangeCount++;
+    this._lastConfigHadUIProperties = false;
+    this._lastUIProperties = [];
 
     // This is the first point where we have a stable ID.
     // We MUST re-initialize the logger here.
@@ -70,13 +94,21 @@ export class InventreeCard extends LitElement implements LovelaceCard {
     this.logger = ConditionalLoggerEngine.getInstance().getLogger('InventreeCard', this._cardInstanceId);
     this.logger.info('setConfig', `Instance ID is now: ${this._cardInstanceId}`);
     
+    // 🔍 DIAGNOSTIC: Check for UI-only properties in config
+    this._analyzeConfigForUIProperties(config);
+    
+    // Create a mutable copy of the config
+    const finalConfig = { ...config };
+
     this._config = {
-      ...config,
-      // You can add any default values for your config here
+      ...finalConfig,
+      layout: {
+        cells: [], // Default to an empty array
+        ...finalConfig.layout, // User's layout properties will override the default
+      },
     };
 
-    // DO NOT initialize here. Lovelace creates phantom instances.
-    // Defer all heavy lifting to connectedCallback.
+    // Dispatch the configuration to the Redux store
   }
 
   public getCardSize(): number {
@@ -142,8 +174,17 @@ export class InventreeCard extends LitElement implements LovelaceCard {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
-    console.log('%c[LIFECYCLE-LOG] disconnectedCallback: Element has been disconnected from the DOM.', 'color: #F44336; font-weight: bold;');
-    this.logger.debug('disconnectedCallback', 'Element disconnected from DOM.');
+    
+    // 🔍 ENHANCED DIAGNOSTIC ANALYSIS
+    const disconnectionReason = this._analyzeDisconnectionCause();
+    
+    console.log(`%c[LIFECYCLE-ERROR-${disconnectionReason.code}] ${disconnectionReason.reason}`, 
+      'color: #ff4444; font-weight: bold; background: #ffe6e6; padding: 4px 8px; border-radius: 4px;',
+      disconnectionReason.details
+    );
+    
+    this.logger.error('disconnectedCallback', `Disconnection Analysis: ${disconnectionReason.reason}`, disconnectionReason.details);
+    
     if (this.reactRoot) {
       this.reactRoot.unmount();
       this.reactRoot = undefined;
@@ -206,6 +247,103 @@ export class InventreeCard extends LitElement implements LovelaceCard {
     return {
       type: 'custom:inventree-card',
       name: 'My InvenTree Card',
+    };
+  }
+
+  // 🔍 DIAGNOSTIC ANALYSIS METHODS
+
+  private _analyzeConfigForUIProperties(config: any): void {
+    const uiProperties: string[] = [];
+    
+    // Check for UI-only properties in cells
+    if (config.layout?.cells) {
+      config.layout.cells.forEach((cell: any, index: number) => {
+        if (cell.header) {
+          uiProperties.push(`cells[${index}].header`);
+        }
+        if (cell.id && typeof cell.id === 'string' && cell.id.includes('-')) {
+          // Likely a UUID
+          uiProperties.push(`cells[${index}].id (UUID)`);
+        }
+      });
+    }
+    
+    if (uiProperties.length > 0) {
+      this._lastConfigHadUIProperties = true;
+      this._lastUIProperties = uiProperties;
+    }
+  }
+
+  private _analyzeDisconnectionCause(): DisconnectionAnalysis {
+    const timeSinceLastConfigChange = Date.now() - this._lastConfigChangeTime;
+    const hasRecentConfigChange = timeSinceLastConfigChange < 2000; // 2 seconds
+    
+    // ERROR CODE BUCKETS
+    if (hasRecentConfigChange && this._lastConfigHadUIProperties) {
+      return {
+        code: 'DC001',
+        reason: 'Config contained UI-only properties - Lovelace rejected unsafe config',
+        details: { 
+          timeSinceConfig: timeSinceLastConfigChange, 
+          uiProps: this._lastUIProperties,
+          configChangeCount: this._configChangeCount
+        }
+      };
+    }
+    
+    if (hasRecentConfigChange && this._lastRenderError) {
+      return {
+        code: 'DC002', 
+        reason: 'React render error detected before disconnection',
+        details: { 
+          error: this._lastRenderError.message, 
+          timeSinceConfig: timeSinceLastConfigChange,
+          configChangeCount: this._configChangeCount
+        }
+      };
+    }
+    
+    if (this._hasHTTP401Errors) {
+      return {
+        code: 'DC003',
+        reason: 'HTTP 401 errors detected - Authentication/thumbnail issues',
+        details: { 
+          failedUrls: this._failed401Urls,
+          timeSinceConfig: timeSinceLastConfigChange
+        }
+      };
+    }
+    
+    if (hasRecentConfigChange) {
+      return {
+        code: 'DC004',
+        reason: 'Unknown config-related disconnection - Config triggered recreation',
+        details: { 
+          timeSinceConfig: timeSinceLastConfigChange,
+          configChangeCount: this._configChangeCount,
+          hadUIProps: this._lastConfigHadUIProperties
+        }
+      };
+    }
+    
+    if (this._configChangeCount > 10) {
+      return {
+        code: 'DC005',
+        reason: 'Excessive config changes detected - Possible infinite loop',
+        details: { 
+          configChangeCount: this._configChangeCount,
+          timeSinceConfig: timeSinceLastConfigChange
+        }
+      };
+    }
+    
+    return {
+      code: 'DC999',
+      reason: 'Normal disconnection (tab switch, navigation, or user action)',
+      details: { 
+        timeSinceConfig: timeSinceLastConfigChange,
+        configChangeCount: this._configChangeCount
+      }
     };
   }
 }

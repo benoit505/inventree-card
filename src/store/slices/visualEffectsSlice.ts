@@ -14,6 +14,7 @@ export interface VisualEffectsState {
   elementVisibilityByCard: Record<string, Partial<Record<DisplayConfigKey, boolean>>>;
   layoutOverridesByCardInstance: Record<string, Record<string, { w?: number; h?: number; x?: number; y?: number }>>;
   layoutEffectsByCell: Record<string, Record<string, Partial<React.CSSProperties>>>;
+  effectsByCellId: Record<string, Record<string, VisualEffect>>;
   // Consider adding a global effects record if some effects should apply to all cards
   // globalEffects: Record<number, VisualEffect>; 
 }
@@ -23,6 +24,7 @@ const initialState: VisualEffectsState = {
   elementVisibilityByCard: {},
   layoutOverridesByCardInstance: {},
   layoutEffectsByCell: {},
+  effectsByCellId: {},
   // globalEffects: {}
 };
 
@@ -143,6 +145,17 @@ const visualEffectsSlice = createSlice({
         ...layout
       };
     },
+
+    setConditionalCellEffect(state, action: PayloadAction<{ cardInstanceId: string; cellId: string; effect: Partial<VisualEffect> }>) {
+      const { cardInstanceId, cellId, effect } = action.payload;
+      if (!state.effectsByCellId[cardInstanceId]) {
+        state.effectsByCellId[cardInstanceId] = {};
+      }
+      state.effectsByCellId[cardInstanceId][cellId] = {
+        ...(state.effectsByCellId[cardInstanceId][cellId] || {}),
+        ...effect,
+      };
+    },
   },
 });
 
@@ -163,6 +176,7 @@ export const {
   clearElementVisibilitiesForCard,
   clearAllElementVisibilities,
   setConditionalLayoutEffect,
+  setConditionalCellEffect,
 } = visualEffectsSlice.actions;
 
 // Input selectors
@@ -239,6 +253,10 @@ export const selectAllElementVisibilitiesForCard = (
 
 export const selectLayoutEffectsForCell = (state: RootState, cardInstanceId: string, cellId: string): Partial<React.CSSProperties> | undefined => {
     return state.visualEffects.layoutEffectsByCell[cardInstanceId]?.[cellId];
+};
+
+export const selectVisualEffectsForCell = (state: RootState, cardInstanceId: string, cellId: string): VisualEffect | undefined => {
+  return state.visualEffects.effectsByCellId[cardInstanceId]?.[cellId];
 };
 
 export default visualEffectsSlice.reducer; 

@@ -297,12 +297,8 @@ export interface InventreeCardConfig {
     parameters?: ParameterConfig;
     variant_view_type?: VariantViewType; // Use VariantViewType alias
     auto_detect_variants?: boolean;
-    columns?: number;
-    grid_spacing?: number;
-    item_height?: number;
     style?: StyleConfig;
     services?: ServiceConfig;
-    buttons?: ButtonConfig;
     interactions?: InteractionsConfig;
     actions?: ActionDefinition[]; // NEW: For Universal Actions System
     conditional_logic?: ConditionalLogicConfig;
@@ -346,17 +342,12 @@ export type VisualEffect = {
   cellStyles?: Record<string, React.CSSProperties>;
 };
 
-export interface AnimationEffect {
-  animate?: {
-    animate?: any;
-    transition?: any;
-    whileHover?: any;
-    whileTap?: any;
-  };
+export type AnimationEffect = {
+  animate?: any;
   transition?: any;
   whileHover?: any;
   whileTap?: any;
-}
+};
 
 export interface HaEntityPickerEntity {
   entity_id: string;
@@ -436,7 +427,6 @@ export interface ProcessedCondition {
 
 // --- Conditional Logic Structures ---
 import { AnimationProps } from 'framer-motion';
-import { VisualEffect } from './store/slices/visualEffectsSlice';
 
 export type EffectDefinition = {
   id: string; // Unique ID for this specific effect
@@ -445,32 +435,44 @@ export type EffectDefinition = {
     type: 'set_visibility';
     isVisible: boolean;
     targetDisplayKey?: DisplayConfigKey;
+    /** @deprecated Use targetCellId instead */
     targetPartPks?: number[] | 'all_loaded';
+    targetCellId?: string;
   } | {
     type: 'set_style';
     styleTarget: 'Row' | string; // 'Row' or a column ID
     styleProperty: keyof VisualEffect | string; // keyof VisualEffect for Row, string for Cell
     styleValue: any;
+    /** @deprecated Use targetCellId instead */
     targetPartPks?: number[] | 'all_loaded';
+    targetCellId?: string; // ID of the CellDefinition to target
   } | {
     type: 'animate_style';
     animation?: Partial<AnimationProps>;
     preset?: string;
+    /** @deprecated Use targetCellId instead */
     targetPartPks?: number[] | 'all_loaded';
+    targetCellId?: string; // ID of the CellDefinition to target
   } | {
     type: 'trigger_custom_action';
     customActionId: string;
+    /** @deprecated Use targetCellId instead */
     targetPartPks?: number[] | 'all_loaded';
+    targetCellId?: string;
   } | {
     type: 'set_thumbnail_style';
     thumbnailFilter?: string;
     thumbnailOpacity?: number;
+    /** @deprecated Use targetCellId instead */
     targetPartPks?: number[] | 'all_loaded';
+    targetCellId?: string;
   } | {
     type: 'call_ha_service',
     service?: string,
     service_data?: Record<string, any>,
+    /** @deprecated Use targetCellId instead */
     targetPartPks?: number[] | 'all_loaded';
+    targetCellId?: string;
   } | {
     type: 'set_layout';
     targetCellId: string; // e.g. "part_pk-column_id"
@@ -833,46 +835,49 @@ declare global {
 // export {}; 
 
 // --- Layout Configuration --- 
-export interface LayoutConfig {
-  viewType: ViewType;
-  columns?: LayoutColumn[];
-  rowHeight?: number;
-  isDraggable?: boolean;
-  isResizable?: boolean;
-  compactType?: 'vertical' | 'horizontal' | null;
-  allowOverlap?: boolean;
-  layout_overrides?: Record<string, any>;
-  legacy_columns?: number;
-  grid_spacing?: number;
-  item_height?: number;
+export interface LayoutOverride extends Partial<ReactGridLayout.Layout> {
+  isHidden?: boolean;
 }
 
-export interface ButtonColumnItem {
-  id: string; // For React keys in the editor
+// Represents a single, specific cell on the grid canvas.
+export interface CellDefinition {
+  id: string; // A unique ID for this cell instance, will be used as the grid item key 'i'
+  partPk: number; // The specific part this cell is for
+  content: 'name' | 'thumbnail' | 'description' | 'in_stock' | 'pk' | 'IPN' | 'SKU' | 'category_detail.name' | 'location_detail.name' | 'buttons' | 'attribute' | 'template'; // The data field to display
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  isHidden?: boolean;
+
+  // Properties for specific content types, similar to LayoutColumn
+  buttons?: ButtonCellItem[];
+  attributeName?: string;
+  template?: string;
+}
+
+export interface ButtonCellItem {
+  id: string;
   actionId: string;
   targetPartPks?: number[];
-  // Overrides
   icon?: string;
   label?: string;
 }
 
-export interface LayoutColumn {
-  id: string;
-  content: 'name' | 'thumbnail' | 'description' | 'in_stock' | 'pk' | 'IPN' | 'SKU' | 'category_detail.name' | 'location_detail.name' | 'buttons' | 'attribute' | 'template';
-  header?: string;
+export interface LayoutConfig {
+  viewType?: ViewType; // Deprecated, will be removed
+  type?: 'table' | 'list' | 'grid' | 'parts' | 'detail' | 'variant';
+  show_filter?: boolean;
+  no_borders?: boolean;
   
-  // Layout properties for a single row template
-  x?: number;
-  y?: number;
-  w?: number;
-  h?: number;
+  // NEW: The single source of truth for all grid items.
+  cells?: CellDefinition[];
 
-  // For 'buttons' content
-  buttons?: ButtonColumnItem[]; // Replaces buttonActionId and targetPartPks
-  // For 'attribute' or 'custom' content
-  attributeName?: string;
-  // For 'template' content
-  template?: string;
+  // DEPRECATED: These are replaced by the 'cells' array.
+  // The migration will happen in the component logic.
+
+  rowHeight?: number;
+  allowOverlap?: boolean;
 }
 
 export interface ActionRuntimeState {

@@ -7,6 +7,7 @@ export interface InventreeCardEditorProps {
     config?: InventreeCardConfig;
     cardInstanceId: string;
     onConfigChanged: (config: InventreeCardConfig) => void;
+    dispatch: (action: any) => void;
 }
 declare const InventreeCardEditor: React.FC<InventreeCardEditorProps>;
 export default InventreeCardEditor;

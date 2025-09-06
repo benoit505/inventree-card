@@ -15,6 +15,7 @@ import {
   selectPartsError,
 } from './store/slices/partsSlice'; 
 import { selectLogSettingsForInstance } from './store/slices/loggingSlice';
+import { fetchHaEntityStatesThunk } from './store/thunks/genericHaStateThunks';
 import DetailLayout from './components/layouts/DetailLayout';
 import GridLayout from './components/layouts/GridLayout';
 import ListLayout from './components/layouts/ListLayout';
@@ -35,6 +36,7 @@ interface InventreeCardProps {
 }
 
 const InventreeCard: React.FC<InventreeCardProps> = ({ hass, config, cardInstanceId }) => {
+  const dispatch = useAppDispatch();
   const logger = useMemo(() => {
     const instanceId = cardInstanceId || 'unknown';
     return ConditionalLoggerEngine.getInstance().getLogger('InventreeCard', instanceId);
@@ -43,6 +45,21 @@ const InventreeCard: React.FC<InventreeCardProps> = ({ hass, config, cardInstanc
   useEffect(() => {
     logger.info('Lifecycle', 'React component mounted.');
   }, [logger]);
+
+  // 🚀 CRITICAL FIX: Update Redux store when HASS data changes
+  useEffect(() => {
+    if (!hass || !cardInstanceId) return;
+
+    // Get the HA entities that should be monitored from config
+    const haEntities = config?.data_sources?.ha_entities || [];
+    
+    if (haEntities.length > 0) {
+      logger.debug('HASS Update', `Updating ${haEntities.length} HA entity states in Redux store`);
+      
+      // Update the Redux store with fresh HASS data
+      dispatch(fetchHaEntityStatesThunk({ hass, entityIds: haEntities }));
+    }
+  }, [hass, config?.data_sources?.ha_entities, cardInstanceId, dispatch, logger]);
 
   const allParts = useAppSelector((state) => selectCombinedParts(state, cardInstanceId ?? ''));
 
