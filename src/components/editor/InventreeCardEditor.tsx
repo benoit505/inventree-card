@@ -5,7 +5,7 @@ import { RootState, store } from '../../store';
 import { useSelector, useDispatch } from 'react-redux';
 import { InventreeCardConfig, DirectApiConfig, ViewType, DisplayConfig, StyleConfig, InteractionsConfig, ConditionalLogicConfig, ParameterDetail, DataSourceConfig, RuleGroupType, LayoutConfig, ActionDefinition, InventreeParameterFetchConfig, ThumbnailOverride, LogQuery, InventreeItem } from '../../types';
 import { inventreeApi } from '../../store/apis/inventreeApi';
-import { selectCombinedParts } from '../../store/slices/partsSlice';
+import { selectAllPartsForInstance } from '../../store/slices/partsSlice';
 
 // Import sections
 import InventreeHassSensorsSection from './InventreeHassSensorsSection';
@@ -46,7 +46,7 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
   }, [cardInstanceId]);
   
   const [activeTab, setActiveTab] = useState('data');
-  const allParts = useSelector((state: RootState) => selectCombinedParts(state, cardInstanceId));
+  const allParts = useSelector((state: RootState) => selectAllPartsForInstance(state, cardInstanceId));
   
   const currentEditorConfig = useMemo<Partial<InventreeCardConfig>>(() => {
     // 🚀 UNIFIED SOURCE OF TRUTH: Always derive from the incoming prop
@@ -114,16 +114,19 @@ const InventreeCardEditor: React.FC<InventreeCardEditorProps> = ({ hass, lovelac
 
   // Fetch parts data when the editor is first loaded
   useEffect(() => {
-    const partIdsToFetch = currentEditorConfig.data_sources?.inventree_pks || [];
-    partIdsToFetch.forEach((pk: number) => {
-      dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
-    });
-  }, [dispatch, cardInstanceId, currentEditorConfig.data_sources?.inventree_pks]);
+    const partIdsToFetch = (currentEditorConfig.data_sources?.inventree_pks || []).filter((pk: number) => 
+      !allParts.some((part: InventreeItem) => part.pk === pk)
+    );
+    if (partIdsToFetch.length > 0) {
+      partIdsToFetch.forEach((pk: number) => {
+        dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
+      });
+    }
+  }, [currentEditorConfig.data_sources?.inventree_pks, allParts, dispatch, cardInstanceId]);
 
-  // Correctly get all parameter values from the store using RootState
-  const allParameterValues = useSelector<RootState, Record<number, Record<string, ParameterDetail>>>(
-    (state) => state.parameters.parameterValues 
-  );
+  // DEPRECATED: This selector is now obsolete and will be removed.
+  // The ConditionalLogicSection will be updated to fetch its own data.
+  const allParameterValues = {};
 
   const handleConfigChanged = useCallback((newConfig: Partial<InventreeCardConfig>) => {
     logger.debug('handleConfigChanged', 'Editor config changed.', { newConfig });

@@ -2,6 +2,7 @@ import { RootState, AppDispatch } from '../index';
 import { ConditionalLogicItem } from '../../types';
 export declare const evaluateAndApplyEffectsThunk: import("@reduxjs/toolkit").AsyncThunk<void, {
     cardInstanceId: string;
+    logicItemIds?: string[];
 }, {
     state: RootState;
     dispatch: AppDispatch;

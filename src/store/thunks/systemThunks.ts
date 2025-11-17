@@ -1,7 +1,7 @@
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import { InventreeCardConfig, DirectApiConfig } from '../../types';
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import { trackUsage } from '../../utils/metrics-tracker';
+// REMOVED: trackUsage import - unused metrics system removed
 import { WebSocketPlugin } from '../../services/websocket-plugin';
 import { HomeAssistant } from 'custom-card-helpers';
 import { InventreeItem } from '../../types';
@@ -30,6 +30,9 @@ export const initializeWebSocketPlugin = createAsyncThunk<
     }
 
     const plugin = WebSocketPlugin.getInstance();
+
+    // 🚀 CRITICAL FIX: Provide the dispatch function to the singleton plugin.
+    plugin.setDispatch(dispatch);
 
     logger.info('initializeWebSocketPlugin', 'Configuring WebSocket Plugin with settings', { data: directApiConfig });
     plugin.configure(directApiConfig);

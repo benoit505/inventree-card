@@ -1,16 +1,8 @@
-import React from 'react';
 import { RootState } from '../index';
 import { VisualEffect, DisplayConfigKey } from '../../types';
 export interface VisualEffectsState {
     effectsByCardInstance: Record<string, Record<number, VisualEffect>>;
     elementVisibilityByCard: Record<string, Partial<Record<DisplayConfigKey, boolean>>>;
-    layoutOverridesByCardInstance: Record<string, Record<string, {
-        w?: number;
-        h?: number;
-        x?: number;
-        y?: number;
-    }>>;
-    layoutEffectsByCell: Record<string, Record<string, Partial<React.CSSProperties>>>;
     effectsByCellId: Record<string, Record<string, VisualEffect>>;
 }
 export declare const setVisualEffect: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
@@ -37,7 +29,9 @@ export declare const setVisualEffect: import("@reduxjs/toolkit").ActionCreatorWi
     partId: number;
 }, "visualEffects/clearConditionalPartEffectsForPart">, clearAllConditionalPartEffects: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"visualEffects/clearAllConditionalPartEffects">, clearConditionalPartEffectsForCard: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;
-}, "visualEffects/clearConditionalPartEffectsForCard">, setElementVisibility: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+}, "visualEffects/clearConditionalPartEffectsForCard">, clearConditionalCellEffectsForCard: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+    cardInstanceId: string;
+}, "visualEffects/clearConditionalCellEffectsForCard">, setElementVisibility: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;
     displayKey: DisplayConfigKey;
     isVisible: boolean;
@@ -46,11 +40,7 @@ export declare const setVisualEffect: import("@reduxjs/toolkit").ActionCreatorWi
     visibilities: Partial<Record<DisplayConfigKey, boolean>>;
 }, "visualEffects/setElementVisibilitiesBatch">, clearElementVisibilitiesForCard: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;
-}, "visualEffects/clearElementVisibilitiesForCard">, clearAllElementVisibilities: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"visualEffects/clearAllElementVisibilities">, setConditionalLayoutEffect: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
-    cardInstanceId: string;
-    cellId: string;
-    layout: Partial<React.CSSProperties>;
-}, "visualEffects/setConditionalLayoutEffect">, setConditionalCellEffect: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
+}, "visualEffects/clearElementVisibilitiesForCard">, clearAllElementVisibilities: import("@reduxjs/toolkit").ActionCreatorWithoutPayload<"visualEffects/clearAllElementVisibilities">, setConditionalCellEffect: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;
     cellId: string;
     effect: Partial<VisualEffect>;
@@ -58,11 +48,9 @@ export declare const setVisualEffect: import("@reduxjs/toolkit").ActionCreatorWi
 export declare const selectVisualEffectForPart: (state: RootState, cardInstanceId: string, partId: number) => VisualEffect | undefined;
 export declare const selectAllVisualEffectsForCard: (state: RootState, cardInstanceId: string) => Record<number, VisualEffect> | undefined;
 export declare const selectAllEffectsByCardInstance: (state: RootState) => Record<string, Record<number, VisualEffect>>;
-export declare const selectLayoutOverridesForCard: (state: RootState, cardInstanceId: string) => Record<string, any> | undefined;
 export declare const selectVisualEffectsForCard: (state: RootState, cardInstanceId: string) => Record<number, VisualEffect> | undefined;
 export declare const selectElementVisibility: (state: RootState, cardInstanceId: string, displayKey: DisplayConfigKey) => boolean | undefined;
 export declare const selectAllElementVisibilitiesForCard: (state: RootState, cardInstanceId: string) => Partial<Record<DisplayConfigKey, boolean>> | undefined;
-export declare const selectLayoutEffectsForCell: (state: RootState, cardInstanceId: string, cellId: string) => Partial<React.CSSProperties> | undefined;
 export declare const selectVisualEffectsForCell: (state: RootState, cardInstanceId: string, cellId: string) => VisualEffect | undefined;
 declare const _default: import("redux").Reducer<VisualEffectsState>;
 export default _default;

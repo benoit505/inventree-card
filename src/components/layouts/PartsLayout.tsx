@@ -28,7 +28,7 @@ const PartsLayout: React.FC<PartsLayoutProps> = ({ parts, hass, config, cardInst
   const handleSearch = () => {
     logger.info('handleSearch', `Triggering search with term: "${searchTerm}"`);
     if (searchTerm) {
-      triggerSearch({ searchText: searchTerm, cardInstanceId });
+      triggerSearch({ searchText: searchTerm });
     }
   };
   

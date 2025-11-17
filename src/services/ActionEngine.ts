@@ -7,6 +7,7 @@ import {
   ActionDispatchReduxActionOperation,
   ActionTriggerConditionalLogicOperation,
   ActionSetCardStateOperation,
+  ActionAdjustStockOperation,
   ActionOperation,
   ActionHAStandardTarget,
   InventreeItem,
@@ -27,13 +28,12 @@ import { inventreeApi } from '../store/apis/inventreeApi';
 import { setActiveView, setSelectedPart, toggleDebugPanel } from '../store/slices/uiSlice';
 import { setLocatingPartId } from '../store/slices/partsSlice';
 import { selectActiveCardInstanceIds } from '../store/slices/componentSlice';
-import { updateParameterValue } from '../store/thunks/parameterThunks';
+import { adjustStockDebounced } from '../store/thunks/stockThunks';
 import { get } from 'lodash';
+import { evaluateExpression as evaluateExpressionUtil } from '../utils/evaluateExpression';
 
 const logger = ConditionalLoggerEngine.getInstance().getLogger('ActionEngine');
 ConditionalLoggerEngine.getInstance().registerCategory('ActionEngine', { enabled: true, level: 'info' });
-
-const UNDEFINED_TEMPLATE_MARKER = '[TEMPLATE_VALUE_NOT_FOUND]';
 
 const actionManifest = {
   'ui.setActiveView': setActiveView,
@@ -70,44 +70,8 @@ function getPathValue(obj: any, path: string): any {
   return current;
 }
 
-function processTemplate(template: any, context: ActionExecutionContext): any {
-  if (typeof template === 'string') {
-    let processedString = template;
-    const combinedRegex = /%(\w+)%|%%context\.([^%]+)%%/g;
-    const matches = Array.from(template.matchAll(combinedRegex));
-    for (const match of matches) {
-      const isSimpleFormat = match[1] !== undefined;
-      const path = isSimpleFormat ? `part.${match[1]}` : match[2];
-      const templateString = match[0];
-      try {
-        const value = getPathValue(context, path);
-        if (value !== undefined && value !== null) {
-          processedString = processedString.split(templateString).join(String(value)); 
-        } else {
-          processedString = processedString.split(templateString).join(UNDEFINED_TEMPLATE_MARKER);
-          logger.warn('processTemplate', `Template path '${templateString}' was undefined or null.`);
-        }
-      } catch (e: any) {
-        logger.error('processTemplate', `Template processing error for path '${templateString}'`, e as Error);
-        processedString = processedString.split(templateString).join(UNDEFINED_TEMPLATE_MARKER);
-      }
-    }
-    return processedString;
-  } else if (typeof template === 'object' && template !== null) {
-    if (Array.isArray(template)) {
-      return template.map(item => processTemplate(item, context));
-    } else {
-      const processedObject: Record<string, any> = {};
-      for (const key in template) {
-        if (Object.prototype.hasOwnProperty.call(template, key)) {
-          processedObject[key] = processTemplate(template[key], context);
-        }
-      }
-      return processedObject;
-    }
-  }
-  return template;
-}
+// REMOVED: Dead standalone processTemplate function (replaced by class method)
+// The class method below is the one actually used
 
 export class ActionEngine {
   private static instance: ActionEngine;
@@ -127,63 +91,53 @@ export class ActionEngine {
     return ActionEngine.instance;
   }
 
+  /**
+   * Evaluate a conditional logic expression to determine if an action should be enabled.
+   * Uses the unified evaluation engine from utils/evaluateExpression.
+   * 
+   * @param expressionId - The ID of the conditional logic item to evaluate
+   * @param context - The execution context (part, hass, etc.)
+   * @param cardInstanceId - The card instance ID
+   * @returns true if the expression evaluates to true, false otherwise
+   */
   public evaluateExpression(expressionId: string, context: ActionExecutionContext, cardInstanceId: string): boolean {
     const state = store.getState();
-    const definedLogics = selectConditionalLogic(state, cardInstanceId); // 🚀 Use correct selector
+    const definedLogics = selectConditionalLogic(state, cardInstanceId);
     const logic = definedLogics.find(l => l.id === expressionId);
 
     if (!logic) {
       logger.warn('evaluateExpression', `Could not find defined logic with ID: ${expressionId}`);
-      return true; // Default to true if expression not found
+      // CHANGED: Default to false for safety (button disabled if expression not found)
+      // Previously returned true, which would enable all buttons if expression was misconfigured
+      return false;
     }
 
-    // This is a simplified, synchronous version of the logic in evaluateAndApplyEffectsThunk
-    // It only checks the 'condition' part.
-    const checkCondition = (condition: RuleType): boolean => {
-      // In your system, the 'field' property holds the entity_id
-      const { field: entity_id, operator, value } = condition;
-      if (!entity_id) return false;
-
-      // The 'attribute' is parsed from the entity_id string if it contains a '.'
-      const parts = entity_id.split('.');
-      const entityIdOnly = parts.length > 1 ? `${parts[0]}.${parts[1]}` : entity_id;
-      const attribute = parts.length > 2 ? parts.slice(2).join('.') : undefined;
-      
-      const entityState = (state as any).genericHaStates.entities[entityIdOnly];
-      if (!entityState) return false;
-
-      const actualValue = attribute ? get(entityState.attributes, attribute) : entityState.state;
-
-      switch (operator) {
-        case '==': return actualValue == value;
-        case '!=': return actualValue != value;
-        case '>': return actualValue > value;
-        case '<': return actualValue < value;
-        case '>=': return actualValue >= value;
-        case '<=': return actualValue <= value;
-        case 'in': return String(value).includes(actualValue);
-        case 'not in': return !String(value).includes(actualValue);
-        default: return false;
-      }
-    };
+    // UNIFIED: Use the main evaluation engine from utils/evaluateExpression
+    // This ensures consistency between action button enable/disable and conditional effects
+    // The evaluateExpressionUtil supports both HA entity states AND part data
+    // Note: We don't pass dispatch here because we want synchronous evaluation for button state
     
-    const evaluateGroup = (group: RuleGroupType): boolean => {
-      const results = group.rules.map((rule) => {
-        if ('combinator' in rule) { // It's a nested group
-          return evaluateGroup(rule as RuleGroupType);
-        }
-        return checkCondition(rule as RuleType);
-      });
-
-      if (group.combinator === 'and') {
-        return results.every(Boolean);
-      } else {
-        return results.some(Boolean);
+    // A ConditionalLogicItem can have multiple pairs. 
+    // Return true if ANY pair's condition evaluates to true
+    return logic.logicPairs.some(pair => {
+      try {
+        // Pass the part from context if available, otherwise null for generic rules
+      const partContext = context.part || null;
+      const result = evaluateExpressionUtil(
+        pair.conditionRules,
+        partContext,
+        state as RootState,
+        logger,
+        cardInstanceId
+        // Note: No dispatch parameter = synchronous evaluation
+      );
+      return result;
+      } catch (error) {
+        logger.error('evaluateExpression', `Error evaluating logic pair ${pair.id}: ${(error as Error).message}`);
+        // On error, default to false (disable button for safety)
+        return false;
       }
-    };
-
-    // A single ConditionalLogicItem can have multiple pairs. We assume for now that if ANY pair's condition is met, the expression is true.
-    return logic.logicPairs.some(pair => evaluateGroup(pair.conditionRules));
+    });
   }
 
   public executeAction(actionId: string, context: ActionExecutionContext, cardInstanceId: string): void {
@@ -193,7 +147,7 @@ export class ActionEngine {
       return;
     }
 
-    const allActions: ActionDefinition[] = selectAllActionDefinitionsForInstance(store.getState(), cardInstanceId);
+    const allActions: ActionDefinition[] = selectAllActionDefinitionsForInstance(store.getState() as RootState, cardInstanceId);
     const actionDef = allActions.find((a: ActionDefinition) => a.id === actionId);
 
     if (!actionDef) {
@@ -215,7 +169,26 @@ export class ActionEngine {
         }
       }
 
-      this.handleOperation(actionDef.operation, context, cardInstanceId);
+      // MULTIPLE OPERATIONS SUPPORT: Handle both single operation and operations array
+      const operationsToExecute: ActionOperation[] = [];
+      
+      if (actionDef.operations && actionDef.operations.length > 0) {
+        // New array format
+        operationsToExecute.push(...actionDef.operations);
+        logger.debug('executeAction', `Executing ${actionDef.operations.length} operations for action '${actionId}'`);
+      } else if (actionDef.operation) {
+        // Backward compatibility: single operation
+        operationsToExecute.push(actionDef.operation);
+      } else {
+        logger.warn('executeAction', `Action '${actionId}' has no operations defined!`);
+      }
+
+      // Execute all operations in sequence
+      for (let i = 0; i < operationsToExecute.length; i++) {
+        const operation = operationsToExecute[i];
+        logger.debug('executeAction', `Executing operation ${i + 1}/${operationsToExecute.length}: ${operation.type}`);
+        this.handleOperation(operation, context, cardInstanceId);
+      }
 
     } catch (error) {
       logger.error('executeAction', `Error executing action '${actionId}':`, error as Error);
@@ -226,9 +199,9 @@ export class ActionEngine {
       // Post-evaluation logic
       if (actionDef.postEvaluationLogicIds && actionDef.postEvaluationLogicIds.length > 0) {
         logger.debug('executeAction', `Triggering post-evaluation logic for action '${actionId}'.`);
-        const activeInstances = selectActiveCardInstanceIds(store.getState());
+        const activeInstances = selectActiveCardInstanceIds(store.getState() as RootState);
         activeInstances.forEach(id => {
-          store.dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: id }));
+          store.dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: id }) as any);
         });
       }
     }
@@ -251,6 +224,9 @@ export class ActionEngine {
         break;
       case 'set_card_state':
         this.handleSetCardState(operation, context);
+        break;
+      case 'adjust_stock':
+        this.handleAdjustStock(operation, context, cardInstanceId);
         break;
       default:
         logger.warn('handleOperation', `Unknown operation type: ${(operation as any).type}`);
@@ -301,16 +277,39 @@ export class ActionEngine {
       return;
     }
 
-    const newValue = this.processTemplate(valueTemplate, context);
+    let newValue = this.processTemplate(valueTemplate, context);
+    
+    const state = store.getState() as RootState;
+    const parametersResult = inventreeApi.endpoints.getPartParameters.select({ partId: targetPartId, cardInstanceId })(state);
 
-    logger.debug('handleUpdateInvenTreeParameter', `Dispatching update for partId: ${targetPartId}, param: ${parameterName}, value: ${newValue}`);
-
-    store.dispatch(updateParameterValue({
-      cardInstanceId,
-      partId: targetPartId,
-      paramName: parameterName,
-      value: newValue,
-    }));
+    if (parametersResult.data) {
+      const parameter = parametersResult.data.find(p => p.template_detail?.name === parameterName);
+      if (parameter) {
+        // TOGGLE SUPPORT: Check if value is "TOGGLE" to flip current boolean parameter value
+        if (newValue === 'TOGGLE' || (typeof newValue === 'string' && newValue.toUpperCase() === 'TOGGLE')) {
+          const currentValue = parameter.data;
+          // Flip boolean: "True" <-> "False" (case-insensitive)
+          if (currentValue && typeof currentValue === 'string') {
+            newValue = currentValue.toLowerCase() === 'true' ? 'False' : 'True';
+            logger.debug('handleUpdateInvenTreeParameter', `TOGGLE detected: Flipping ${currentValue} → ${newValue}`);
+          } else {
+            logger.warn('handleUpdateInvenTreeParameter', `TOGGLE requested but current value is not a boolean string: ${currentValue}`);
+            newValue = 'True'; // Default to True if unclear
+          }
+        }
+        
+        logger.debug('handleUpdateInvenTreeParameter', `Dispatching update for partId: ${targetPartId}, param PK: ${parameter.pk}, value: ${newValue}`);
+        this.dispatch(inventreeApi.endpoints.updatePartParameter.initiate({
+          partId: targetPartId,
+          parameterId: parameter.pk,
+          data: { data: newValue },  // FIXED: InvenTree API expects 'data' field, not 'value'
+        }));
+      } else {
+        logger.error('handleUpdateInvenTreeParameter', `Parameter '${parameterName}' not found for part ${targetPartId}. Cannot update.`);
+      }
+    } else {
+      logger.warn('handleUpdateInvenTreeParameter', `Parameter data for part ${targetPartId} not in cache. Cannot update. It may need to be fetched first.`);
+    }
   }
 
   private handleDispatchReduxAction(operation: ActionDispatchReduxActionOperation, context: ActionExecutionContext, cardInstanceId: string): void {
@@ -321,15 +320,59 @@ export class ActionEngine {
   }
 
   private handleTriggerConditionalLogic(operation: ActionTriggerConditionalLogicOperation, context: ActionExecutionContext): void {
-    logger.debug('handleTriggerConditionalLogic', `Triggering logic for ID: ${operation.logicIdToTrigger}`);
-    const activeCardIds = selectActiveCardInstanceIds(store.getState());
+    logger.debug('handleTriggerConditionalLogic', `Triggering SPECIFIC logic for ID: ${operation.logicIdToTrigger}`);
+    
+    // FIXED: Only re-evaluate the SPECIFIC logic item, not ALL logic (nuclear approach)
+    // This prevents unnecessary work and improves performance dramatically
+    const activeCardIds = selectActiveCardInstanceIds(store.getState() as RootState);
     for (const cardId of activeCardIds) {
-      store.dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId: cardId }));
+      store.dispatch(evaluateAndApplyEffectsThunk({ 
+        cardInstanceId: cardId,
+        logicItemIds: [operation.logicIdToTrigger]  // Only this specific logic item!
+      }) as any);
     }
   }
 
   private handleSetCardState(operation: ActionSetCardStateOperation, context: ActionExecutionContext): void {
     logger.warn('handleSetCardState', `'set_card_state' is not yet fully implemented. State was not persisted.`);
+  }
+
+  private handleAdjustStock(operation: ActionAdjustStockOperation, context: ActionExecutionContext, cardInstanceId: string): void {
+    const { partIdContext, deltaTemplate } = operation;
+    
+    // 1️⃣ Resolve target part ID
+    let targetPartId: number | undefined;
+
+    if (typeof partIdContext === 'number') {
+      targetPartId = partIdContext;
+    } else if (partIdContext === 'current' && context.part) {
+      targetPartId = context.part.pk;
+    } else if (typeof partIdContext === 'string') {
+      const resolvedId = this.processTemplate(partIdContext, context);
+      targetPartId = typeof resolvedId === 'string' ? parseInt(resolvedId, 10) : (typeof resolvedId === 'number' ? resolvedId : undefined);
+    }
+
+    if (!targetPartId || isNaN(targetPartId)) {
+      logger.error('handleAdjustStock', 'Could not resolve a valid target part ID.', undefined, { partIdContext: String(partIdContext) });
+      return;
+    }
+
+    // 2️⃣ Resolve delta (supports templates like "{{quantity}}")
+    const deltaString = this.processTemplate(deltaTemplate, context);
+    const delta = typeof deltaString === 'string' ? parseFloat(deltaString) : (typeof deltaString === 'number' ? deltaString : NaN);
+
+    if (isNaN(delta)) {
+      logger.error('handleAdjustStock', `Invalid delta value: ${deltaString}`, undefined, { deltaTemplate });
+      return;
+    }
+
+    // 3️⃣ Dispatch to the bus! 🚌 (uses the same system as the +/- buttons)
+    logger.info('handleAdjustStock', `Adjusting stock for part ${targetPartId} by ${delta > 0 ? '+' : ''}${delta}`);
+    this.dispatch(adjustStockDebounced({
+      partId: targetPartId,
+      delta: delta,
+      cardInstanceId: cardInstanceId
+    }));
   }
 
   // Overload for string literals, guaranteeing a string return
@@ -342,6 +385,10 @@ export class ActionEngine {
       let processedString = template;
       const combinedRegex = /%%context\.([^%]+)%%/g;
       const matches = Array.from(template.matchAll(combinedRegex));
+      
+      // FIXED: Track failed templates to fail loudly instead of silently
+      const failedTemplates: string[] = [];
+      
       for (const match of matches) {
         const path = match[1];
         const templateString = match[0];
@@ -350,12 +397,24 @@ export class ActionEngine {
           if (value !== undefined && value !== null) {
             processedString = processedString.split(templateString).join(String(value)); 
           } else {
+            // FIXED: Collect failed templates to throw error
+            failedTemplates.push(`${templateString} (path: ${path}) - value was undefined or null`);
             logger.warn('processTemplate', `Template path '${templateString}' was undefined or null.`);
           }
         } catch (e: any) {
+          // FIXED: Collect failed templates to throw error
+          failedTemplates.push(`${templateString} (path: ${path}) - ${(e as Error).message}`);
           logger.error('processTemplate', `Template processing error for path '${templateString}'`, e as Error);
         }
       }
+      
+      // FIXED: Throw error if any templates failed (fail loudly, not silently!)
+      if (failedTemplates.length > 0) {
+        const errorMsg = `Template processing failed for ${failedTemplates.length} template(s): ${failedTemplates.join(', ')}`;
+        logger.error('processTemplate', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
       return processedString;
     }
 

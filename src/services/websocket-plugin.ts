@@ -182,6 +182,11 @@ export class WebSocketPlugin {
     this._connectionState = newState;
     this._lastStateChangeTime = Date.now();
     
+    // Dispatch the new status to the Redux store
+    if (this._dispatch) {
+        this._dispatch(setWebSocketStatus(mapToReduxStatus(newState)));
+    }
+    
     logger.info('_setConnectionState', `Connection state changed: ${oldState} -> ${newState}`);
     
     // Perform actions based on new state
@@ -282,13 +287,12 @@ export class WebSocketPlugin {
     this._lastServerMessageTime = Date.now();
     this._messageCount++;
     this._lastMessageTime = Date.now();
-    
-    if (this._dispatch) {
-        this._dispatch(setWebSocketStatus(mapToReduxStatus(this._connectionState)));
-    }
 
     try {
         const message = JSON.parse(event.data);
+        // 🚀 TEMP DEBUG LOG
+        console.log('%c[WebSocketPlugin] Message Received:', 'color: #8E44AD; font-weight: bold;', message);
+        
         const messageId = message?.data?.pk ?? (message?.name || 'unknown');
         logger.debug('_onConnectionMessage', 'Received message:', { message });
         this._handleDebouncedMessageProcessing(message, messageId);
@@ -323,6 +327,14 @@ export class WebSocketPlugin {
    * Notify all registered callbacks with the new message
    */
   private _notifyMessageCallbacks(message: any): void {
+    // 🚀 FIX: Ignore noisy ping messages from the server.
+    if (message.type === 'ping') {
+      return;
+    }
+
+    // 🚀 TEMP DEBUG LOG
+    console.log('%c[WebSocketPlugin] Notifying callbacks/dispatching to Redux:', 'color: #8E44AD; font-weight: bold;', { hasDispatch: !!this._dispatch, message });
+
     if (this._dispatch) {
         this._dispatch(webSocketMessageReceived(message));
     }

@@ -14,6 +14,10 @@ import {
 } from '../slices/conditionalLogicSlice';
 import { selectActiveCardInstanceIds } from '../slices/componentSlice';
 import { ConditionalEffectsEngine } from '../../core/ConditionalEffectsEngine';
+import { selectWebSocketStatus } from '../slices/websocketSlice';
+import { inventreeApi } from '../apis/inventreeApi';
+import { selectPartById } from '../slices/partsSlice';
+import { ParameterDetail } from '../../types';
 
 const logger = ConditionalLoggerEngine.getInstance().getLogger('conditionalLogicThunks');
 ConditionalLoggerEngine.getInstance().registerCategory('conditionalLogicThunks', { enabled: false, level: 'info' });
@@ -22,12 +26,51 @@ ConditionalLoggerEngine.getInstance().registerCategory('conditionalLogicThunks',
 
 export const evaluateAndApplyEffectsThunk = createAsyncThunk<
   void,
-  { cardInstanceId: string },
+  { cardInstanceId: string; logicItemIds?: string[] },
   { state: RootState, dispatch: AppDispatch }
->('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId }, { dispatch, getState }) => {
-  logger.debug('evaluateAndApplyEffectsThunk', `Running for card instance: ${cardInstanceId}`);
+>('conditionalLogic/evaluateAndApplyEffects', async ({ cardInstanceId, logicItemIds }, { dispatch, getState }) => {
+  logger.debug('evaluateAndApplyEffectsThunk', `Running for card instance: ${cardInstanceId}`, { logicItemIds });
   const state = getState();
-  const logicItems = selectDefinedLogicItems(state, cardInstanceId);
+
+  // REMOVED: Leftover debug log for part 145 and parameter 134
+
+  // --- POLLING FALLBACK LOGIC ---
+  const wsStatus = selectWebSocketStatus(state);
+  if (wsStatus !== 'connected') {
+    logger.debug('evaluateAndApplyEffectsThunk', `WebSocket not connected (status: ${wsStatus}). Triggering polling refresh.`);
+    
+    // Invalidate tags to mark data as stale for any subscribed components
+    dispatch(inventreeApi.util.invalidateTags(['Part', 'PartParameters']));
+
+    // Explicitly re-fetch data for any queries that are already in the cache,
+    // ensuring data is updated even without an active component subscription.
+    const queries = state.inventreeApi.queries;
+    for (const key in queries) {
+      const query = queries[key];
+      if (query && (query.endpointName === 'getPart' || query.endpointName === 'getPartParameters') && query.status === 'fulfilled') {
+        // The old generic approach caused a massive TS error because the argument shapes differ.
+        // This explicit check ensures the correct arguments are passed to the correct endpoint initiate function.
+        if (query.endpointName === 'getPart') {
+          dispatch(inventreeApi.endpoints.getPart.initiate(query.originalArgs, { forceRefetch: true }));
+        } else if (query.endpointName === 'getPartParameters') {
+          dispatch(inventreeApi.endpoints.getPartParameters.initiate(query.originalArgs, { forceRefetch: true }));
+        }
+      }
+    }
+  }
+  
+  let logicItems = selectDefinedLogicItems(state, cardInstanceId);
+  
+  // FIXED: If specific logic item IDs are provided, filter to only those items
+  // This prevents nuclear re-evaluation of ALL logic when only specific items need updating
+  if (logicItemIds && logicItemIds.length > 0) {
+    const originalCount = logicItems.length;
+    logicItems = logicItems.filter(item => logicItemIds.includes(item.id));
+    logger.debug('evaluateAndApplyEffectsThunk', 
+      `Filtered logic items: ${originalCount} → ${logicItems.length} (specific IDs: ${logicItemIds.join(', ')})`
+    );
+  }
+  
   const engine = new ConditionalEffectsEngine(dispatch, getState);
   try {
     logger.debug('evaluateAndApplyEffectsThunk', `About to call engine.evaluateAndApplyEffects with ${logicItems.length} logic items for instance ${cardInstanceId}.`);

@@ -1,40 +1,42 @@
-import { BaseQueryFn } from '@reduxjs/toolkit/query/react';
 import { InventreeItem, ParameterDetail, StockItem } from '../../types';
-export declare const inventreeApi: import("@reduxjs/toolkit/query").Api<BaseQueryFn, {
+export declare const inventreeApi: import("@reduxjs/toolkit/query").Api<import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, {
     getPart: import("@reduxjs/toolkit/query").QueryDefinition<{
         pk: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>;
     getPartParameters: import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>;
+        template_detail?: boolean;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>;
     updatePartParameter: import("@reduxjs/toolkit/query").MutationDefinition<{
         partId: number;
-        parameterPk: number;
-        value: any;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>;
+        parameterId: number;
+        data: any;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail, "inventreeApi", unknown>;
     getStockItems: import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>;
     addStockItem: import("@reduxjs/toolkit/query").MutationDefinition<{
         partId: number;
         quantity: number;
         locationId?: number;
         notes?: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem, "inventreeApi", unknown>;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem, "inventreeApi", unknown>;
+    removeStockItems: import("@reduxjs/toolkit/query").MutationDefinition<{
+        items: Array<{
+            pk: number;
+            quantity: number;
+        }>;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", any, "inventreeApi", unknown>;
     searchParts: import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
     }[], "inventreeApi", unknown>;
-}, "inventreeApi", "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", typeof import("@reduxjs/toolkit/query").coreModuleName | typeof import("@reduxjs/toolkit/query/react").reactHooksModuleName>;
+}, "inventreeApi", "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", typeof import("@reduxjs/toolkit/query").coreModuleName | typeof import("@reduxjs/toolkit/query/react").reactHooksModuleName>;
 export declare const useGetPartQuery: <R extends Record<string, any> = import("@reduxjs/toolkit/query").TSHelpersId<(Omit<{
     status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
     originalArgs?: undefined | undefined;
@@ -56,7 +58,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     pk: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
     currentData?: InventreeItem | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -74,7 +76,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     pk: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
     currentData?: InventreeItem | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -88,7 +90,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     pk: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
     currentData?: InventreeItem | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -100,7 +102,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     pk: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
     currentData?: InventreeItem | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -138,7 +140,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         pk: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
         currentData?: InventreeItem | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -156,7 +158,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         pk: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
         currentData?: InventreeItem | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -170,7 +172,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         pk: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
         currentData?: InventreeItem | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -182,7 +184,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         pk: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>> & {
         currentData?: InventreeItem | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -196,7 +198,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     refetch: () => import("@reduxjs/toolkit/query").QueryActionCreatorResult<import("@reduxjs/toolkit/query").QueryDefinition<{
         pk: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", InventreeItem, "inventreeApi", unknown>>;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", InventreeItem, "inventreeApi", unknown>>;
 }, useGetPartParametersQuery: <R extends Record<string, any> = import("@reduxjs/toolkit/query").TSHelpersId<(Omit<{
     status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
     originalArgs?: undefined | undefined;
@@ -218,7 +220,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+    template_detail?: boolean;
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
     currentData?: ParameterDetail[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -236,7 +239,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+    template_detail?: boolean;
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
     currentData?: ParameterDetail[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -250,7 +254,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+    template_detail?: boolean;
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
     currentData?: ParameterDetail[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -262,7 +267,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
     cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+    template_detail?: boolean;
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
     currentData?: ParameterDetail[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -274,6 +280,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 }>(arg: {
     partId: number;
     cardInstanceId: string;
+    template_detail?: boolean;
 } | typeof import("@reduxjs/toolkit/query").skipToken, options?: (import("@reduxjs/toolkit/query").SubscriptionOptions & {
     skip?: boolean;
     refetchOnMountOrArgChange?: boolean | number;
@@ -300,7 +307,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+        template_detail?: boolean;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
         currentData?: ParameterDetail[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -318,7 +326,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+        template_detail?: boolean;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
         currentData?: ParameterDetail[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -332,7 +341,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+        template_detail?: boolean;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
         currentData?: ParameterDetail[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -344,7 +354,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>> & {
+        template_detail?: boolean;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>> & {
         currentData?: ParameterDetail[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -358,7 +369,8 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     refetch: () => import("@reduxjs/toolkit/query").QueryActionCreatorResult<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
         cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail[], "inventreeApi", unknown>>;
+        template_detail?: boolean;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail[], "inventreeApi", unknown>>;
 }, useUpdatePartParameterMutation: <R extends Record<string, any> = ({
     requestId?: undefined;
     status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
@@ -378,14 +390,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Omit<{
     requestId: string;
     data?: ParameterDetail | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
 }, "data" | "fulfilledTimeStamp"> & Required<Pick<{
     requestId: string;
     data?: ParameterDetail | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
@@ -402,7 +414,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & {
     requestId: string;
     data?: ParameterDetail | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
@@ -419,14 +431,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Omit<{
     requestId: string;
     data?: ParameterDetail | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
 }, "error"> & Required<Pick<{
     requestId: string;
     data?: ParameterDetail | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
@@ -456,14 +468,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Omit<{
         requestId: string;
         data?: ParameterDetail | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
     }, "data" | "fulfilledTimeStamp"> & Required<Pick<{
         requestId: string;
         data?: ParameterDetail | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
@@ -480,7 +492,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & {
         requestId: string;
         data?: ParameterDetail | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
@@ -497,14 +509,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Omit<{
         requestId: string;
         data?: ParameterDetail | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
     }, "error"> & Required<Pick<{
         requestId: string;
         data?: ParameterDetail | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
@@ -518,20 +530,17 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     fixedCacheKey?: string;
 } | undefined) => readonly [(arg: {
     partId: number;
-    parameterPk: number;
-    value: any;
-    cardInstanceId: string;
+    parameterId: number;
+    data: any;
 }) => import("@reduxjs/toolkit/query").MutationActionCreatorResult<import("@reduxjs/toolkit/query").MutationDefinition<{
     partId: number;
-    parameterPk: number;
-    value: any;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", ParameterDetail, "inventreeApi", unknown>>, import("@reduxjs/toolkit/query").TSHelpersNoInfer<R> & {
+    parameterId: number;
+    data: any;
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", ParameterDetail, "inventreeApi", unknown>>, import("@reduxjs/toolkit/query").TSHelpersNoInfer<R> & {
     originalArgs?: {
         partId: number;
-        parameterPk: number;
-        value: any;
-        cardInstanceId: string;
+        parameterId: number;
+        data: any;
     } | undefined;
     reset: () => void;
 }], useGetStockItemsQuery: <R extends Record<string, any> = import("@reduxjs/toolkit/query").TSHelpersId<(Omit<{
@@ -554,8 +563,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     isUninitialized: true;
 }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
     currentData?: StockItem[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -572,8 +580,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     error: undefined;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
     currentData?: StockItem[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -586,8 +593,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     error: undefined;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
     currentData?: StockItem[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -598,8 +604,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     isError: true;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     partId: number;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
     currentData?: StockItem[] | undefined;
     isUninitialized: false;
     isLoading: false;
@@ -610,7 +615,6 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     status: import("@reduxjs/toolkit/query").QueryStatus;
 }>(arg: {
     partId: number;
-    cardInstanceId: string;
 } | typeof import("@reduxjs/toolkit/query").skipToken, options?: (import("@reduxjs/toolkit/query").SubscriptionOptions & {
     skip?: boolean;
     refetchOnMountOrArgChange?: boolean | number;
@@ -636,8 +640,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         isUninitialized: true;
     }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
         currentData?: StockItem[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -654,8 +657,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         error: undefined;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
         currentData?: StockItem[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -668,8 +670,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         error: undefined;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
         currentData?: StockItem[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -680,8 +681,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         isError: true;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>> & {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>> & {
         currentData?: StockItem[] | undefined;
         isUninitialized: false;
         isLoading: false;
@@ -694,8 +694,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 }) | undefined) => [R][R extends any ? 0 : never] & {
     refetch: () => import("@reduxjs/toolkit/query").QueryActionCreatorResult<import("@reduxjs/toolkit/query").QueryDefinition<{
         partId: number;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem[], "inventreeApi", unknown>>;
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem[], "inventreeApi", unknown>>;
 }, useAddStockItemMutation: <R extends Record<string, any> = ({
     requestId?: undefined;
     status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
@@ -715,14 +714,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Omit<{
     requestId: string;
     data?: StockItem | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
 }, "data" | "fulfilledTimeStamp"> & Required<Pick<{
     requestId: string;
     data?: StockItem | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
@@ -739,7 +738,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & {
     requestId: string;
     data?: StockItem | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
@@ -756,14 +755,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 } & Omit<{
     requestId: string;
     data?: StockItem | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
 }, "error"> & Required<Pick<{
     requestId: string;
     data?: StockItem | undefined;
-    error?: unknown;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
     endpointName: string;
     startedTimeStamp: number;
     fulfilledTimeStamp?: number;
@@ -793,14 +792,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Omit<{
         requestId: string;
         data?: StockItem | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
     }, "data" | "fulfilledTimeStamp"> & Required<Pick<{
         requestId: string;
         data?: StockItem | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
@@ -817,7 +816,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & {
         requestId: string;
         data?: StockItem | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
@@ -834,14 +833,14 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     } & Omit<{
         requestId: string;
         data?: StockItem | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
     }, "error"> & Required<Pick<{
         requestId: string;
         data?: StockItem | undefined;
-        error?: unknown;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
         endpointName: string;
         startedTimeStamp: number;
         fulfilledTimeStamp?: number;
@@ -858,20 +857,192 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     quantity: number;
     locationId?: number;
     notes?: string;
-    cardInstanceId: string;
 }) => import("@reduxjs/toolkit/query").MutationActionCreatorResult<import("@reduxjs/toolkit/query").MutationDefinition<{
     partId: number;
     quantity: number;
     locationId?: number;
     notes?: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", StockItem, "inventreeApi", unknown>>, import("@reduxjs/toolkit/query").TSHelpersNoInfer<R> & {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", StockItem, "inventreeApi", unknown>>, import("@reduxjs/toolkit/query").TSHelpersNoInfer<R> & {
     originalArgs?: {
         partId: number;
         quantity: number;
         locationId?: number;
         notes?: string;
-        cardInstanceId: string;
+    } | undefined;
+    reset: () => void;
+}], useRemoveStockItemsMutation: <R extends Record<string, any> = ({
+    requestId?: undefined;
+    status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
+    data?: undefined;
+    error?: undefined;
+    endpointName?: string;
+    startedTimeStamp?: undefined;
+    fulfilledTimeStamp?: undefined;
+} & {
+    status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
+    isUninitialized: true;
+    isLoading: false;
+    isSuccess: false;
+    isError: false;
+}) | ({
+    status: import("@reduxjs/toolkit/query").QueryStatus.fulfilled;
+} & Omit<{
+    requestId: string;
+    data?: any;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+    endpointName: string;
+    startedTimeStamp: number;
+    fulfilledTimeStamp?: number;
+}, "data" | "fulfilledTimeStamp"> & Required<Pick<{
+    requestId: string;
+    data?: any;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+    endpointName: string;
+    startedTimeStamp: number;
+    fulfilledTimeStamp?: number;
+}, "data" | "fulfilledTimeStamp">> & {
+    error: undefined;
+} & {
+    status: import("@reduxjs/toolkit/query").QueryStatus.fulfilled;
+    isUninitialized: false;
+    isLoading: false;
+    isSuccess: true;
+    isError: false;
+}) | ({
+    status: import("@reduxjs/toolkit/query").QueryStatus.pending;
+} & {
+    requestId: string;
+    data?: any;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+    endpointName: string;
+    startedTimeStamp: number;
+    fulfilledTimeStamp?: number;
+} & {
+    data?: undefined;
+} & {
+    status: import("@reduxjs/toolkit/query").QueryStatus.pending;
+    isUninitialized: false;
+    isLoading: true;
+    isSuccess: false;
+    isError: false;
+}) | ({
+    status: import("@reduxjs/toolkit/query").QueryStatus.rejected;
+} & Omit<{
+    requestId: string;
+    data?: any;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+    endpointName: string;
+    startedTimeStamp: number;
+    fulfilledTimeStamp?: number;
+}, "error"> & Required<Pick<{
+    requestId: string;
+    data?: any;
+    error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+    endpointName: string;
+    startedTimeStamp: number;
+    fulfilledTimeStamp?: number;
+}, "error">> & {
+    status: import("@reduxjs/toolkit/query").QueryStatus.rejected;
+    isUninitialized: false;
+    isLoading: false;
+    isSuccess: false;
+    isError: true;
+})>(options?: {
+    selectFromResult?: ((state: ({
+        requestId?: undefined;
+        status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
+        data?: undefined;
+        error?: undefined;
+        endpointName?: string;
+        startedTimeStamp?: undefined;
+        fulfilledTimeStamp?: undefined;
+    } & {
+        status: import("@reduxjs/toolkit/query").QueryStatus.uninitialized;
+        isUninitialized: true;
+        isLoading: false;
+        isSuccess: false;
+        isError: false;
+    }) | ({
+        status: import("@reduxjs/toolkit/query").QueryStatus.fulfilled;
+    } & Omit<{
+        requestId: string;
+        data?: any;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+        endpointName: string;
+        startedTimeStamp: number;
+        fulfilledTimeStamp?: number;
+    }, "data" | "fulfilledTimeStamp"> & Required<Pick<{
+        requestId: string;
+        data?: any;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+        endpointName: string;
+        startedTimeStamp: number;
+        fulfilledTimeStamp?: number;
+    }, "data" | "fulfilledTimeStamp">> & {
+        error: undefined;
+    } & {
+        status: import("@reduxjs/toolkit/query").QueryStatus.fulfilled;
+        isUninitialized: false;
+        isLoading: false;
+        isSuccess: true;
+        isError: false;
+    }) | ({
+        status: import("@reduxjs/toolkit/query").QueryStatus.pending;
+    } & {
+        requestId: string;
+        data?: any;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+        endpointName: string;
+        startedTimeStamp: number;
+        fulfilledTimeStamp?: number;
+    } & {
+        data?: undefined;
+    } & {
+        status: import("@reduxjs/toolkit/query").QueryStatus.pending;
+        isUninitialized: false;
+        isLoading: true;
+        isSuccess: false;
+        isError: false;
+    }) | ({
+        status: import("@reduxjs/toolkit/query").QueryStatus.rejected;
+    } & Omit<{
+        requestId: string;
+        data?: any;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+        endpointName: string;
+        startedTimeStamp: number;
+        fulfilledTimeStamp?: number;
+    }, "error"> & Required<Pick<{
+        requestId: string;
+        data?: any;
+        error?: import("@reduxjs/toolkit/query").FetchBaseQueryError | import("@reduxjs/toolkit").SerializedError | undefined;
+        endpointName: string;
+        startedTimeStamp: number;
+        fulfilledTimeStamp?: number;
+    }, "error">> & {
+        status: import("@reduxjs/toolkit/query").QueryStatus.rejected;
+        isUninitialized: false;
+        isLoading: false;
+        isSuccess: false;
+        isError: true;
+    })) => R) | undefined;
+    fixedCacheKey?: string;
+} | undefined) => readonly [(arg: {
+    items: Array<{
+        pk: number;
+        quantity: number;
+    }>;
+}) => import("@reduxjs/toolkit/query").MutationActionCreatorResult<import("@reduxjs/toolkit/query").MutationDefinition<{
+    items: Array<{
+        pk: number;
+        quantity: number;
+    }>;
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", any, "inventreeApi", unknown>>, import("@reduxjs/toolkit/query").TSHelpersNoInfer<R> & {
+    originalArgs?: {
+        items: Array<{
+            pk: number;
+            quantity: number;
+        }>;
     } | undefined;
     reset: () => void;
 }], useSearchPartsQuery: <R extends Record<string, any> = import("@reduxjs/toolkit/query").TSHelpersId<(Omit<{
@@ -898,8 +1069,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     isUninitialized: true;
 }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -924,8 +1094,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     error: undefined;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -946,8 +1115,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     error: undefined;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -966,8 +1134,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     isError: true;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -986,7 +1153,6 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     status: import("@reduxjs/toolkit/query").QueryStatus;
 }>(arg: {
     searchText: string;
-    cardInstanceId: string;
 } | typeof import("@reduxjs/toolkit/query").skipToken, options?: (import("@reduxjs/toolkit/query").SubscriptionOptions & {
     skip?: boolean;
     refetchOnMountOrArgChange?: boolean | number;
@@ -1016,8 +1182,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         isUninitialized: true;
     }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1042,8 +1207,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         error: undefined;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1064,8 +1228,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         error: undefined;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1084,8 +1247,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         isError: true;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1106,8 +1268,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 }) | undefined) => [R][R extends any ? 0 : never] & {
     refetch: () => import("@reduxjs/toolkit/query").QueryActionCreatorResult<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1136,8 +1297,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     isUninitialized: true;
 }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -1162,8 +1322,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     error: undefined;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -1184,8 +1343,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     error: undefined;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -1204,8 +1362,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     isError: true;
 } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -1248,8 +1405,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         isUninitialized: true;
     }) | import("@reduxjs/toolkit/query").TSHelpersOverride<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1274,8 +1430,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         error: undefined;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1296,8 +1451,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         error: undefined;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1316,8 +1470,7 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
         isError: true;
     } & Required<Pick<import("@reduxjs/toolkit/query").QuerySubState<import("@reduxjs/toolkit/query").QueryDefinition<{
         searchText: string;
-        cardInstanceId: string;
-    }, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+    }, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
         pk: number;
         name: string;
         thumbnail?: string;
@@ -1337,11 +1490,9 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
     }) => R) | undefined;
 }, "skip">) | undefined) => [(arg: {
     searchText: string;
-    cardInstanceId: string;
 }, preferCacheValue?: boolean) => import("@reduxjs/toolkit/query").QueryActionCreatorResult<import("@reduxjs/toolkit/query").QueryDefinition<{
     searchText: string;
-    cardInstanceId: string;
-}, BaseQueryFn, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location", {
+}, import("@reduxjs/toolkit/query").BaseQueryFn<string | import("@reduxjs/toolkit/query").FetchArgs, unknown, import("@reduxjs/toolkit/query").FetchBaseQueryError>, "Part" | "PartParameter" | "StockItem" | "SearchResult" | "Category" | "Location" | "PartParameters", {
     pk: number;
     name: string;
     thumbnail?: string;
@@ -1350,6 +1501,5 @@ export declare const useGetPartQuery: <R extends Record<string, any> = import("@
 }, {
     lastArg: {
         searchText: string;
-        cardInstanceId: string;
     };
 }];

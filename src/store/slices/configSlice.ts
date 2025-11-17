@@ -34,10 +34,14 @@ export interface ConfigState {
     config: InventreeCardConfig;
     configInitialized: boolean;
   }>;
+  globalConfig?: { // Make globalConfig optional
+    direct_api?: DirectApiConfig;
+  };
 }
 
 const initialState: ConfigState = {
   configsByInstance: {},
+  globalConfig: {}, // Initialize globalConfig
 };
 
 const configSlice = createSlice({
@@ -53,6 +57,22 @@ const configSlice = createSlice({
         config: config,
         configInitialized: true,
       };
+
+      // Also update the global config with the direct_api settings from this instance.
+      // This assumes that all cards on a dashboard will share the same API endpoint.
+      if (config.direct_api) {
+        state.globalConfig = {
+          ...state.globalConfig,
+          direct_api: config.direct_api,
+        };
+        console.log('%c[setConfigAction] Updated globalConfig with API settings', 'color: #3498DB; font-weight: bold;', {
+          cardInstanceId,
+          apiUrl: config.direct_api.url,
+          hasApiKey: !!config.direct_api.api_key,
+          apiKeyPrefix: config.direct_api.api_key?.substring(0, 20) + '...',
+          globalConfig: state.globalConfig
+        });
+      }
       logger.debug('setConfigAction', `Configuration set for instance ${cardInstanceId}`, { newConfig: config });
     },
     removeConfigAction: (state, action: PayloadAction<{ cardInstanceId: string }>) => {

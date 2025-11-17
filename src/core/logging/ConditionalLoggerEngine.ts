@@ -6,6 +6,7 @@ import {
   logFired,
 } from '../../store/slices/loggingSlice';
 import { AppDispatch, RootState } from '../../store';
+import { v4 as uuidv4 } from 'uuid';
 
 const LOG_LEVEL_HIERARCHY: Record<LogLevel, number> = {
   verbose: 0,
@@ -19,79 +20,81 @@ class Logger implements ILogger {
   constructor(
     private category: string, 
     private engine: ConditionalLoggerEngine, 
-    private cardInstanceId?: string
+    private instanceId: string
   ) {}
 
-  private log(level: LogLevel, functionName: string, message: string | (() => string), ...args: unknown[]): void {
-    const msg = typeof message === 'function' ? message() : message;
-
-    // Only dispatch the event if we have an instance ID.
-    // This prevents orphan loggers from causing errors in the middleware.
-    if (this.cardInstanceId) {
-      this.engine.getDispatch()?.(logFired({
-        level,
-        category: this.category,
-        functionName,
-        message: msg,
-        cardInstanceId: this.cardInstanceId,
-        args,
-      }));
+  private _shouldLog(level: LogLevel): boolean {
+    if (level === 'verbose') {
+      return this.engine.isVerbose(this.category);
     }
-
-    // Separately, decide whether to write to the console.
-    if (this.engine.shouldLog(this.category, level)) {
-      OutputWrapper.log(level, this.category, functionName, msg, ...args);
-    }
+    return this.engine.shouldLog(this.category, level);
   }
 
-  debug(functionName: string, message: string | (() => string), ...args: unknown[]): void {
-    this.log('debug', functionName, message, ...args);
+  // Helper to format and style console output
+  private _logToConsole(level: LogLevel, category: string, instanceId: string, functionName: string, message: string, ...args: unknown[]): void {
+    const styles: Record<LogLevel, string> = {
+      verbose: 'color: #9E9E9E;', // Grey
+      debug: 'color: #2196F3;', // Blue
+      info: 'color: #4CAF50;', // Green
+      warn: 'color: #FFC107;', // Amber
+      error: 'color: #F44336; font-weight: bold;', // Red, bold
+    };
+
+    const style = styles[level] || 'color: #FFFFFF;';
+    const instancePart = instanceId === 'TEMPORARY' || instanceId === 'GLOBAL' ? '' : ` [${instanceId}]`;
+    
+    console.log(`%c[${category}${instancePart}] (${functionName})`, style, message, ...args);
   }
 
-  info(functionName: string, message: string | (() => string), ...args: unknown[]): void {
-    this.log('info', functionName, message, ...args);
-  }
-
-  warn(functionName: string, message: string | (() => string), ...args: unknown[]): void {
-    this.log('warn', functionName, message, ...args);
-  }
-  
-  error(functionName: string, message: string | (() => string), error?: Error, ...args: unknown[]): void {
-    const msg = typeof message === 'function' ? message() : message;
-    const allArgs = error ? [error, ...args] : args;
-
-    // Only dispatch if we have an instance ID.
-    if (this.cardInstanceId) {
-      this.engine.getDispatch()?.(logFired({
-        level: 'error',
-        category: this.category,
-        functionName,
-        message: msg,
-        cardInstanceId: this.cardInstanceId,
-        args: allArgs,
-      }));
-    }
-
-    // Separately, decide whether to write to the console.
-    if (this.engine.shouldLog(this.category, 'error')) {
-      OutputWrapper.error(this.category, functionName, msg, error, ...args);
-    }
-  }
-  
-  verbose(functionName: string, message: string | (() => string), ...args: unknown[]): void {
-    if (this.engine.isVerbose(this.category)) {
-      this.log('verbose', functionName, message, ...args);
+  public debug(functionName: string, message: string | (() => string), ...args: unknown[]): void {
+    if (this._shouldLog('debug')) {
+      const msg = typeof message === 'function' ? message() : message;
+      this.engine.captureLog({ id: uuidv4(), timestamp: new Date().toISOString(), category: this.category, level: 'debug', functionName, message: msg, args }, this.instanceId);
+      this._logToConsole('debug', this.category, this.instanceId, functionName, msg, ...args);
     }
   }
 
-  group(label: string): void {
-    if (this.engine.shouldLog(this.category, 'info')) { // Groups are generally used for info-level
+  public info(functionName: string, message: string | (() => string), ...args: unknown[]): void {
+    if (this._shouldLog('info')) {
+      const msg = typeof message === 'function' ? message() : message;
+      this.engine.captureLog({ id: uuidv4(), timestamp: new Date().toISOString(), category: this.category, level: 'info', functionName, message: msg, args }, this.instanceId);
+      this._logToConsole('info', this.category, this.instanceId, functionName, msg, ...args);
+    }
+  }
+
+  public warn(functionName: string, message: string | (() => string), ...args: unknown[]): void {
+    if (this._shouldLog('warn')) {
+      const msg = typeof message === 'function' ? message() : message;
+      this.engine.captureLog({ id: uuidv4(), timestamp: new Date().toISOString(), category: this.category, level: 'warn', functionName, message: msg, args }, this.instanceId);
+      this._logToConsole('warn', this.category, this.instanceId, functionName, msg, ...args);
+    }
+  }
+
+  public error(functionName: string, message: string | (() => string), error?: Error, ...args: unknown[]): void {
+    if (this._shouldLog('error')) {
+      const msg = typeof message === 'function' ? message() : message;
+      const finalArgs = error ? [error, ...args] : args;
+      this.engine.captureLog({ id: uuidv4(), timestamp: new Date().toISOString(), category: this.category, level: 'error', functionName, message: msg, args: finalArgs }, this.instanceId);
+      this._logToConsole('error', this.category, this.instanceId, functionName, msg, ...finalArgs);
+    }
+  }
+
+  public verbose(functionName: string, message: string | (() => string), ...args: unknown[]): void {
+    if (this._shouldLog('verbose')) {
+      const msg = typeof message === 'function' ? message() : message;
+      this.engine.captureLog({ id: uuidv4(), timestamp: new Date().toISOString(), category: this.category, level: 'verbose', functionName, message: msg, args }, this.instanceId);
+      this._logToConsole('verbose', this.category, this.instanceId, functionName, msg, ...args);
+    }
+  }
+
+  public group(label: string): void {
+    if (this._shouldLog('info')) { // Groups are generally used for info-level
       OutputWrapper.group(label);
     }
   }
 
-  groupEnd(): void {
-    if (this.engine.shouldLog(this.category, 'info')) {
+  public groupEnd(): void {
+    if (this._shouldLog('info')) {
       OutputWrapper.groupEnd();
     }
   }
@@ -171,11 +174,11 @@ export class ConditionalLoggerEngine {
     if (!this.registeredCategories[category]) {
       this.registerCategory(category, { enabled: false, level: 'info', verbose: false }, cardInstanceId);
     }
-    return new Logger(category, this, cardInstanceId);
+    return new Logger(category, this, cardInstanceId || 'GLOBAL');
   }
 
   public getTemporaryLogger(category: string): ILogger {
-    return new DummyLogger();
+    return new Logger(category, this, 'TEMPORARY');
   }
   
   public getRegisteredCategories(): Record<string, LoggerCategorySettings> {
@@ -197,5 +200,13 @@ export class ConditionalLoggerEngine {
 
   public getDispatch(): AppDispatch | null {
     return this.dispatch;
+  }
+
+  public captureLog(logEntry: LogEntry, instanceId: string): void {
+    if (this.dispatch) {
+      // Dispatch the logFired action, spreading the logEntry and adding the instanceId
+      // This matches the payload expected by the logFired reducer.
+      this.dispatch(logFired({ ...logEntry, cardInstanceId: instanceId }));
+    }
   }
 } 

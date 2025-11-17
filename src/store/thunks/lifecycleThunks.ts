@@ -9,11 +9,11 @@ import { actionsSlice } from '../slices/actionsSlice';
 import { initializeRuleDefinitionsThunk } from './conditionalLogicThunks';
 import { initializeWebSocketPlugin } from './systemThunks';
 import { processHassEntities, initializeGenericHaStatesFromConfig } from './systemThunks';
-import { fetchConfiguredParameters } from './parameterThunks';
 import { registerComponent, removeComponent } from '../slices/componentSlice';
 import { partsSlice } from '../slices/partsSlice';
 import { removeInstance as removeLoggingInstance } from '../slices/loggingSlice';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
+import { InventreeParameterFetchConfig } from '../../types';
 
 // Register the category globally, but create the logger instance inside the thunk
 ConditionalLoggerEngine.getInstance().registerCategory('LifecycleThunks', { enabled: false, level: 'info' });
@@ -38,9 +38,11 @@ export const initializeCardThunk = createAsyncThunk<
   const activeComponentIds = Object.keys(getState().components.registeredComponents);
   logger.info('initializeCardThunk', `Component registered. Active components: [${activeComponentIds.join(', ')}]`);
   
-  // --- STAGE 0: Cache Reset ---
-  logger.debug('initializeCardThunk', `[${cardInstanceId}] STAGE 0: Resetting API state.`);
-  dispatch(inventreeApi.util.resetApiState());
+  // --- STAGE 0: Cache Management ---
+  // REMOVED: inventreeApi.util.resetApiState() - This was wiping cache for ALL cards
+  // RTK Query cache is now shared across card instances for better performance
+  // If fresh data is needed, use { forceRefetch: true } on specific queries
+  logger.debug('initializeCardThunk', `[${cardInstanceId}] STAGE 0: Cache sharing enabled, no reset.`);
 
   // --- STAGE 1: Synchronous State Setup ---
   logger.debug('initializeCardThunk', `[${cardInstanceId}] STAGE 1: Setting up synchronous state from config.`);
@@ -48,40 +50,79 @@ export const initializeCardThunk = createAsyncThunk<
   if (config.actions) {
       dispatch(actionsSlice.actions.setActionDefinitions({ definitions: config.actions, cardInstanceId }));
   }
-  dispatch(initializeRuleDefinitionsThunk({ logics: config.conditional_logic?.definedLogics || [], cardInstanceId }));
+  
+  // FIXED: Await rule initialization to prevent race conditions
+  await dispatch(initializeRuleDefinitionsThunk({ logics: config.conditional_logic?.definedLogics || [], cardInstanceId }));
+  logger.debug('initializeCardThunk', `[${cardInstanceId}] Rule definitions initialized.`);
 
   // --- STAGE 2: Asynchronous API and Data Initialization ---
   logger.debug('initializeCardThunk', `[${cardInstanceId}] STAGE 2: Initializing async API and data sources.`);
+
+  // 🔍 DIAGNOSTIC LOG: Check the data_sources object the thunk is working with.
+  console.log('%c[LIFECYCLE-DIAGNOSTIC] Thunk received data_sources:', 'color: #9C27B0; font-weight: bold;', config?.data_sources);
+
   if (config.direct_api?.enabled) {
       if (config.direct_api.method !== 'hass' && (config.direct_api.url || config.direct_api.websocket_url)) {
-          dispatch(initializeWebSocketPlugin({ directApiConfig: config.direct_api, cardDebugWebSocket: config.debug_websocket, cardInstanceId }));
+          // FIXED: Await WebSocket initialization to ensure connection before proceeding
+          await dispatch(initializeWebSocketPlugin({ directApiConfig: config.direct_api, cardDebugWebSocket: config.debug_websocket, cardInstanceId }));
+          logger.debug('initializeCardThunk', `[${cardInstanceId}] WebSocket initialized.`);
       }
   }
 
   // --- STAGE 3: HASS Data Processing ---
   logger.debug('initializeCardThunk', `[${cardInstanceId}] STAGE 3: Processing HASS data.`);
   const hassSensorEntities = config?.data_sources?.inventree_hass_sensors?.filter((id: any): id is string => typeof id === 'string' && id.length > 0) || [];
-  dispatch(processHassEntities({ entityIds: hassSensorEntities, hass, cardInstanceId }));
+  
+  // FIXED: Await HA parts processing to ensure parts are loaded before mounting React
+  if (hassSensorEntities.length > 0) {
+    await dispatch(processHassEntities({ entityIds: hassSensorEntities, hass, cardInstanceId }));
+    logger.debug('initializeCardThunk', `[${cardInstanceId}] HA sensor entities processed.`);
+  }
   
   const genericHaEntities = config?.data_sources?.ha_entities?.filter((id: any): id is string => typeof id === 'string' && id !== '') || [];
   if (genericHaEntities.length > 0) {
-    dispatch(initializeGenericHaStatesFromConfig({ hass, cardInstanceId }));
+    // FIXED: Await generic HA states initialization
+    await dispatch(initializeGenericHaStatesFromConfig({ hass, cardInstanceId }));
+    logger.debug('initializeCardThunk', `[${cardInstanceId}] Generic HA entities initialized.`);
   }
 
   // --- STAGE 4: Parameter Fetching ---
-  logger.debug('initializeCardThunk', `[${cardInstanceId}] STAGE 4: Fetching configured parameters.`);
+  console.log(`%c[LIFECYCLE-THUNK] STAGE 4: Fetching configured parameters for ${cardInstanceId}`, 'color: #1abc9c');
   const parametersToFetch = config?.data_sources?.inventree_parameters_to_fetch || [];
   if (parametersToFetch.length > 0) {
-    dispatch(fetchConfiguredParameters({ configs: parametersToFetch, cardInstanceId }));
+    // With RTK Query, we no longer need a dedicated thunk. We can just initiate the fetches.
+    // The `evaluateExpression` logic will also auto-fetch any parameters needed by rules.
+    parametersToFetch.forEach((fetchConfig: InventreeParameterFetchConfig) => {
+      if (fetchConfig.targetPartIds === 'all_loaded') {
+        const state = getState();
+        const instancePartsState = state.parts.partsByInstance[cardInstanceId];
+        // Use Entity Adapter's 'ids' array for O(1) access instead of Object.keys
+        const allPartPks = instancePartsState ? instancePartsState.ids : [];
+        allPartPks.forEach((pk: number) => {
+          console.log(`%c[LIFECYCLE-THUNK] --> Dispatching getPartParameters for PK (all_loaded): ${pk}`, 'color: #1abc9c');
+          dispatch(inventreeApi.endpoints.getPartParameters.initiate({ partId: pk, cardInstanceId }));
+        });
+      } else {
+        // Fetch for the specific part IDs listed in the config
+        fetchConfig.targetPartIds.forEach((pk: number) => {
+          console.log(`%c[LIFECYCLE-THUNK] --> Dispatching getPartParameters for PK: ${pk}`, 'color: #1abc9c');
+          dispatch(inventreeApi.endpoints.getPartParameters.initiate({ partId: pk, cardInstanceId }));
+        });
+      }
+    });
   }
   logger.info('initializeCardThunk', `Card instance ${cardInstanceId} initialization sequence dispatched.`);
 });
 
 /**
  * Thunk to "soft" destroy a card instance view.
- * This clears out transient data (like API requests in flight) but preserves
- * persisted state like config and layout. This is used when switching between
- * the main card and the editor view.
+ * This preserves persisted state like config and layout, but clears transient view state.
+ * Used when switching between the main card and the editor view.
+ * 
+ * NOTE: We intentionally do NOT reset RTK Query cache here to allow:
+ * 1. Faster editor loading (can reuse cached data)
+ * 2. Multiple cards to share cache without interference
+ * 3. Pending requests to complete naturally (no forced cancellation)
  */
 export const softDestroyCardThunk = createAsyncThunk<
   void,
@@ -90,9 +131,13 @@ export const softDestroyCardThunk = createAsyncThunk<
 >('lifecycle/softDestroy', async ({ cardInstanceId }, { dispatch }) => {
   const logger = ConditionalLoggerEngine.getInstance().getLogger('LifecycleThunks', cardInstanceId);
   logger.info('softDestroyCardThunk', `Soft destroying card instance view: ${cardInstanceId}`);
-  // Only reset the API state to cancel pending requests.
-  // Do NOT remove config or other persisted state.
-  dispatch(inventreeApi.util.resetApiState());
+  
+  // REMOVED: inventreeApi.util.resetApiState() 
+  // Reason: This was wiping cache for ALL cards, not just this instance
+  // Pending API requests will complete naturally and update the shared cache
+  // If you need to force cancel specific requests, unsubscribe from individual queries
+  
+  logger.debug('softDestroyCardThunk', `Soft destroy completed without cache reset.`);
 });
 
 /**

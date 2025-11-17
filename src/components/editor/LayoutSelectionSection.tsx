@@ -64,6 +64,13 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
   const [newCellPartPk, setNewCellPartPk] = useState<string>('');
   const [newCellContent, setNewCellContent] = useState<CellContentType>('name');
   
+  // 🎨 NEW: Preview zoom control (local state, not saved)
+  const [previewZoom, setPreviewZoom] = useState<number>(100);
+  const [showGridLines, setShowGridLines] = useState<boolean>(true);
+  
+  // Grid columns is now saved in the actual config!
+  const gridColumns = actualLayoutConfig.gridColumns || 24; // Default to 24 columns
+  
   // 🚨 DEBUGGING: Wrap onLayoutConfigChanged to catch what's happening
   const wrappedOnLayoutConfigChanged = useCallback((newConfig: LayoutConfig) => {
     console.log('🚨 CONFIG UPDATE: onLayoutConfigChanged called with:', {
@@ -79,7 +86,7 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
       [key]: value,
     });
   }, [actualLayoutConfig, wrappedOnLayoutConfigChanged]);
-
+  
   // 🚀 Handler to add a new cell
   const handleAddCell = () => {
     if (!newCellPartPk) {
@@ -122,9 +129,9 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
       if (layoutItem) {
         const updatedCell = { 
           ...cell, 
-          x: layoutItem.x, 
-          y: layoutItem.y, 
-          w: layoutItem.w, 
+          x: layoutItem.x,
+          y: layoutItem.y,
+          w: layoutItem.w,
           h: layoutItem.h 
         };
         
@@ -145,7 +152,7 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
     if (!isEqual(updatedCells, actualLayoutConfig.cells)) {
       console.log('🔍 LAYOUT CONFIG CHANGE: Cells updated, calling onLayoutConfigChanged');
       wrappedOnLayoutConfigChanged({
-        ...actualLayoutConfig,
+      ...actualLayoutConfig,
         cells: updatedCells,
       });
     } else {
@@ -227,6 +234,20 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
           />
         </label>
         <label style={{ marginRight: '10px' }}>
+          <strong>Grid Columns:</strong>
+          <select 
+            value={gridColumns} 
+            onChange={(e) => handleNonCellLayoutChange('gridColumns', parseInt(e.target.value))}
+            style={{ marginLeft: '5px', fontWeight: 'bold' }}
+          >
+            <option value="4">4 cols (Mobile - 320px)</option>
+            <option value="8">8 cols (Small - 480px)</option>
+            <option value="12">12 cols (Tablet - 768px)</option>
+            <option value="20">20 cols (Desktop - 996px)</option>
+            <option value="24">24 cols (Large - 1200px+)</option>
+          </select>
+        </label>
+        <label style={{ marginRight: '10px' }}>
           Allow Overlap:
           <input
             type="checkbox"
@@ -292,6 +313,14 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
                       {editingCellId === cell.id ? 'Close' : 'Configure'}
                     </button>
                   )}
+                  {cell.content === 'in_stock' && (
+                    <button 
+                      onClick={() => setEditingCellId(editingCellId === cell.id ? null : cell.id)}
+                      style={{ marginRight: '8px' }}
+                    >
+                      {editingCellId === cell.id ? 'Close' : '⚖️ Portions'}
+                    </button>
+                  )}
                   <button 
                     onClick={() => handleRemoveCell(cell.id)}
                     style={{ backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
@@ -341,10 +370,229 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
             </div>
           );
         })()}
+        
+        {/* ⚖️ Stock Portions Configuration UI (conditionally rendered) */}
+        {editingCell && editingCell.content === 'in_stock' && (() => {
+          const part = parts.find(p => p.pk === editingCell.partPk);
+          const header = part ? `${part.name} - ${editingCell.content}` : `Part ${editingCell.partPk} - ${editingCell.content}`;
+          const currentDecrement = editingCell.decrementAmount || 1;
+          const currentIncrement = editingCell.incrementAmount || 1;
+          const currentUnit = editingCell.stockUnit || '';
+          const currentSliderMin = editingCell.sliderMin ?? 0;
+          const currentSliderMax = editingCell.sliderMax ?? 1000;
+          const currentSliderStep = editingCell.sliderStep ?? 1;
+          
+          return (
+            <div style={{ marginTop: '10px', padding: '15px', border: '2px solid #4CAF50', borderRadius: '8px', background: '#f9fff9' }}>
+              <h6 style={{ margin: '0 0 10px 0', color: '#2E7D32' }}>⚖️ Configure Stock Settings for "{header}"</h6>
+              
+              {/* Unit Selection */}
+              <div style={{ marginBottom: '15px', padding: '10px', background: '#e8f5e9', borderRadius: '4px' }}>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+                  📏 Stock Unit
+                </label>
+                <select
+                  value={currentUnit}
+                  onChange={(e) => {
+                    const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                      c.id === editingCell.id ? { ...c, stockUnit: e.target.value } : c
+                    );
+                    wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                  }}
+                  style={{ width: '100%', padding: '8px', fontSize: '14px' }}
+                >
+                  <option value="">None</option>
+                  <option value="g">g (grams)</option>
+                  <option value="ml">ml (milliliters)</option>
+                  <option value="p">p (pieces)</option>
+                  <option value="kg">kg (kilograms)</option>
+                  <option value="L">L (liters)</option>
+                </select>
+                <small style={{ color: '#666' }}>Unit displayed next to stock value (e.g., "500g")</small>
+              </div>
+              
+              {/* Button Portions */}
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '15px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', color: '#d32f2f' }}>
+                    − Button (Decrease)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Amount to subtract (e.g., 15)"
+                    value={currentDecrement}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 1;
+                      const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                        c.id === editingCell.id ? { ...c, decrementAmount: Math.abs(value) } : c
+                      );
+                      wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                    }}
+                    style={{ width: '100%', padding: '8px', fontSize: '14px' }}
+                  />
+                  <small style={{ color: '#666' }}>Each click will subtract {currentDecrement}{currentUnit}</small>
+                </div>
+                
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', color: '#4CAF50' }}>
+                    + Button (Increase)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Amount to add (e.g., 500)"
+                    value={currentIncrement}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 1;
+                      const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                        c.id === editingCell.id ? { ...c, incrementAmount: Math.abs(value) } : c
+                      );
+                      wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                    }}
+                    style={{ width: '100%', padding: '8px', fontSize: '14px' }}
+                  />
+                  <small style={{ color: '#666' }}>Each click will add {currentIncrement}{currentUnit}</small>
+                </div>
+              </div>
+              
+              {/* Slider Settings */}
+              <div style={{ marginTop: '15px', padding: '10px', background: '#e3f2fd', borderRadius: '4px', border: '1px solid #2196F3' }}>
+                <h6 style={{ margin: '0 0 10px 0', color: '#1976D2' }}>🎚️ Slider Mode Settings</h6>
+                <p style={{ fontSize: '11px', color: '#666', margin: '0 0 10px 0' }}>
+                  Configure the slider for precise stock adjustments (opens when clicking "📊 Edit")
+                </p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '3px' }}>
+                      Min
+                    </label>
+                    <input
+                      type="number"
+                      value={currentSliderMin}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 0;
+                        const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                          c.id === editingCell.id ? { ...c, sliderMin: value } : c
+                        );
+                        wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                      }}
+                      style={{ width: '100%', padding: '6px', fontSize: '13px' }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '3px' }}>
+                      Max
+                    </label>
+                    <input
+                      type="number"
+                      value={currentSliderMax}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 1000;
+                        const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                          c.id === editingCell.id ? { ...c, sliderMax: value } : c
+                        );
+                        wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                      }}
+                      style={{ width: '100%', padding: '6px', fontSize: '13px' }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '3px' }}>
+                      Step
+                    </label>
+                    <input
+                      type="number"
+                      value={currentSliderStep}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 1;
+                        const newCells = (actualLayoutConfig.cells || []).map((c: CellDefinition) => 
+                          c.id === editingCell.id ? { ...c, sliderStep: value } : c
+                        );
+                        wrappedOnLayoutConfigChanged({ ...actualLayoutConfig, cells: newCells });
+                      }}
+                      style={{ width: '100%', padding: '6px', fontSize: '13px' }}
+                    />
+                  </div>
+                </div>
+                <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                  Slider range: {currentSliderMin} to {currentSliderMax}, steps of {currentSliderStep}
+                </small>
+              </div>
+              
+              {/* Example Box */}
+              <div style={{ marginTop: '10px', padding: '10px', background: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
+                <strong>💡 Examples:</strong>
+                <ul style={{ margin: '5px 0', paddingLeft: '20px', fontSize: '12px' }}>
+                  <li><strong>Coffee (500g bag):</strong> Unit=g, Decrement=15, Increment=500, Slider: 0-1000 step 50</li>
+                  <li><strong>Bananas (pieces):</strong> Unit=p, Decrement=1, Increment=6, Slider: 0-10 step 1</li>
+                  <li><strong>Milk (1L carton):</strong> Unit=ml, Decrement=250, Increment=1000, Slider: 0-2000 step 250</li>
+                </ul>
+              </div>
+            </div>
+          );
+        })()}
       </div>
       
       <div className="layout-preview" style={{ marginTop: '20px', borderTop: '1px dashed #ccc', paddingTop: '10px' }}>
         <h5>Live Layout Preview</h5>
+        
+        {/* 🎨 Preview Controls */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '15px', 
+          marginBottom: '10px', 
+          padding: '10px', 
+          background: '#f5f5f5', 
+          borderRadius: '8px',
+          flexWrap: 'wrap',
+          alignItems: 'center'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <label style={{ fontWeight: 'bold', fontSize: '12px' }}>Preview Zoom:</label>
+            <input
+              type="range"
+              min="25"
+              max="150"
+              step="5"
+              value={previewZoom}
+              onChange={(e) => setPreviewZoom(parseInt(e.target.value))}
+              style={{ width: '100px' }}
+            />
+            <span style={{ fontSize: '12px', minWidth: '45px' }}>{previewZoom}%</span>
+            <button 
+              onClick={() => setPreviewZoom(100)} 
+              style={{ fontSize: '11px', padding: '2px 8px' }}
+            >
+              Reset
+            </button>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <label style={{ fontWeight: 'bold', fontSize: '12px' }}>
+              <input
+                type="checkbox"
+                checked={showGridLines}
+                onChange={(e) => setShowGridLines(e.target.checked)}
+                style={{ marginRight: '4px' }}
+              />
+              Show Grid Lines
+            </label>
+          </div>
+          
+          <div style={{ 
+            marginLeft: 'auto', 
+            fontSize: '11px', 
+            color: '#666',
+            padding: '4px 8px',
+            background: 'white',
+            borderRadius: '4px'
+          }}>
+            💡 Previewing with {gridColumns} columns. Change "Grid Columns" setting above to adjust.
+          </div>
+        </div>
+        
         <div style={{ 
           border: `1px solid ${theme.borderColor}`, 
           background: theme.backgroundGradient, 
@@ -352,10 +600,46 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
           position: 'relative',
           borderRadius: '16px',
           padding: '16px',
-          backdropFilter: 'blur(5px)'
+          backdropFilter: 'blur(5px)',
+          overflow: 'auto' // Allow scrolling if zoomed in
         }}>
+          {/* 🎨 Grid lines overlay */}
+          {showGridLines && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pointerEvents: 'none',
+              zIndex: 0,
+              display: 'grid',
+              gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+              gap: '0',
+              padding: '16px',
+              opacity: 0.3
+            }}>
+              {Array.from({ length: gridColumns }).map((_, i) => (
+                <div 
+                  key={i} 
+                  style={{ 
+                    borderRight: i < gridColumns - 1 ? '1px dashed #999' : 'none',
+                    height: '100%'
+                  }} 
+                />
+              ))}
+            </div>
+          )}
+          
+          <div style={{
+            transform: `scale(${previewZoom / 100})`,
+            transformOrigin: 'top left',
+            width: `${10000 / previewZoom}%`, // Compensate for scale
+            position: 'relative',
+            zIndex: 1
+          }}>
            {(() => {
-             const gridKey = `grid-${JSON.stringify({ cells: actualLayoutConfig.cells || [], rowHeight: actualLayoutConfig.rowHeight, allowOverlap: actualLayoutConfig.allowOverlap })}`;
+             const gridKey = `grid-${JSON.stringify({ cells: actualLayoutConfig.cells || [], rowHeight: actualLayoutConfig.rowHeight, allowOverlap: actualLayoutConfig.allowOverlap, gridColumns })}`;
              console.log('🔄 GRID KEY: Using key:', gridKey);
              return (
            <ResponsiveReactGridLayout
@@ -363,14 +647,15 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
               className="layout"
               layouts={generatedLayouts}
               breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-              cols={{ lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 }}
+              cols={{ lg: gridColumns, md: gridColumns, sm: gridColumns, xs: gridColumns, xxs: gridColumns }}
               rowHeight={actualLayoutConfig.rowHeight || 50}
               isDraggable={true}
               isResizable={true}
               draggableHandle=".drag-handle"
-              draggableCancel=".no-drag" // 🚀 Add this prop
+              draggableCancel=".no-drag"
               resizeHandle={CustomResizeHandle}
               compactType={null}
+              preventCollision={false}
               allowOverlap={!!actualLayoutConfig.allowOverlap}
               onLayoutChange={onLayoutChange}
             >
@@ -418,6 +703,7 @@ const LayoutSelectionSection: React.FC<LayoutSelectionSectionProps> = ({ layoutC
             </ResponsiveReactGridLayout>
            );
            })()}
+          </div>
         </div>
       </div>
     </div>

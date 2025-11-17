@@ -114,7 +114,7 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
     setTimeout(() => {
       // Check if this part is still the one being located before clearing
       const currentState = store.getState();
-      if (selectLocatingPartId(currentState, cardInstanceId) === partId) {
+      if (selectLocatingPartId(currentState as RootState, cardInstanceId) === partId) {
         dispatch(setLocatingPartId({ partId: null, cardInstanceId }));
       }
     }, 5000); // Turn off after 5 seconds
@@ -127,9 +127,8 @@ const GridItem: React.FC<GridItemProps> = React.memo(({
     try {
       await updatePartParameter({
         partId: partId,
-        parameterPk: parameterPk,
-        value: 'NewValue',
-        cardInstanceId: cardInstanceId,
+        parameterId: parameterPk,
+        data: { value: 'NewValue' }, // Assuming a placeholder value, this should be made dynamic
       }).unwrap();
       logger.info('handleParameterActionClick', `Successfully updated parameter ${parameterPk}`);
     } catch (err) {

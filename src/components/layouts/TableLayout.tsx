@@ -57,8 +57,8 @@ const RenderCell: React.FC<{
   const cellVisualEffects = useAppSelector((state: RootState) => selectVisualEffectsForCell(state, cardInstanceId, cell.id));
 
   // 🔍 DEBUG: Log the effects to see what's happening
-  console.log(`🔍 RenderCell DEBUG [${cell.id}]:`, {
-    cardInstanceId,
+  const logger = useMemo(() => ConditionalLoggerEngine.getInstance().getLogger('TableLayout', cardInstanceId), [cardInstanceId]);
+  logger.verbose('RenderCell', `[${cell.id}]`, {
     cellId: cell.id,
     partPk: cell.partPk,
     cellDimensions: { x: cell.x, y: cell.y, w: cell.w, h: cell.h },
@@ -137,6 +137,23 @@ const TableLayout: React.FC<TableLayoutProps> = ({ hass, parts, config, cardInst
     
     return { lg: layouts };
   }, [visibleCells, logger]);
+
+  // FIXED: Create stable layout key that only changes when STRUCTURE changes, not when cell properties change
+  // This prevents nuclear remount of react-grid-layout on every visual effect update
+  const layoutStructureKey = useMemo(() => {
+    const cellsArray = config.layout?.cells || [];
+    const rowHeight = config.layout?.rowHeight || 50;
+    
+    // Only include IDs + count for structural changes, not full cell objects
+    const cellIds = cellsArray.map((c: CellDefinition) => c.id).sort().join(',');
+    const cellCount = cellsArray.length;
+    
+    return `table-layout-${cellCount}-${cellIds.substring(0, 50)}-rh${rowHeight}`;
+  }, [
+    config.layout?.cells?.length, // Count changes
+    (config.layout?.cells || []).map((c: CellDefinition) => c.id).join(','), // IDs change (add/remove cells)
+    config.layout?.rowHeight
+  ]);
   
   // ========================================================================================
   // === 5. RENDER GUARDS (Early returns) =================================================
@@ -179,17 +196,23 @@ const TableLayout: React.FC<TableLayoutProps> = ({ hass, parts, config, cardInst
         backdropFilter: 'blur(5px)'
       }}>
         <ResponsiveReactGridLayout
-          key={`table-layout-${JSON.stringify({ cells: config.layout?.cells || [], rowHeight: config.layout?.rowHeight })}`}
+          key={layoutStructureKey}
           className="layout"
           layouts={displayLayouts} // Use the simplified layouts
           breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-          cols={{ lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 }}
+          cols={{ 
+            lg: config.layout?.gridColumns || 24, 
+            md: config.layout?.gridColumns || 20, 
+            sm: config.layout?.gridColumns || 12, 
+            xs: config.layout?.gridColumns || 8, 
+            xxs: config.layout?.gridColumns || 4 
+          }}
           rowHeight={config.layout?.rowHeight || 50}
           isDraggable={false}
           isResizable={false}
-          draggableCancel=".no-drag" // 🚀 Add this prop
+          draggableCancel=".no-drag"
           compactType={null}
-          allowOverlap={false}
+          allowOverlap={config.layout?.allowOverlap || false}
           onLayoutChange={() => {}} // No-op, layout changes are not handled in view mode
         >
           {visibleCells.map((cell: CellDefinition) => (

@@ -1,6 +1,6 @@
 import { AnyAction, Dispatch, Middleware, MiddlewareAPI } from 'redux';
 import { RootState } from '../store';
-import { trackUsage } from '../utils/metrics-tracker';
+// REMOVED: trackUsage import - unused metrics system removed
 import { ConditionalLoggerEngine } from '../core/logging/ConditionalLoggerEngine';
 
 /**

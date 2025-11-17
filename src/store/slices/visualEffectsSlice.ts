@@ -12,8 +12,8 @@ ConditionalLoggerEngine.getInstance().registerCategory('visualEffectsSlice', { e
 export interface VisualEffectsState {
   effectsByCardInstance: Record<string, Record<number, VisualEffect>>;
   elementVisibilityByCard: Record<string, Partial<Record<DisplayConfigKey, boolean>>>;
-  layoutOverridesByCardInstance: Record<string, Record<string, { w?: number; h?: number; x?: number; y?: number }>>;
-  layoutEffectsByCell: Record<string, Record<string, Partial<React.CSSProperties>>>;
+  // REMOVED: layoutOverridesByCardInstance - dead state, never written to, only cleared
+  // REMOVED: layoutEffectsByCell - dead state, written to but selector never used
   effectsByCellId: Record<string, Record<string, VisualEffect>>;
   // Consider adding a global effects record if some effects should apply to all cards
   // globalEffects: Record<number, VisualEffect>; 
@@ -22,8 +22,8 @@ export interface VisualEffectsState {
 const initialState: VisualEffectsState = {
   effectsByCardInstance: {},
   elementVisibilityByCard: {},
-  layoutOverridesByCardInstance: {},
-  layoutEffectsByCell: {},
+  // REMOVED: layoutOverridesByCardInstance
+  // REMOVED: layoutEffectsByCell
   effectsByCellId: {},
   // globalEffects: {}
 };
@@ -66,7 +66,7 @@ const visualEffectsSlice = createSlice({
       const { cardInstanceId } = action.payload;
       delete state.effectsByCardInstance[cardInstanceId];
       delete state.elementVisibilityByCard[cardInstanceId];
-      delete state.layoutOverridesByCardInstance[cardInstanceId]; // Also clear layout overrides
+      // REMOVED: delete layoutOverridesByCardInstance[cardInstanceId] - dead state removed
       logger.debug('clearAllVisualEffectsForCard', `Cleared all visual effects and element visibility for card ${cardInstanceId}.`);
     },
 
@@ -74,7 +74,7 @@ const visualEffectsSlice = createSlice({
     clearEffectsForAllCardInstances(state) {
       state.effectsByCardInstance = {};
       state.elementVisibilityByCard = {};
-      state.layoutOverridesByCardInstance = {}; // Also clear layout overrides
+      // REMOVED: layoutOverridesByCardInstance = {} - dead state removed
       logger.debug('clearEffectsForAllCardInstances', 'Cleared all visual effects and element visibilities for ALL card instances.');
     },
 
@@ -103,7 +103,17 @@ const visualEffectsSlice = createSlice({
     },
 
     clearConditionalPartEffectsForCard(state, action: PayloadAction<{ cardInstanceId: string }>) {
-      delete state.effectsByCardInstance[action.payload.cardInstanceId];
+      // Deleting can sometimes not trigger re-renders correctly. Setting to an empty object is more robust.
+      if (state.effectsByCardInstance[action.payload.cardInstanceId]) {
+        state.effectsByCardInstance[action.payload.cardInstanceId] = {};
+      }
+    },
+
+    clearConditionalCellEffectsForCard(state, action: PayloadAction<{ cardInstanceId: string }>) {
+      // Deleting can sometimes not trigger re-renders correctly. Setting to an empty object is more robust.
+      if (state.effectsByCellId[action.payload.cardInstanceId]) {
+        state.effectsByCellId[action.payload.cardInstanceId] = {};
+      }
     },
 
     // NEW REDUCERS for element visibility
@@ -132,19 +142,8 @@ const visualEffectsSlice = createSlice({
       state.elementVisibilityByCard = {};
     },
 
-    setConditionalLayoutEffect(state, action: PayloadAction<{ cardInstanceId: string; cellId: string; layout: Partial<React.CSSProperties> }>) {
-      const { cardInstanceId, cellId, layout } = action.payload;
-      if (!state.layoutEffectsByCell[cardInstanceId]) {
-        state.layoutEffectsByCell[cardInstanceId] = {};
-      }
-      if (!state.layoutEffectsByCell[cardInstanceId][cellId]) {
-        state.layoutEffectsByCell[cardInstanceId][cellId] = {};
-      }
-      state.layoutEffectsByCell[cardInstanceId][cellId] = {
-        ...state.layoutEffectsByCell[cardInstanceId][cellId],
-        ...layout
-      };
-    },
+    // REMOVED: setConditionalLayoutEffect - dead action, dispatched but selector never used
+    // Layout effects should use setConditionalCellEffect instead
 
     setConditionalCellEffect(state, action: PayloadAction<{ cardInstanceId: string; cellId: string; effect: Partial<VisualEffect> }>) {
       const { cardInstanceId, cellId, effect } = action.payload;
@@ -170,12 +169,13 @@ export const {
   clearConditionalPartEffectsForPart,
   clearAllConditionalPartEffects,
   clearConditionalPartEffectsForCard,
+  clearConditionalCellEffectsForCard,
   // Export new actions
   setElementVisibility,
   setElementVisibilitiesBatch,
   clearElementVisibilitiesForCard,
   clearAllElementVisibilities,
-  setConditionalLayoutEffect,
+  // REMOVED: setConditionalLayoutEffect - dead action
   setConditionalCellEffect,
 } = visualEffectsSlice.actions;
 
@@ -227,9 +227,8 @@ export const selectAllEffectsByCardInstance = (state: RootState): Record<string,
     return state.visualEffects.effectsByCardInstance;
 };
 
-export const selectLayoutOverridesForCard = (state: RootState, cardInstanceId: string): Record<string, any> | undefined => {
-  return state.visualEffects.layoutOverridesByCardInstance[cardInstanceId];
-};
+// REMOVED: selectLayoutOverridesForCard - dead selector for dead state
+// No components ever used this selector, and the state was never populated
 
 export const selectVisualEffectsForCard = (state: RootState, cardInstanceId: string): Record<number, VisualEffect> | undefined => {
   return state.visualEffects.effectsByCardInstance[cardInstanceId];
@@ -251,9 +250,8 @@ export const selectAllElementVisibilitiesForCard = (
   return state.visualEffects.elementVisibilityByCard[cardInstanceId];
 };
 
-export const selectLayoutEffectsForCell = (state: RootState, cardInstanceId: string, cellId: string): Partial<React.CSSProperties> | undefined => {
-    return state.visualEffects.layoutEffectsByCell[cardInstanceId]?.[cellId];
-};
+// REMOVED: selectLayoutEffectsForCell - dead selector, never called by any component
+// Components should use selectVisualEffectsForCell for all cell effects including layout
 
 export const selectVisualEffectsForCell = (state: RootState, cardInstanceId: string, cellId: string): VisualEffect | undefined => {
   return state.visualEffects.effectsByCellId[cardInstanceId]?.[cellId];

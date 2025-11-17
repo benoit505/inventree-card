@@ -1,12 +1,14 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { motion, Variants } from 'framer-motion';
 import { get } from 'lodash';
 import { useAppSelector, RootState } from '../../store';
 import { selectVisualEffectForPart, selectVisualEffectsForCell } from '../../store/slices/visualEffectsSlice';
-import { selectCombinedParts } from '../../store/slices/partsSlice';
+import { selectAllPartsForInstance } from '../../store/slices/partsSlice';
 import { ActionDefinition, CellDefinition, InventreeItem, ButtonCellItem } from '../../types';
 import { ActionEngine } from '../../services/ActionEngine';
 import { useTheme } from '../../hooks/useTheme';
+import { adjustStockDebounced } from '../../store/thunks/stockThunks';
+import { useAppDispatch } from '../../store';
 
 // --- CellRenderer Component ---
 interface CellRendererProps {
@@ -25,8 +27,13 @@ const itemVariants: Variants = {
 export const CellRenderer: React.FC<CellRendererProps> = ({ cell, isSelected, cardInstanceId }) => {
   // 🚀 Destructure properties from the cell object
   const { partPk, content } = cell;
+  
+  // 🎚️ Slider mode state (for precise stock adjustments)
+  const [isSliderMode, setIsSliderMode] = useState(false);
+  const [sliderValue, setSliderValue] = useState(0);
 
-  const part = useAppSelector((state: RootState) => selectCombinedParts(state, cardInstanceId).find((p) => p.pk === partPk));
+  const dispatch = useAppDispatch();
+  const part = useAppSelector((state: RootState) => selectAllPartsForInstance(state, cardInstanceId).find((p: InventreeItem) => p.pk === partPk));
   const partVisualEffects = useAppSelector((state: RootState) => selectVisualEffectForPart(state, cardInstanceId, partPk)) || {};
   const cellVisualEffects = useAppSelector((state: RootState) => selectVisualEffectsForCell(state, cardInstanceId, cell.id)) || {};
   
@@ -50,9 +57,12 @@ export const CellRenderer: React.FC<CellRendererProps> = ({ cell, isSelected, ca
   const animation = visualEffects.animation || {};
   const animationState = animation.animate ? "shaking" : "idle";
 
+  // FIXED: Apply cellStyles from set_style effects!
+  // cellStyles contains dynamic styles like { backgroundColor: 'red', color: 'blue', etc. }
+  const dynamicCellStyles = visualEffects.cellStyles?.[cell.id] || {};
+
   const cellStyle: React.CSSProperties = {
-    // 🚀 FIX: visualEffects is already the merged cell-specific effects
-    // No need for double-nested lookup with cellStyles[cell.id]
+    // Base styles with theme defaults
     backgroundColor: visualEffects.highlight || theme.cardBackground,
     color: visualEffects.textColor || theme.primaryText,
     border: isSelected 
@@ -73,12 +83,244 @@ export const CellRenderer: React.FC<CellRendererProps> = ({ cell, isSelected, ca
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    // FIXED: Apply dynamic styles from set_style effects (these override defaults!)
+    ...dynamicCellStyles,
   };
+
+  // 🚌 Stock adjustment handler with debounced batching and eventual consistency
+  const handleStockAdjustment = useCallback((delta: number) => {
+    if (!part) return;
+    
+    // Dispatch the debounced thunk - it handles:
+    // 1. Immediate optimistic UI update
+    // 2. Batching multiple clicks into one API call
+    // 3. Eventual consistency verification via WebSocket
+    dispatch(adjustStockDebounced({
+      partId: part.pk,
+      delta,
+      cardInstanceId
+    }));
+  }, [part, dispatch, cardInstanceId]);
 
   const renderContent = () => {
     switch (cell.content) {
       case 'thumbnail':
         return <img src={part.thumbnail || ''} alt={part.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
+      case 'in_stock':
+        // STOCK CELL WITH +/- BUTTONS AND SLIDER MODE!
+        const stockValue = part.in_stock || 0;
+        
+        // 🎯 Custom portion amounts (for consumables like coffee!)
+        const decrementAmount = Math.abs(cell.decrementAmount || 1);
+        const incrementAmount = Math.abs(cell.incrementAmount || 1);
+        const stockUnit = cell.stockUnit || '';
+        
+        // 🎚️ Slider settings
+        const sliderMin = cell.sliderMin ?? 0;
+        const sliderMax = cell.sliderMax ?? 1000;
+        const sliderStep = cell.sliderStep ?? 1;
+        
+        // 🎚️ SLIDER MODE: Render slider UI for precise adjustments
+        if (isSliderMode) {
+          return (
+            <div style={{ 
+              position: 'relative', 
+              width: '100%', 
+              height: '100%', 
+              display: 'flex', 
+              flexDirection: 'column',
+              alignItems: 'center', 
+              justifyContent: 'center',
+              padding: '8px',
+              gap: '8px'
+            }}>
+              {/* Current Value Display */}
+              <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#2196F3' }}>
+                {sliderValue}{stockUnit}
+              </div>
+              
+              {/* Slider */}
+              <input
+                type="range"
+                min={sliderMin}
+                max={sliderMax}
+                step={sliderStep}
+                value={sliderValue}
+                onChange={(e) => setSliderValue(parseInt(e.target.value))}
+                className="no-drag"
+                style={{
+                  width: '80%',
+                  cursor: 'pointer',
+                  accentColor: '#2196F3'
+                }}
+              />
+              
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {/* Confirm Button */}
+                <button
+                  className="no-drag"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Calculate delta from current stock to slider value
+                    const delta = sliderValue - stockValue;
+                    if (delta !== 0) {
+                      handleStockAdjustment(delta);
+                    }
+                    setIsSliderMode(false);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#4CAF50',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    fontWeight: 'bold',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  }}
+                  title="Confirm stock amount"
+                >
+                  ✓
+                </button>
+                
+                {/* Cancel Button */}
+                <button
+                  className="no-drag"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSliderMode(false);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#9E9E9E',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    fontWeight: 'bold',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  }}
+                  title="Cancel"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          );
+        }
+        
+        // 🔢 NORMAL MODE: Render +/- buttons
+        return (
+          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* MINUS BUTTON (Left) */}
+            <button
+              className="no-drag"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStockAdjustment(-decrementAmount);
+              }}
+              style={{
+                position: 'absolute',
+                left: '4px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                border: 'none',
+                backgroundColor: 'rgba(244, 67, 54, 0.9)',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '20px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s',
+                zIndex: 10,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(-50%) scale(1)'}
+              title={`Decrease stock by ${decrementAmount}${stockUnit}`}
+            >
+              −
+            </button>
+            
+            {/* STOCK VALUE (Center) - Now with unit and edit button */}
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center',
+              gap: '2px'
+            }}>
+              <div style={{ fontSize: '1.2em', fontWeight: 'bold', userSelect: 'none' }}>
+                {stockValue}{stockUnit}
+              </div>
+              
+              {/* Edit Button for Slider Mode */}
+              <button
+                className="no-drag"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSliderValue(stockValue); // Initialize slider with current value
+                  setIsSliderMode(true);
+                }}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: 'rgba(33, 150, 243, 0.8)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                }}
+                title="Open slider to set exact amount"
+              >
+                📊 Edit
+              </button>
+            </div>
+            
+            {/* PLUS BUTTON (Right) */}
+            <button
+              className="no-drag"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStockAdjustment(+incrementAmount);
+              }}
+              style={{
+                position: 'absolute',
+                right: '4px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                border: 'none',
+                backgroundColor: 'rgba(76, 175, 80, 0.9)',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '20px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s',
+                zIndex: 10,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(-50%) scale(1)'}
+              title={`Increase stock by ${incrementAmount}${stockUnit}`}
+            >
+              +
+            </button>
+          </div>
+        );
       case 'buttons':
         if (!cell.buttons || cell.buttons.length === 0) {
           return <div>No buttons configured.</div>;

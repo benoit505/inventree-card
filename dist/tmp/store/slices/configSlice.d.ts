@@ -1,4 +1,4 @@
-import { InventreeCardConfig, DisplayConfig, ConditionalLogicItem, ActionDefinition, LayoutConfig } from '../../types';
+import { InventreeCardConfig, DirectApiConfig, DisplayConfig, ConditionalLogicItem, ActionDefinition, LayoutConfig } from '../../types';
 export interface InstanceConfigState {
     config: InventreeCardConfig;
     cardInstanceId: string;
@@ -10,6 +10,9 @@ export interface ConfigState {
         config: InventreeCardConfig;
         configInitialized: boolean;
     }>;
+    globalConfig?: {
+        direct_api?: DirectApiConfig;
+    };
 }
 export declare const setConfigAction: import("@reduxjs/toolkit").ActionCreatorWithPayload<{
     cardInstanceId: string;

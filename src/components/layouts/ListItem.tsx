@@ -66,7 +66,7 @@ const ListItem: React.FC<ListItemProps> = ({
     }
     logger.info('handleParameterUpdate', `Updating parameter ${parameterPk} for part ${partId}`, { value });
     try {
-      await updatePartParameter({ partId, parameterPk, value, cardInstanceId }).unwrap();
+      await updatePartParameter({ partId, parameterId: parameterPk, data: { value } }).unwrap();
       logger.info('handleParameterUpdate', `Successfully updated parameter ${parameterPk}`);
     } catch (error) {
       logger.error('handleParameterUpdate', `Failed to update parameter ${parameterPk}`, error as Error);

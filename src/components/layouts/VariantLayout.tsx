@@ -61,7 +61,8 @@ const VariantLayout: React.FC<VariantLayoutProps> = ({ hass, config, parts, card
 
   const locatingPartId = useSelector((state: RootState) => selectLocatingPartId(state, cardInstanceId || 'unknown_card'));
   const parameterConfigFromProps = useMemo(() => config?.parameters, [config]);
-  const allLoadingStatuses = useSelector((state: RootState) => state.parameters.parameterLoadingStatus || {});
+  // DEPRECATED: Loading status will be handled by the RTK Query hooks in the components that need it.
+  // const allLoadingStatuses = useSelector((state: RootState) => state.parameters.parameterLoadingStatus || {});
 
   const [processedVariants, setProcessedVariants] = useState<(InventreeItem | ProcessedVariant)[]>([]);
   const [selectedVariantGroupKey, setSelectedVariantGroupKey] = useState<string | null>(null); // For dropdown/tabs: key might be template PK

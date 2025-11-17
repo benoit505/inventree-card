@@ -108,19 +108,84 @@ const getActualValue = (
         }
 
         // --- 🚀 SMART AUTO-FETCHING: If data is missing, auto-fetch it! ---
-        if (dispatch && (rtkQueryState.status === 'uninitialized' || (!rtkQueryState.data && rtkQueryState.status !== 'rejected'))) {
+        // Only auto-fetch if data is uninitialized or missing (but not already pending or rejected)
+        if (dispatch && rtkQueryState.status === 'uninitialized') {
             logger.info('getActualValue', `🚀 Auto-fetching missing part ${pk} for rule evaluation (field: ${field})`);
             
-            // Trigger the fetch - this will populate the cache for next evaluation
-            dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
+            // Trigger the fetch - this will populate the cache and trigger re-evaluation when complete
+            const fetchPromise = dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
             
-            // For now, return undefined but log that we triggered a fetch
-            logger.debug('getActualValue', `Part ${pk} fetch initiated, will be available on next evaluation cycle`);
+            // Schedule immediate re-evaluation after fetch completes
+            fetchPromise.unwrap().then(() => {
+                logger.debug('getActualValue', `Part ${pk} fetch completed, scheduling immediate re-evaluation for card ${cardInstanceId}`);
+                
+                // Import evaluateAndApplyEffectsThunk dynamically to avoid circular dependency
+                import('../store/thunks/conditionalLogicThunks').then(({ evaluateAndApplyEffectsThunk }) => {
+                    dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId }));
+                });
+            }).catch((error) => {
+                logger.warn('getActualValue', `Part ${pk} fetch failed: ${error.message}`, error);
+                // Don't re-evaluate on error to avoid cascading failures
+            });
+            
+            logger.debug('getActualValue', `Part ${pk} fetch initiated with immediate re-eval scheduled`);
+        } else if (rtkQueryState.status === 'pending') {
+            logger.debug('getActualValue', `Part ${pk} fetch already in progress, skipping duplicate fetch`);
         }
 
         // --- If not found in either, log current status ---
         const partStatus = rtkQueryState.status;
         logger.debug('getActualValue', `Part with PK ${pk} not found in RTK Query cache (status: ${partStatus}) or partsSlice, or attribute '${attribute}' does not exist.`);
+        return undefined;
+    }
+
+    // NEW: Handle InvenTree parameters with smart fetching
+    const invParamMatch = field.match(/^inv_param_(\d+)_(.+)$/);
+    if (invParamMatch) {
+        const pk = parseInt(invParamMatch[1], 10);
+        const parameterName = invParamMatch[2];
+
+        // --- NEW LOGIC: The partsSlice is the single source of truth ---
+        const part = selectPartById(globalContext, cardInstanceId, pk);
+        if (part && part.parameters) {
+            const param = part.parameters.find(p => p.template_detail?.name === parameterName);
+            if (param) {
+                return param.data; // Parameter found, return its value
+            }
+        }
+
+        // If not found in the partsSlice, we might need to fetch it.
+        // We still check the RTK Query state to avoid re-fetching constantly.
+        const rtkQueryState = inventreeApi.endpoints.getPartParameters.select({ partId: pk, cardInstanceId })(globalContext);
+        
+        // Auto-fetch only if the data has never been fetched
+        if (dispatch && rtkQueryState.status === 'uninitialized') {
+            logger.info('getActualValue', `🚀 Auto-fetching missing parameters AND part data for part ${pk} for rule evaluation (field: ${field})`);
+            
+            // Fetch both the parameters and the main part data
+            const paramsPromise = dispatch(inventreeApi.endpoints.getPartParameters.initiate({ partId: pk, cardInstanceId, template_detail: true }));
+            const partPromise = dispatch(inventreeApi.endpoints.getPart.initiate({ pk, cardInstanceId }));
+
+            // Schedule immediate re-evaluation after BOTH fetches complete
+            Promise.all([paramsPromise.unwrap(), partPromise.unwrap()]).then(() => {
+                logger.debug('getActualValue', `Parameters and Part data for part ${pk} fetch completed, scheduling immediate re-evaluation for card ${cardInstanceId}`);
+                
+                // Import evaluateAndApplyEffectsThunk dynamically to avoid circular dependency
+                import('../store/thunks/conditionalLogicThunks').then(({ evaluateAndApplyEffectsThunk }) => {
+                    dispatch(evaluateAndApplyEffectsThunk({ cardInstanceId }));
+                });
+            }).catch((error) => {
+                logger.warn('getActualValue', `Parameters fetch for part ${pk} failed: ${error.message}`, error);
+                // Don't re-evaluate on error to avoid cascading failures
+            });
+
+            logger.debug('getActualValue', `Parameters and Part data for part ${pk} fetch initiated with immediate re-eval scheduled`);
+        } else if (rtkQueryState.status === 'pending') {
+            logger.debug('getActualValue', `Parameters for part ${pk} fetch already in progress, skipping duplicate fetch`);
+        }
+        
+        const paramStatus = rtkQueryState.status;
+        logger.debug('getActualValue', `Parameter '${parameterName}' for part ${pk} not found in partsSlice. RTK Query cache status: ${paramStatus}.`);
         return undefined;
     }
 
@@ -152,13 +217,16 @@ const getActualValue = (
             logger.warn('getActualValue', 'Part attribute ' + attributeName + ' not found in partContext for PK ' + (partContext?.pk || 'undefined'));
         }
     }
-    // Part Parameter: e.g., param_color (assuming partContext is provided)
+    // DEPRECATED: This is the old way, relying on parameters being pre-loaded on the part object.
+    // The new 'inv_param_...' handles this globally and with smart fetching.
+    /*
     else if (field.startsWith('param_') && partContext) {
         const parameterName = field.substring('param_'.length);
         // SLAY THE HYDRA: Get parameters from the partContext, which is populated by RTK Query.
         const param = partContext.parameters?.find(p => p.template_detail?.name === parameterName);
         valueToReturn = param?.data;
     }
+    */
     else {
         logger.warn('getActualValue', 'Unknown field format or context missing for field: ' + field);
     }

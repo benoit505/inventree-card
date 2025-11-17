@@ -40,10 +40,14 @@ const loggingSlice = createSlice({
   name: 'logging',
   initialState,
   reducers: {
-    logFired: (state, action: PayloadAction<Omit<LogEntry, 'id' | 'timestamp'> & { cardInstanceId?: string }>) => {
-      // This action is intentionally left empty. 
-      // It serves as a hook for the loggingMiddleware to intercept log events.
-      // The middleware will then decide whether to capture the log based on queries.
+    logFired: (state, action: PayloadAction<LogEntry & { cardInstanceId: string }>) => {
+      const { cardInstanceId, ...log } = action.payload;
+      const instanceState = getOrCreateInstanceState(state, cardInstanceId);
+      instanceState.capturedLogs.push(log);
+      // Optional: Limit the number of captured logs to prevent memory issues
+      if (instanceState.capturedLogs.length > 200) {
+        instanceState.capturedLogs.shift();
+      }
     },
     initializeEditorLogger: (state, action: PayloadAction<{ cardInstanceId: string }>) => {
       getOrCreateInstanceState(state, action.payload.cardInstanceId);
@@ -78,17 +82,6 @@ const loggingSlice = createSlice({
       const instanceState = getOrCreateInstanceState(state, cardInstanceId);
       instanceState.settings = settings;
     },
-    captureLog: (state, action: PayloadAction<{ cardInstanceId: string, log: LogEntry }>) => {
-      console.log('%c[loggingSlice] captureLog', 'color: #9B59B6; font-weight: bold;', action.payload.log.message);
-      const { cardInstanceId, log } = action.payload;
-      const instanceState = getOrCreateInstanceState(state, cardInstanceId);
-      instanceState.capturedLogs.push(log);
-      // Optional: Limit the number of captured logs to prevent memory issues
-      if (instanceState.capturedLogs.length > 200) {
-        instanceState.capturedLogs.shift();
-      }
-      console.log('[loggingSlice] State after captureLog:', JSON.parse(JSON.stringify(instanceState)));
-    },
     clearCapturedLogs: (state, action: PayloadAction<{ cardInstanceId: string }>) => {
       const instanceState = getOrCreateInstanceState(state, action.payload.cardInstanceId);
       instanceState.capturedLogs = [];
@@ -112,7 +105,6 @@ export const {
   registerLogCategoriesBatchForInstance,
   updateLogSetting, 
   setAllLogSettings,
-  captureLog,
   clearCapturedLogs,
   clearCapturedLogsForIds,
   removeInstance,

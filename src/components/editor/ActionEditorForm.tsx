@@ -10,10 +10,12 @@ import {
   ActionUpdateInvenTreeParameterOperation,
   ActionDispatchReduxActionOperation,
   ActionTriggerConditionalLogicOperation,
+  ActionAdjustStockOperation,
 } from '../../types';
 import CustomEntityPicker from './CustomEntityPicker';
 import { ConditionalLoggerEngine } from '../../core/logging/ConditionalLoggerEngine';
 import HaIconPickerWrapper from './HaIconPickerWrapper';
+import MultipleOperationsEditor from './MultipleOperationsEditor';
 
 ConditionalLoggerEngine.getInstance().registerCategory('ActionEditorForm', { enabled: false, level: 'info' });
 
@@ -41,6 +43,12 @@ const getDefaultDispatchReduxActionOperation = (): ActionDispatchReduxActionOper
 const getDefaultTriggerConditionalLogicOperation = (): ActionTriggerConditionalLogicOperation => ({
   type: 'trigger_conditional_logic',
   logicIdToTrigger: '',
+});
+
+const getDefaultAdjustStockOperation = (): ActionAdjustStockOperation => ({
+  type: 'adjust_stock',
+  partIdContext: 'current',
+  deltaTemplate: '+1',
 });
 
 // --- Default for the entire Action Definition ---
@@ -92,6 +100,7 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
   const [isConfirmationEnabled, setIsConfirmationEnabled] = useState<boolean>(false);
   const [isTargetEntityEnabled, setIsTargetEntityEnabled] = useState<boolean>(false);
   const [postEvaluationLogicIdsString, setPostEvaluationLogicIdsString] = useState<string>('');
+  const [useMultipleOperations, setUseMultipleOperations] = useState<boolean>(false);
 
   useEffect(() => {
     const defaults = getDefaultActionDefinition();
@@ -101,6 +110,11 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
       // Ensure nested objects exist
       effectiveInitial.trigger = effectiveInitial.trigger || defaults.trigger;
       effectiveInitial.operation = effectiveInitial.operation || defaults.operation;
+
+      // Check if this action uses multiple operations
+      if (effectiveInitial.operations && effectiveInitial.operations.length > 0) {
+        setUseMultipleOperations(true);
+      }
 
       setAction({ ...defaults, ...effectiveInitial });
       
@@ -167,6 +181,9 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
         case 'trigger_conditional_logic':
           newOperation = getDefaultTriggerConditionalLogicOperation();
           break;
+        case 'adjust_stock':
+          newOperation = getDefaultAdjustStockOperation();
+          break;
         case 'call_ha_service':
         default:
           newOperation = getDefaultCallHAServiceOperation();
@@ -217,6 +234,124 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
 
   const getServiceDomain = (serviceCall: string = '') => serviceCall.split('.')[0];
   const getServiceAction = (serviceCall: string = '') => serviceCall.split('.')[1];
+
+  // Helper to render operation fields for a specific operation (for multiple operations mode)
+  const renderOperationFieldsFor = (operation: ActionOperation, onChange: (op: ActionOperation) => void) => {
+    const updateField = (path: string, value: any) => {
+      const keys = path.split('.');
+      const updatedOp = { ...operation };
+      let current: any = updatedOp;
+      for (let i = 0; i < keys.length - 1; i++) {
+        current[keys[i]] = { ...current[keys[i]] };
+        current = current[keys[i]];
+      }
+      current[keys[keys.length - 1]] = value;
+      onChange(updatedOp);
+    };
+
+    switch (operation.type) {
+      case 'call_ha_service':
+        const op = operation as ActionCallHAServiceOperation;
+        const serviceDomain = op.service?.split('.')[0] || '';
+        const serviceAction = op.service?.split('.')[1] || '';
+        const servicesForDomain = hass.services[serviceDomain] ? Object.keys(hass.services[serviceDomain]) : [];
+        
+        return (
+          <>
+            <label>Service:
+              <input 
+                type="text" 
+                value={op.service || ''} 
+                onChange={(e) => updateField('service', e.target.value)}
+                placeholder="e.g. switch.toggle"
+              />
+            </label>
+            <label>Target Entity ID:
+              <input 
+                type="text" 
+                value={op.target?.type === 'standard_object_target' ? op.target.target_details?.entity_id || '' : ''}
+                onChange={(e) => updateField('target', { 
+                  type: 'standard_object_target', 
+                  target_details: { entity_id: e.target.value } 
+                })}
+                placeholder="e.g. switch.test_plug_socket_1"
+              />
+            </label>
+          </>
+        );
+      case 'update_inventree_parameter':
+        const paramOp = operation as ActionUpdateInvenTreeParameterOperation;
+        return (
+          <>
+            <label>Parameter Name:
+              <input 
+                type="text" 
+                value={paramOp.parameterName || ''} 
+                onChange={(e) => updateField('parameterName', e.target.value)}
+                placeholder="e.g. microwavables"
+              />
+            </label>
+            <label>
+              <input 
+                type="checkbox" 
+                checked={paramOp.valueTemplate === 'TOGGLE'}
+                onChange={(e) => updateField('valueTemplate', e.target.checked ? 'TOGGLE' : '')}
+              />
+              Use as Toggle Switch
+            </label>
+            {paramOp.valueTemplate !== 'TOGGLE' && (
+              <label>Value:
+                <input 
+                  type="text" 
+                  value={paramOp.valueTemplate || ''} 
+                  onChange={(e) => updateField('valueTemplate', e.target.value)}
+                  placeholder="e.g. True, False, or a value"
+                />
+              </label>
+            )}
+          </>
+        );
+      case 'trigger_conditional_logic':
+        const logicOp = operation as ActionTriggerConditionalLogicOperation;
+        return (
+          <label>Logic ID:
+            <input 
+              type="text" 
+              value={logicOp.logicIdToTrigger || ''} 
+              onChange={(e) => updateField('logicIdToTrigger', e.target.value)}
+              placeholder="Logic ID to trigger"
+            />
+          </label>
+        );
+      case 'adjust_stock':
+        const stockOp = operation as ActionAdjustStockOperation;
+        return (
+          <>
+            <label>Part Context:
+              <select 
+                value={stockOp.partIdContext || 'current'} 
+                onChange={(e) => updateField('partIdContext', e.target.value)}
+              >
+                <option value="current">Current Part</option>
+              </select>
+            </label>
+            <label>Stock Adjustment:
+              <input 
+                type="text" 
+                value={stockOp.deltaTemplate || ''} 
+                onChange={(e) => updateField('deltaTemplate', e.target.value)}
+                placeholder="e.g. +1, -2, {{quantity}}"
+              />
+              <small style={{ display: 'block', marginTop: '4px', color: 'var(--secondary-text-color)' }}>
+                Use +/- for add/remove. Supports templates like %%context.part.in_stock%%
+              </small>
+            </label>
+          </>
+        );
+      default:
+        return <div>Operation type not yet supported in multiple operations mode</div>;
+    }
+  };
 
   const renderOperationFields = () => {
     if (!action.operation) return null;
@@ -277,9 +412,25 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
             <label>Parameter Name:
               <input type="text" value={action.operation.parameterName} onChange={(e) => handleInputChange('operation.parameterName', e.target.value)}/>
             </label>
-            <label>Value Template:
-              <input type="text" value={action.operation.valueTemplate} onChange={(e) => handleInputChange('operation.valueTemplate', e.target.value)}/>
+            <label>
+              <input 
+                type="checkbox" 
+                checked={action.operation.valueTemplate === 'TOGGLE'}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    handleInputChange('operation.valueTemplate', 'TOGGLE');
+                  } else {
+                    handleInputChange('operation.valueTemplate', '');
+                  }
+                }}
+              />
+              Use as Toggle Switch (flips True ↔ False)
             </label>
+            {action.operation.valueTemplate !== 'TOGGLE' && (
+              <label>Value Template:
+                <input type="text" value={action.operation.valueTemplate} onChange={(e) => handleInputChange('operation.valueTemplate', e.target.value)}/>
+              </label>
+            )}
           </>
         );
       case 'dispatch_redux_action':
@@ -298,6 +449,27 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
           <label>Logic ID to Trigger:
             <input type="text" value={action.operation.logicIdToTrigger} onChange={(e) => handleInputChange('operation.logicIdToTrigger', e.target.value)}/>
           </label>
+        );
+      case 'adjust_stock':
+        return (
+          <>
+            <label>Part Context:
+              <select value={action.operation.partIdContext} onChange={(e) => handleInputChange('operation.partIdContext', e.target.value)}>
+                <option value="current">Current Part</option>
+              </select>
+            </label>
+            <label>Stock Adjustment:
+              <input 
+                type="text" 
+                value={action.operation.deltaTemplate} 
+                onChange={(e) => handleInputChange('operation.deltaTemplate', e.target.value)}
+                placeholder="e.g. +1, -2, {{quantity}}"
+              />
+              <small style={{ display: 'block', marginTop: '4px', color: 'var(--secondary-text-color)' }}>
+                Use +/- for add/remove. Supports templates like %%context.part.in_stock%%
+              </small>
+            </label>
+          </>
         );
       default:
         return <div>Unsupported operation type.</div>;
@@ -344,17 +516,48 @@ const ActionEditorForm: React.FC<ActionEditorFormProps> = ({
       
       {renderUITriggerFields()}
 
-      <h4>Operation</h4>
-      <label>Operation Type:
-        <select value={currentOperationType} onChange={handleOperationTypeChange}>
-          <option value="call_ha_service">Call HA Service</option>
-          <option value="update_inventree_parameter">Update InvenTree Parameter</option>
-          <option value="dispatch_redux_action">Dispatch Redux Action</option>
-          <option value="trigger_conditional_logic">Trigger Conditional Logic</option>
-        </select>
+      <h4>Operations</h4>
+      <label>
+        <input
+          type="checkbox"
+          checked={useMultipleOperations}
+          onChange={(e) => {
+            setUseMultipleOperations(e.target.checked);
+            if (e.target.checked && action.operation) {
+              // Convert single operation to operations array
+              setAction(prev => ({ ...prev, operations: [prev.operation!], operation: undefined }));
+            } else if (!e.target.checked && action.operations && action.operations.length > 0) {
+              // Convert back to single operation (use first one)
+              setAction(prev => ({ ...prev, operation: prev.operations![0], operations: undefined }));
+            }
+          }}
+        />
+        ✨ Use Multiple Operations (one button → many actions!)
       </label>
 
-      {renderOperationFields()}
+      {!useMultipleOperations && (
+        <>
+          <label>Operation Type:
+            <select value={currentOperationType} onChange={handleOperationTypeChange}>
+              <option value="call_ha_service">Call HA Service</option>
+              <option value="update_inventree_parameter">Update InvenTree Parameter</option>
+              <option value="adjust_stock">🚌 Adjust Stock</option>
+              <option value="dispatch_redux_action">Dispatch Redux Action</option>
+              <option value="trigger_conditional_logic">Trigger Conditional Logic</option>
+            </select>
+          </label>
+
+          {renderOperationFields()}
+        </>
+      )}
+
+      {useMultipleOperations && (
+        <MultipleOperationsEditor
+          operations={action.operations || [getDefaultCallHAServiceOperation()]}
+          onChange={(ops) => setAction(prev => ({ ...prev, operations: ops, operation: undefined }))}
+          renderOperationFields={(operation, index, onChange) => renderOperationFieldsFor(operation, onChange)}
+        />
+      )}
 
       <h4>Advanced</h4>
       <label>

@@ -44,9 +44,9 @@ export class InventreeCard extends LitElement implements LovelaceCard {
 
   constructor() {
     super();
-    console.log('%c[LIFECYCLE-LOG] constructor: Lit component is being created.', 'color: #FF6F00; font-weight: bold;');
     // Initialize with a temporary, non-dispatching logger
     this.logger = ConditionalLoggerEngine.getInstance().getTemporaryLogger('InventreeCard-Init');
+    this.logger.info('constructor', 'Lit component is being created.');
   }
 
   public static async getConfigElement(): Promise<LovelaceCardEditor> {
@@ -108,7 +108,38 @@ export class InventreeCard extends LitElement implements LovelaceCard {
       },
     };
 
-    // Dispatch the configuration to the Redux store
+    // Dispatch the configuration to the Redux store IMMEDIATELY
+    // This ensures fresh config from YAML overrides any persisted state from localStorage
+    if (this._cardInstanceId && this._config) {
+      console.log('%c[inventree-card.ts setConfig] Dispatching config to Redux', 'color: #E67E22; font-weight: bold;', {
+        cardInstanceId: this._cardInstanceId,
+        hasDirectApi: !!this._config.direct_api,
+        hasApiKey: !!this._config.direct_api?.api_key,
+        apiKeyPrefix: this._config.direct_api?.api_key?.substring(0, 20) + '...',
+        fullConfig: this._config
+      });
+      
+      store.dispatch(setConfigAction({ 
+        config: this._config, 
+        cardInstanceId: this._cardInstanceId 
+      }));
+      
+      this.logger.info('setConfig', 'Config dispatched to Redux store', { cardInstanceId: this._cardInstanceId });
+      
+      // Verify it was set correctly
+      const globalConfigAfter = store.getState().config?.globalConfig;
+      console.log('%c[inventree-card.ts setConfig] GlobalConfig after dispatch', 'color: #E67E22; font-weight: bold;', {
+        hasGlobalConfig: !!globalConfigAfter,
+        hasDirectApi: !!globalConfigAfter?.direct_api,
+        hasApiKey: !!globalConfigAfter?.direct_api?.api_key,
+        apiKeyPrefix: globalConfigAfter?.direct_api?.api_key?.substring(0, 20) + '...'
+      });
+    } else {
+      console.warn('%c[inventree-card.ts setConfig] NOT dispatching config', 'color: #E74C3C; font-weight: bold;', {
+        hasCardInstanceId: !!this._cardInstanceId,
+        hasConfig: !!this._config
+      });
+    }
   }
 
   public getCardSize(): number {
@@ -118,8 +149,7 @@ export class InventreeCard extends LitElement implements LovelaceCard {
 
   connectedCallback(): void {
     super.connectedCallback();
-    console.log('%c[LIFECYCLE-LOG] connectedCallback: Element has been connected to the DOM.', 'color: #4CAF50; font-weight: bold;', { hasRoot: !!this.reactRoot });
-    this.logger.debug('connectedCallback', 'Element connected to DOM.');
+    this.logger.info('connectedCallback', 'Element has been connected to the DOM.', { hasRoot: !!this.reactRoot });
 
     // If the card has already been initialized and is being reconnected (e.g., tab switch),
     // we need to re-mount the React application. The `reactRoot` would have been cleared
@@ -132,29 +162,38 @@ export class InventreeCard extends LitElement implements LovelaceCard {
   }
 
   protected firstUpdated(_changedProperties: PropertyValues): void {
-    console.log('%c[LIFECYCLE-LOG] firstUpdated: Component has rendered for the first time.', 'color: #3F51B5; font-weight: bold;');
+    this.logger.info('firstUpdated', 'Component has rendered for the first time.');
+
+    // 🔍 DIAGNOSTIC LOG: Check the state right before initialization
+    this.logger.debug('firstUpdated', 'Pre-initialization state check:', {
+      isInitialized: this._isInitialized,
+      hasConfig: !!this._config,
+      hasCardInstanceId: !!this._cardInstanceId,
+      config: this._config,
+      cardInstanceId: this._cardInstanceId,
+    });
 
     // This is the first time we can be sure this element is "real" and its DOM is available.
     if (!this._isInitialized && this._config && this._cardInstanceId) {
-      console.log('%c[LIFECYCLE-LOG] firstUpdated: Dispatching initialization thunk.', 'color: #3F51B5; font-weight: bold;');
+      this.logger.info('firstUpdated', 'Dispatching initialization thunk.');
       
       const { _cardInstanceId, hass, _config } = this;
 
       // Dispatch the thunk, but don't await. Let the lifecycle continue.
-      store.dispatch(initializeCardThunk({ 
+      (store.dispatch as any)(initializeCardThunk({ 
         cardInstanceId: _cardInstanceId, 
         hass,
         config: _config,
       })).then(() => {
         // This block runs after the thunk is fully resolved.
-        console.log(`%c[LIFECYCLE-LOG] firstUpdated: Thunk completed for ${_cardInstanceId}. Now mounting React.`, 'color: #3F51B5; font-weight: bold;');
+        this.logger.info('firstUpdated', `Thunk completed for ${_cardInstanceId}. Now mounting React.`);
         
         // If the element is still on the page, mount React and update state.
         if (this.isConnected) {
           this._mountOrUpdateReactApp();
           this._isInitialized = true;
         } else {
-          console.log(`%c[LIFECYCLE-LOG] firstUpdated: Thunk completed, but element for ${_cardInstanceId} was disconnected. Aborting React mount.`, 'color: #F44336; font-weight: bold;');
+          this.logger.warn('firstUpdated', `Thunk completed, but element for ${_cardInstanceId} was disconnected. Aborting React mount.`);
         }
       });
     }
@@ -178,12 +217,7 @@ export class InventreeCard extends LitElement implements LovelaceCard {
     // 🔍 ENHANCED DIAGNOSTIC ANALYSIS
     const disconnectionReason = this._analyzeDisconnectionCause();
     
-    console.log(`%c[LIFECYCLE-ERROR-${disconnectionReason.code}] ${disconnectionReason.reason}`, 
-      'color: #ff4444; font-weight: bold; background: #ffe6e6; padding: 4px 8px; border-radius: 4px;',
-      disconnectionReason.details
-    );
-    
-    this.logger.error('disconnectedCallback', `Disconnection Analysis: ${disconnectionReason.reason}`, disconnectionReason.details);
+    this.logger.error('disconnectedCallback', `[${disconnectionReason.code}] ${disconnectionReason.reason}`, undefined, disconnectionReason.details);
     
     if (this.reactRoot) {
       this.reactRoot.unmount();
@@ -193,8 +227,7 @@ export class InventreeCard extends LitElement implements LovelaceCard {
   }
 
   protected render(): TemplateResult | void {
-    console.log('%c[LIFECYCLE-LOG] render: Lit render method called.', 'color: #2196F3; font-weight: bold;', { hasConfig: !!this._config });
-    this.logger.debug('render', 'Render method called.', { hasConfig: !!this._config });
+    this.logger.debug('render', 'Lit render method called.', { hasConfig: !!this._config });
     if (!this._config) {
       return html`<div>Loading...</div>`;
     }
@@ -207,7 +240,6 @@ export class InventreeCard extends LitElement implements LovelaceCard {
   }
 
   private _mountOrUpdateReactApp(): void {
-    console.log('%c[LIFECYCLE-LOG] _mountOrUpdateReactApp: Attempting to mount/update React app.', 'color: #9C27B0; font-weight: bold;', { instanceId: this._cardInstanceId });
     this.logger.debug('_mountOrUpdateReactApp', 'Attempting to mount/update React app.', { instanceId: this._cardInstanceId });
     const mountPoint = this.shadowRoot?.getElementById('react-root');
     if (!mountPoint) {
@@ -238,7 +270,7 @@ export class InventreeCard extends LitElement implements LovelaceCard {
     }
 
     this.reactRoot.render(React.createElement(ReactApp, props));
-    this.logger.info('_mountOrUpdateReactApp', 'React app rendered.');
+    this.logger.debug('_mountOrUpdateReactApp', 'React app rendered.');
   }
 
   static getStubConfig(): Record<string, unknown> {

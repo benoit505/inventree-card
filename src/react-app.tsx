@@ -20,7 +20,7 @@ const AppContent: React.FC<ReactAppProps> = ({ hass, config, cardInstanceId }) =
   // This effect is crucial for connecting the ActionEngine to Home Assistant
   useEffect(() => {
     if (hass) {
-      console.log('%c[ReactApp] Setting HASS object on ActionEngine', 'color: #16A085; font-weight: bold;');
+      // console.log('%c[ReactApp] Setting HASS object on ActionEngine', 'color: #16A085; font-weight: bold;');
       ActionEngine.getInstance().setHomeAssistant(hass);
     }
   }, [hass]);

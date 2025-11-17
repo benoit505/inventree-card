@@ -512,7 +512,8 @@ export type ActionOperationType =
   'update_inventree_parameter' | 
   'dispatch_redux_action' | 
   'set_card_state' | 
-  'trigger_conditional_logic'; // Expandable
+  'trigger_conditional_logic' |
+  'adjust_stock'; // Expandable
 
 export interface ActionUITriggerConfig {
   labelTemplate?: string;
@@ -578,18 +579,26 @@ export type ActionTriggerConditionalLogicOperation = {
   logicIdToTrigger: string; // ID of a ConditionalLogicItem
 }
 
+export type ActionAdjustStockOperation = {
+  type: 'adjust_stock';
+  partIdContext: 'current' | number | string; // 'current' for context part, number for specific PK, string for template
+  deltaTemplate: string; // "+1", "-1", "{{quantity}}", etc. Positive = add, negative = remove
+}
+
 export type ActionOperation = 
   | ActionCallHAServiceOperation
   | ActionUpdateInvenTreeParameterOperation
   | ActionDispatchReduxActionOperation
   | ActionSetCardStateOperation
-  | ActionTriggerConditionalLogicOperation;
+  | ActionTriggerConditionalLogicOperation
+  | ActionAdjustStockOperation;
 
 export interface ActionDefinition {
   id: string; 
   name: string; 
   trigger: ActionTrigger;
-  operation: ActionOperation;
+  operation?: ActionOperation; // Single operation (backward compatibility)
+  operations?: ActionOperation[]; // Multiple operations (new!)
   payloadTemplate?: Record<string, any> | string; // Generic payload, usage depends on operation
   confirmation?: { textTemplate: string }; 
   postEvaluationLogicIds?: string[]; 
@@ -854,6 +863,16 @@ export interface CellDefinition {
   buttons?: ButtonCellItem[];
   attributeName?: string;
   template?: string;
+  
+  // Stock adjustment amounts for 'in_stock' cells
+  decrementAmount?: number; // Amount to subtract when clicking minus button (default: -1)
+  incrementAmount?: number; // Amount to add when clicking plus button (default: +1)
+  stockUnit?: 'g' | 'ml' | 'p' | string; // Display unit (g=grams, ml=milliliters, p=pieces)
+  
+  // Slider mode settings for precise stock adjustments
+  sliderMin?: number; // Minimum value for slider (default: 0)
+  sliderMax?: number; // Maximum value for slider (default: 1000)
+  sliderStep?: number; // Step increment for slider (default: 1)
 }
 
 export interface ButtonCellItem {
@@ -878,6 +897,7 @@ export interface LayoutConfig {
 
   rowHeight?: number;
   allowOverlap?: boolean;
+  gridColumns?: number; // Number of columns in the grid (default: 24)
 }
 
 export interface ActionRuntimeState {

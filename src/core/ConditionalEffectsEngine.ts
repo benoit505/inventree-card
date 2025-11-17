@@ -13,12 +13,13 @@ import { CSSProperties } from 'react';
 import { 
     setConditionalPartEffectsBatch, 
     clearConditionalPartEffectsForCard,
-    setConditionalLayoutEffect,
-    setConditionalCellEffect
+    // REMOVED: setConditionalLayoutEffect - dead action, now using unified setConditionalCellEffect
+    setConditionalCellEffect,
+    clearConditionalCellEffectsForCard
 } from '../store/slices/visualEffectsSlice';
 import { selectAllGenericHaStates } from '../store/slices/genericHaStateSlice';
 import { evaluateExpression } from '../utils/evaluateExpression';
-import { selectCombinedParts } from '../store/slices/partsSlice';
+import { selectAllPartsForInstance } from '../store/slices/partsSlice';
 import { ANIMATION_PRESETS } from './constants';
 
 const logger = ConditionalLoggerEngine.getInstance().getLogger('ConditionalEffectsEngine');
@@ -70,7 +71,10 @@ export class ConditionalEffectsEngine {
     ) {
         for (const effect of effects) {
             // --- NEW: Cell-specific effects are handled and dispatched immediately ---
-            if (((effect.type === 'animate_style' || effect.type === 'set_style') && effect.targetCellId) || (effect.type === 'set_visibility' && effect.targetCellId)) {
+            // FIXED: Support both targetCellId (new) AND styleTarget (legacy) for backward compatibility
+            const cellId = effect.targetCellId || (effect as any).styleTarget;
+            
+            if (((effect.type === 'animate_style' || effect.type === 'set_style') && cellId) || (effect.type === 'set_visibility' && cellId)) {
                 let effectPayload: Partial<VisualEffect> = {};
 
                 if (effect.type === 'animate_style') {
@@ -83,7 +87,7 @@ export class ConditionalEffectsEngine {
                 }
                 
                 if (effect.type === 'set_style') {
-                    effectPayload = { cellStyles: { [effect.targetCellId]: { [effect.styleProperty]: effect.styleValue } } };
+                    effectPayload = { cellStyles: { [cellId]: { [effect.styleProperty]: effect.styleValue } } };
                 }
 
                 if (effect.type === 'set_visibility') {
@@ -92,7 +96,7 @@ export class ConditionalEffectsEngine {
 
                 this.dispatch(setConditionalCellEffect({
                     cardInstanceId,
-                    cellId: effect.targetCellId,
+                    cellId: cellId,
                     effect: effectPayload
                 }));
                 continue; // This effect is handled, move to the next one
@@ -114,8 +118,14 @@ export class ConditionalEffectsEngine {
                 targetPksForThisEffect = [contextPartPk];
             } else {
                 // Case 3: A generic condition (no context part) with no specific targets.
-                // Apply to all loaded parts.
-                targetPksForThisEffect = allParts.map(p => p.pk);
+                // FIXED: Apply to NO parts (safe default) instead of ALL parts (aggressive default)
+                // If user wants "all parts", they should explicitly specify targetPartPks
+                targetPksForThisEffect = [];
+                logger.warn('applyEffectsToTargets', 
+                    'Effect has no targetPartPks and no context part. Applying to no parts. ' +
+                    'If you want this effect to apply to specific parts, set targetPartPks explicitly.',
+                    { effect }
+                );
             }
 
             for (const pk of targetPksForThisEffect) {
@@ -180,6 +190,11 @@ export class ConditionalEffectsEngine {
         forceReevaluation: boolean = false, 
         logicItemsToEvaluate?: ConditionalLogicItem[]  
     ): Promise<void> {
+        // 🚀 CRITICAL FIX: Clear all previous effects at the start of evaluation.
+        // This ensures that only the effects from rules that are currently true are applied.
+        this.dispatch(clearConditionalPartEffectsForCard({ cardInstanceId }));
+        this.dispatch(clearConditionalCellEffectsForCard({ cardInstanceId }));
+        
         const state = this.getState();
         
         if (!logicItemsToEvaluate || logicItemsToEvaluate.length === 0) {
@@ -188,59 +203,99 @@ export class ConditionalEffectsEngine {
         }
 
         const effectsToApply: Record<number, VisualEffect> = {};
-        const allParts = selectCombinedParts(state, cardInstanceId);
+        const allParts = selectAllPartsForInstance(state, cardInstanceId);
         const haStates = selectAllGenericHaStates(state);
 
+        // 🚀 PERFORMANCE: Pre-filter logic items by type to avoid checking in inner loops
+        const genericLogicPairs: Array<{ logicItem: ConditionalLogicItem, pair: LogicPair }> = [];
+        const partSpecificLogicPairs: Array<{ logicItem: ConditionalLogicItem, pair: LogicPair }> = [];
+        
         for (const logicItem of logicItemsToEvaluate) {
+            // 🚀 EARLY EXIT: Skip logic items with no pairs
+            if (!logicItem.logicPairs || logicItem.logicPairs.length === 0) continue;
+            
             for (const pair of logicItem.logicPairs) {
+                // 🚀 EARLY EXIT: Skip pairs with no effects
+                if (!pair.effects || pair.effects.length === 0) continue;
+                
                 if (isRuleGroupGeneric(pair.conditionRules)) {
-                    try {
-                        if (evaluateExpression(pair.conditionRules, null, state, logger, cardInstanceId, this.dispatch)) {
-                            const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
-                            this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, cardInstanceId);
-                            
-                            for (const effect of pair.effects) {
-                                if (effect.type === 'set_layout') {
-                                    this.dispatch(setConditionalLayoutEffect({
-                                        cardInstanceId,
-                                        cellId: effect.targetCellId,
-                                        layout: { [effect.layoutProperty]: effect.layoutValue },
-                                    }));
-                                }
-                            }
-                        }
-                    } catch (e: any) {
-                        logger.error('evaluateAndApplyEffects', `[Generic] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
-                    }
+                    genericLogicPairs.push({ logicItem, pair });
+                } else {
+                    partSpecificLogicPairs.push({ logicItem, pair });
                 }
             }
         }
 
-        for (const part of allParts) {
-            for (const logicItem of logicItemsToEvaluate) {
-                for (const pair of logicItem.logicPairs) {
-                    if (!isRuleGroupGeneric(pair.conditionRules)) {
-                        try {
-                            if (evaluateExpression(pair.conditionRules, part, state, logger, cardInstanceId, this.dispatch)) {
-                                const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
-                                this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, cardInstanceId, part.pk);
-
-                                for (const effect of pair.effects) {
-                                    if (effect.type === 'set_layout') {
-                                        const templatedCellId = effect.targetCellId.replace('%%part.pk%%', String(part.pk));
-                                        this.dispatch(setConditionalLayoutEffect({
-                                            cardInstanceId,
-                                            cellId: templatedCellId,
-                                            layout: { [effect.layoutProperty]: effect.layoutValue },
-                                        }));
-                                    }
-                                }
-                            }
-                        } catch (e: any) {
-                            logger.error('evaluateAndApplyEffects', `[Part ${part.pk}] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
-                        }
+        // --- PHASE 1: Evaluate Generic Rules (once, not per-part) ---
+        for (const { logicItem, pair } of genericLogicPairs) {
+            try {
+                const result = evaluateExpression(pair.conditionRules, null, state, logger, cardInstanceId, this.dispatch);
+                
+                // 🚀 EARLY EXIT: Skip if rule doesn't match
+                if (!result) continue;
+                
+                const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
+                this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, cardInstanceId);
+                
+                // FIXED: Unified cell effects - use setConditionalCellEffect for layout effects too
+                for (const effect of pair.effects) {
+                    if (effect.type === 'set_layout') {
+                        this.dispatch(setConditionalCellEffect({
+                            cardInstanceId,
+                            cellId: effect.targetCellId,
+                            effect: { cellStyles: { [effect.targetCellId]: { [effect.layoutProperty]: effect.layoutValue } } },
+                        }));
                     }
                 }
+            } catch (e: any) {
+                logger.error('evaluateAndApplyEffects', `[Generic] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
+            }
+        }
+
+        // 🚀 EARLY EXIT: Skip part-specific evaluation if no part-specific pairs
+        if (partSpecificLogicPairs.length === 0) {
+            logger.debug('evaluateAndApplyEffects', 'No part-specific logic pairs, skipping part evaluation');
+            this.dispatch(setConditionalPartEffectsBatch({ cardInstanceId: cardInstanceId, effectsMap: effectsToApply }));
+            return;
+        }
+
+        // --- PHASE 2: Evaluate Part-Specific Rules ---
+        // 🚀 PERFORMANCE: Create part PK set for faster lookups
+        const allPartPks = new Set(allParts.map(p => p.pk));
+        
+        for (const part of allParts) {
+            let hasAnyEffectForThisPart = false;
+            
+            for (const { logicItem, pair } of partSpecificLogicPairs) {
+                try {
+                    const result = evaluateExpression(pair.conditionRules, part, state, logger, cardInstanceId, this.dispatch);
+                    
+                    // 🚀 EARLY EXIT: Skip if rule doesn't match
+                    if (!result) continue;
+                    
+                    hasAnyEffectForThisPart = true;
+                    const nonLayoutEffects = pair.effects.filter(e => e.type !== 'set_layout') as Exclude<EffectDefinition, { type: 'set_layout' }>[];
+                    this.applyEffectsToTargets(nonLayoutEffects, effectsToApply, allParts, cardInstanceId, part.pk);
+
+                    // FIXED: Unified cell effects - use setConditionalCellEffect for layout effects too
+                    for (const effect of pair.effects) {
+                        if (effect.type === 'set_layout') {
+                            const templatedCellId = effect.targetCellId.replace('%%part.pk%%', String(part.pk));
+                            this.dispatch(setConditionalCellEffect({
+                                cardInstanceId,
+                                cellId: templatedCellId,
+                                effect: { cellStyles: { [templatedCellId]: { [effect.layoutProperty]: effect.layoutValue } } },
+                            }));
+                        }
+                    }
+                } catch (e: any) {
+                    logger.error('evaluateAndApplyEffects', `[Part ${part.pk}] ERROR evaluating condition for pair ${pair.id}: ${e.message}`);
+                }
+            }
+            
+            // 🚀 OPTIMIZATION: Log parts that had no matching rules (for debugging)
+            if (!hasAnyEffectForThisPart) {
+                logger.debug('evaluateAndApplyEffects', `Part ${part.pk} had no matching rules in this evaluation`);
             }
         }
 

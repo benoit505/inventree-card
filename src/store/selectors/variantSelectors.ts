@@ -1,7 +1,7 @@
 import { createSelector } from 'reselect';
 import { RootState } from '../index';
 import { InventreeItem, InventreeCardConfig, ProcessedVariant } from '../../types';
-import { selectCombinedParts } from '../slices/partsSlice';
+import { selectAllPartsForInstance } from '../slices/partsSlice';
 
 // Helper function to group variants (can be adapted from VariantHandler or existing layout)
 const groupVariants = (parts: InventreeItem[], config: InventreeCardConfig | null): ProcessedVariant[] => {
@@ -71,7 +71,7 @@ const groupVariants = (parts: InventreeItem[], config: InventreeCardConfig | nul
 
 export const selectProcessedVariants = createSelector(
     [
-        (state: RootState, cardInstanceId: string): InventreeItem[] => selectCombinedParts(state, cardInstanceId),
+        (state: RootState, cardInstanceId: string): InventreeItem[] => selectAllPartsForInstance(state, cardInstanceId),
     ],
     (allParts: InventreeItem[]): ProcessedVariant[] => {
         // Add default return value for empty parts
@@ -87,7 +87,7 @@ export const selectProcessedVariants = createSelector(
 // This assumes we need the config for some variant processing, which might not be the case.
 // If config is needed, it must be passed as an argument or derived differently.
 export const selectVariantGroups = createSelector(
-    [(state: RootState, cardInstanceId: string) => selectCombinedParts(state, cardInstanceId)],
+    [(state: RootState, cardInstanceId: string) => selectAllPartsForInstance(state, cardInstanceId)],
     (parts) => { // Removed config from result function arguments
         // Group parts by variant_of or is_template status
         const groups: Record<string, InventreeItem[]> = {};

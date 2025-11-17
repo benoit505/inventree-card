@@ -8,9 +8,9 @@
  */
 
 import React, { useMemo } from 'react';
-import { ConditionalLogicItem, RuleGroupType, RuleType } from '../../types';
+import { ConditionalLogicItem, RuleGroupType, RuleType, InventreeItem, ParameterDetail } from '../../types';
 import { useAppSelector } from '../../store';
-import { selectCombinedParts } from '../../store/slices/partsSlice';
+import { selectAllPartsForInstance } from '../../store/slices/partsSlice';
 import { selectAllGenericHaStates } from '../../store/slices/genericHaStateSlice';
 import { inventreeApi } from '../../store/apis/inventreeApi';
 
@@ -51,7 +51,7 @@ const DataAvailabilityIndicator: React.FC<DataAvailabilityIndicatorProps> = ({
   conditionalLogicItems, 
   cardInstanceId 
 }) => {
-  const allParts = useAppSelector(state => selectCombinedParts(state, cardInstanceId));
+  const allParts = useAppSelector(state => selectAllPartsForInstance(state, cardInstanceId));
   const haStates = useAppSelector(state => selectAllGenericHaStates(state));
   
   const dataRequirements = useMemo<DataRequirement[]>(() => {
@@ -92,18 +92,34 @@ const DataAvailabilityIndicator: React.FC<DataAvailabilityIndicatorProps> = ({
         requirement.partPk = partPk;
         
         // Check if this specific part is loaded
-        const part = allParts.find(p => p.pk === partPk);
+        const part = allParts.find((p: InventreeItem) => p.pk === partPk);
         requirement.available = part !== undefined && attribute in part;
         requirement.source = part ? `Part ${partPk} loaded` : `Part ${partPk} missing`;
         
+      } else if (field.match(/^inv_param_(\d+)_(.+)$/)) {
+        // Specific part parameter (e.g., 'inv_param_145_microwavables')
+        const match = field.match(/^inv_param_(\d+)_(.+)$/)!;
+        const partPk = parseInt(match[1], 10);
+        const paramName = match[2];
+
+        requirement.type = 'part_parameter';
+        requirement.partPk = partPk;
+
+        // Check if this specific part is loaded AND has the parameter
+        const part = allParts.find((p: InventreeItem) => p.pk === partPk);
+        const hasParam = part?.parameters?.some((p: ParameterDetail) => p.template_detail?.name === paramName);
+        
+        requirement.available = !!hasParam;
+        requirement.source = hasParam ? `Parameter found in Part ${partPk}` : `Parameter missing from Part ${partPk}`;
+
       } else if (field.startsWith('param_')) {
         // Part parameter (e.g., 'param_color')
         const paramName = field.substring('param_'.length);
         requirement.type = 'part_parameter';
         
         // Check if any loaded part has this parameter
-        const hasParam = allParts.some(part => 
-          part.parameters?.some(p => p.template_detail?.name === paramName)
+        const hasParam = allParts.some((part: InventreeItem) => 
+          part.parameters?.some((p: ParameterDetail) => p.template_detail?.name === paramName)
         );
         requirement.available = hasParam;
         requirement.source = hasParam ? `Parameter found in loaded parts` : `Parameter not found`;
